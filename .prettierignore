@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+tmp_core_tsc/
+
+# Vendored/minified files
+resource/menu/vendor/
+
+# Lock files
+package-lock.json
+
+# Non-code assets
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.webp
+**/*.ico
+**/*.svg
+**/*.woff
+**/*.woff2
+**/*.ttf
+**/*.eot
+**/*.mp3
+**/*.ogg
+
+# Reports
+.reports/

@@ -1,0 +1,15 @@
+@import '@fontsource-variable/inter';
+
+body {
+    margin: 0;
+    font-family: 'Inter Variable', 'Inter', 'Segoe UI', sans-serif;
+    padding: 52px 40px 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#root {
+    height: 100%;
+}

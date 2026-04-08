@@ -1,0 +1,343 @@
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="author" content="André Tabarra" />
+        <title>fxPanel NUI</title>
+        <style>
+            * {
+                background-color: transparent;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
+
+        <!-- @citizenfx/three — FiveM's THREE.js build with CfxTexture for game screen capture -->
+        <script src="nui://monitor/nui/cfx-three.min.js"></script>
+
+        <script>
+            (function () {
+                // ---- Debug helper: no-op to avoid leaking capture activity to player console ----
+                function slog(msg) {}
+
+                // ---- Constants not exported by cfx-three.min.js ----
+                var NEAREST_FILTER = 1003;
+
+                // ---- State ----
+                var pipelineReady = false;
+                var renderer, sceneRTT, cameraRTT, rtTexture, material;
+                var screenshotRequest = null;
+                var streamRequest = null;
+                var streamTimer = null;
+                var streamSessionId = null;
+                var streamQuality = 0.4;
+                var frameCount = 0;
+
+                // ---- Pipeline setup (matches screenshot-basic exactly) ----
+                function initialize() {
+                    if (pipelineReady) return true;
+
+                    var T = window.CFX_THREE;
+                    if (!T) {
+                        slog('FAIL: CFX_THREE not available');
+                        return false;
+                    }
+                    if (!T.CfxTexture) {
+                        slog('FAIL: CfxTexture not in CFX_THREE');
+                        return false;
+                    }
+
+                    try {
+                        var w = window.innerWidth;
+                        var h = window.innerHeight;
+                        slog('Initializing at ' + w + 'x' + h);
+
+                        cameraRTT = new T.OrthographicCamera(w / -2, w / 2, h / 2, h / -2, -10000, 10000);
+                        cameraRTT.position.z = 100;
+
+                        sceneRTT = new T.Scene();
+
+                        rtTexture = new T.WebGLRenderTarget(w, h, {
+                            minFilter: T.LinearFilter,
+                            magFilter: NEAREST_FILTER,
+                            format: T.RGBAFormat,
+                            type: T.UnsignedByteType,
+                        });
+
+                        var gameTexture = new T.CfxTexture();
+                        gameTexture.needsUpdate = true;
+
+                        material = new T.ShaderMaterial({
+                            uniforms: { tDiffuse: { value: gameTexture } },
+                            vertexShader: [
+                                'varying vec2 vUv;',
+                                'void main() {',
+                                '  vUv = vec2(uv.x, 1.0 - uv.y);',
+                                '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+                                '}',
+                            ].join('\n'),
+                            fragmentShader: [
+                                'varying vec2 vUv;',
+                                'uniform sampler2D tDiffuse;',
+                                'void main() {',
+                                '  gl_FragColor = texture2D(tDiffuse, vUv);',
+                                '}',
+                            ].join('\n'),
+                        });
+
+                        var plane = new T.PlaneGeometry(w, h);
+                        var quad = new T.Mesh(plane, material);
+                        quad.position.z = -100;
+                        sceneRTT.add(quad);
+
+                        renderer = new T.WebGLRenderer();
+                        renderer.setPixelRatio(window.devicePixelRatio);
+                        renderer.setSize(w, h);
+                        renderer.autoClear = false;
+
+                        var container = document.createElement('div');
+                        container.id = 'capture-wrap';
+                        container.style.display = 'none';
+                        document.body.appendChild(container);
+                        container.appendChild(renderer.domElement);
+
+                        window.addEventListener('resize', resize);
+                        pipelineReady = true;
+                        slog('Pipeline READY');
+                        return true;
+                    } catch (e) {
+                        slog('INIT ERROR: ' + String(e));
+                        return false;
+                    }
+                }
+
+                function resize() {
+                    if (!pipelineReady) return;
+                    var T = window.CFX_THREE;
+                    if (!T) return;
+                    var w = window.innerWidth;
+                    var h = window.innerHeight;
+
+                    cameraRTT = new T.OrthographicCamera(w / -2, w / 2, h / 2, h / -2, -10000, 10000);
+                    cameraRTT.position.z = 100;
+
+                    rtTexture = new T.WebGLRenderTarget(w, h, {
+                        minFilter: T.LinearFilter,
+                        magFilter: NEAREST_FILTER,
+                        format: T.RGBAFormat,
+                        type: T.UnsignedByteType,
+                    });
+
+                    sceneRTT = new T.Scene();
+                    var plane = new T.PlaneGeometry(w, h);
+                    var quad = new T.Mesh(plane, material);
+                    quad.position.z = -100;
+                    sceneRTT.add(quad);
+
+                    renderer.setSize(w, h);
+                }
+
+                // ---- Render loop ----
+                function animate() {
+                    requestAnimationFrame(animate);
+                    if (!renderer || !sceneRTT || !cameraRTT || !rtTexture) return;
+
+                    renderer.clear();
+                    renderer.render(sceneRTT, cameraRTT, rtTexture, true);
+
+                    if (screenshotRequest) {
+                        var req = screenshotRequest;
+                        screenshotRequest = null;
+                        handleScreenshot(req);
+                    }
+
+                    if (streamRequest) {
+                        streamRequest = false;
+                        handleStreamFrame();
+                    }
+                }
+
+                // ---- Screenshot handler ----
+                function handleScreenshot(req) {
+                    slog('handleScreenshot id=' + req.requestId);
+                    try {
+                        var w = window.innerWidth;
+                        var h = window.innerHeight;
+
+                        var read = new Uint8Array(w * h * 4);
+                        renderer.readRenderTargetPixels(rtTexture, 0, 0, w, h, read);
+
+                        var canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        var ctx = canvas.getContext('2d');
+                        ctx.putImageData(new ImageData(new Uint8ClampedArray(read.buffer), w, h), 0, 0);
+
+                        var type = 'image/jpeg';
+                        if (req.encoding === 'png') type = 'image/png';
+                        else if (req.encoding === 'webp') type = 'image/webp';
+
+                        var quality = req.quality || 0.92;
+                        var dataUrl = canvas.toDataURL(type, quality);
+                        slog('Screenshot encoded len=' + dataUrl.length);
+
+                        fetch('https://monitor/screenshotResult', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                            body: JSON.stringify({ requestId: req.requestId, data: dataUrl }),
+                        })
+                            .then(function (r) {
+                                slog('Screenshot POST status=' + r.status);
+                            })
+                            .catch(function (e) {
+                                slog('Screenshot POST FAILED: ' + e);
+                            });
+                    } catch (e) {
+                        slog('Screenshot ERROR: ' + e);
+                        fetch('https://monitor/screenshotResult', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                            body: JSON.stringify({ requestId: req.requestId, error: String(e) }),
+                        }).catch(function () {});
+                    }
+                }
+
+                // ---- Stream frame handler ----
+                function handleStreamFrame() {
+                    if (!streamSessionId) return;
+                    frameCount++;
+                    try {
+                        var w = window.innerWidth;
+                        var h = window.innerHeight;
+
+                        var read = new Uint8Array(w * h * 4);
+                        renderer.readRenderTargetPixels(rtTexture, 0, 0, w, h, read);
+
+                        var sw = Math.max(1, Math.floor(w * 0.5));
+                        var sh = Math.max(1, Math.floor(h * 0.5));
+                        var canvas = document.createElement('canvas');
+                        canvas.width = sw;
+                        canvas.height = sh;
+                        var ctx = canvas.getContext('2d');
+
+                        var fullCanvas = document.createElement('canvas');
+                        fullCanvas.width = w;
+                        fullCanvas.height = h;
+                        var fullCtx = fullCanvas.getContext('2d');
+                        fullCtx.putImageData(new ImageData(new Uint8ClampedArray(read.buffer), w, h), 0, 0);
+                        ctx.drawImage(fullCanvas, 0, 0, sw, sh);
+
+                        var dataUrl = canvas.toDataURL('image/webp', streamQuality);
+
+                        if (frameCount <= 3) {
+                            slog('Frame #' + frameCount + ' len=' + dataUrl.length);
+                        }
+
+                        fetch('https://monitor/spectateFrame', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                            body: JSON.stringify({ sessionId: streamSessionId, frameData: dataUrl }),
+                        })
+                            .then(function (r) {
+                                if (frameCount <= 3) slog('Frame POST status=' + r.status);
+                            })
+                            .catch(function (e) {
+                                if (frameCount <= 3) slog('Frame POST FAILED: ' + e);
+                            });
+                    } catch (e) {
+                        slog('Stream ERROR: ' + e);
+                    }
+                }
+
+                // ---- Start/Stop streaming ----
+                function startCapture(sessionId, fps, quality) {
+                    slog('startCapture session=' + sessionId + ' fps=' + fps);
+                    if (streamTimer) {
+                        slog('Already streaming, ignoring');
+                        return;
+                    }
+
+                    if (!pipelineReady && !initialize()) {
+                        slog('FAIL: Cannot start — init failed');
+                        return;
+                    }
+
+                    streamSessionId = sessionId;
+                    streamQuality = quality || 0.4;
+                    frameCount = 0;
+
+                    var interval = Math.floor(1000 / (fps || 5));
+                    streamTimer = setInterval(function () {
+                        streamRequest = true;
+                    }, interval);
+
+                    streamRequest = true;
+                    slog('Streaming started, interval=' + interval + 'ms');
+                }
+
+                function stopCapture() {
+                    slog('stopCapture');
+                    streamSessionId = null;
+                    streamRequest = false;
+                    frameCount = 0;
+                    if (streamTimer) {
+                        clearInterval(streamTimer);
+                        streamTimer = null;
+                    }
+                }
+
+                // ---- Message handler ----
+                window.addEventListener('message', function (event) {
+                    var msg = event.data;
+                    if (!msg || !msg.action) return;
+
+                    if (
+                        msg.action === 'startCapture' ||
+                        msg.action === 'stopCapture' ||
+                        msg.action === 'takeScreenshot'
+                    ) {
+                        slog('NUI msg: ' + msg.action + ' ' + JSON.stringify(msg.data || {}));
+                    }
+
+                    if (msg.action === 'startCapture') {
+                        var d = msg.data || {};
+                        startCapture(d.sessionId, d.fps, d.quality);
+                    } else if (msg.action === 'stopCapture') {
+                        stopCapture();
+                    } else if (msg.action === 'takeScreenshot') {
+                        if (!pipelineReady && !initialize()) {
+                            var d = msg.data || {};
+                            slog('FAIL: takeScreenshot but init failed');
+                            fetch('https://monitor/screenshotResult', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                                body: JSON.stringify({ requestId: d.requestId, error: 'Pipeline init failed' }),
+                            }).catch(function () {});
+                            return;
+                        }
+                        var d = msg.data || {};
+                        screenshotRequest = {
+                            requestId: d.requestId,
+                            quality: d.quality || 0.92,
+                            encoding: d.encoding || 'jpg',
+                        };
+                    }
+                });
+
+                // ---- Initialize immediately ----
+                window.__inlineCaptureEngine = true; // Signal to React hook: inline engine is active
+                slog('Script loaded, CFX_THREE=' + !!window.CFX_THREE);
+                if (initialize()) {
+                    slog('Init OK, starting render loop');
+                } else {
+                    slog('Init deferred, will retry on first request');
+                }
+                requestAnimationFrame(animate);
+            })();
+        </script>
+
+        <!-- React app (menu UI) — loaded AFTER capture engine -->
+        <script type="module" src="/src/index.tsx"></script>
+    </body>
+</html>

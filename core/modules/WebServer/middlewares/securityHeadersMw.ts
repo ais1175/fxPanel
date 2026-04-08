@@ -1,0 +1,100 @@
+const modulename = 'WebServer:SecurityHeadersMw';
+import consoleFactory from '@lib/console';
+const console = consoleFactory(modulename);
+import { Next } from 'koa';
+import { RawKoaCtx } from '../ctxTypes';
+import { txDevEnv } from '@core/globalData';
+
+/**
+ * Builds the Content-Security-Policy header string
+ * In development, allows Vite dev server connections
+ */
+const buildCSP = (isDev: boolean): string => {
+    const cspDirectives: Record<string, string[]> = {
+        'default-src': ["'self'"],
+        'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'img-src': ["'self'", 'data:', 'blob:'],
+        'font-src': ["'self'"],
+        'connect-src': ["'self'", 'ws:', 'wss:'],
+        'media-src': ["'self'"],
+        'object-src': ["'none'"],
+        'frame-ancestors': ["'none'"],
+        'form-action': ["'self'"],
+        'base-uri': ["'self'"],
+    };
+
+    // In development mode, allow Vite dev server connections
+    if (isDev) {
+        const devHosts = ['http://localhost:*', 'ws://localhost:*', 'http://127.0.0.1:*', 'ws://127.0.0.1:*'];
+        cspDirectives['script-src'].push(...devHosts);
+        cspDirectives['connect-src'].push(...devHosts);
+        cspDirectives['style-src'].push(...devHosts);
+        cspDirectives['img-src'].push(...devHosts);
+        // Allow fonts from dev server and file system
+        cspDirectives['font-src'].push('http://localhost:*', 'http://127.0.0.1:*', 'data:', 'blob:');
+        // Allow framing in dev mode for dev tools
+        cspDirectives['frame-ancestors'] = ["'self'", 'http://localhost:*', 'http://127.0.0.1:*'];
+    }
+
+    // Allow external CDN resources commonly used by the application
+    const trustedCDNs = ['https://cdnjs.cloudflare.com', 'https://unpkg.com', 'https://cdn.jsdelivr.net'];
+    cspDirectives['script-src'].push(...trustedCDNs);
+    cspDirectives['style-src'].push(...trustedCDNs);
+    cspDirectives['connect-src'].push(...trustedCDNs);
+    // Allow fonts from trusted CDNs (e.g. Monaco editor codicon from jsdelivr)
+    cspDirectives['font-src'].push(...trustedCDNs);
+    if (!isDev) {
+        cspDirectives['font-src'].push('data:');
+    }
+
+    return Object.entries(cspDirectives)
+        .map(([directive, sources]) => `${directive} ${sources.join(' ')}`)
+        .join('; ');
+};
+
+/**
+ * Middleware responsible for setting security headers to protect against
+ * common web vulnerabilities like XSS, clickjacking, and MIME sniffing.
+ */
+const securityHeadersMw = async (ctx: RawKoaCtx, next: Next) => {
+    const isDevMode = txDevEnv.ENABLED === true;
+
+    //Prevent clickjacking attacks by denying framing
+    ctx.set('X-Frame-Options', 'DENY');
+
+    //Prevent MIME type sniffing which could lead to XSS
+    ctx.set('X-Content-Type-Options', 'nosniff');
+
+    //Control referrer information to protect sensitive URLs
+    ctx.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    //Disable browser features that aren't needed
+    ctx.set(
+        'Permissions-Policy',
+        'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()',
+    );
+
+    //Set Content Security Policy to prevent XSS and data injection
+    //In development, allow Vite dev server connections
+    ctx.set('Content-Security-Policy', buildCSP(isDevMode));
+
+    //Indicate that the site should only be accessed using HTTPS
+    //Note: This is only set in production to prevent issues during development
+    if (process.env.NODE_ENV === 'production') {
+        ctx.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+
+    //Disable caching for sensitive pages that might contain player data
+    //This is handled separately by cacheControlMw for most routes,
+    //but we add an extra layer here for security-sensitive endpoints
+    if (ctx.path.startsWith('/api/') || ctx.path.startsWith('/intercom/')) {
+        ctx.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        ctx.set('Pragma', 'no-cache');
+        ctx.set('Expires', '0');
+    }
+
+    await next();
+};
+
+export default securityHeadersMw;

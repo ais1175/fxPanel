@@ -1,0 +1,5 @@
+# Formatting commits to ignore in git blame
+# Usage: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Prettier + ESLint flat config migration + StyLua Lua formatting
+# TODO: Add the commit hash after committing this formatting change

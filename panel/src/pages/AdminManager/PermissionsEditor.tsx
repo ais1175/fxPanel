@@ -1,0 +1,130 @@
+import { useState } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { SearchIcon } from 'lucide-react';
+import { permissionsByCategory, type PermissionDefinition } from '@shared/permissions';
+import { cn } from '@/lib/utils';
+
+type PermissionsEditorProps = {
+    selected: string[];
+    onChange: (perms: string[]) => void;
+    disabled?: boolean;
+};
+
+export default function PermissionsEditor({ selected, onChange, disabled }: PermissionsEditorProps) {
+    const hasAll = selected.includes('all_permissions');
+    const [search, setSearch] = useState('');
+    const searchLower = search.toLowerCase().trim();
+
+    const toggle = (permId: string) => {
+        if (permId === 'all_permissions') {
+            onChange(selected.includes('all_permissions') ? [] : ['all_permissions']);
+            return;
+        }
+        if (selected.includes(permId)) {
+            onChange(selected.filter((p) => p !== permId));
+        } else {
+            onChange([...selected.filter((p) => p !== 'all_permissions'), permId]);
+        }
+    };
+
+    const toggleCategory = (perms: PermissionDefinition[]) => {
+        const ids = perms.map((p) => p.id).filter((id) => id !== 'all_permissions');
+        const allChecked = ids.every((id) => selected.includes(id));
+        if (allChecked) {
+            onChange(selected.filter((p) => !ids.includes(p)));
+        } else {
+            const merged = new Set([...selected.filter((p) => p !== 'all_permissions'), ...ids]);
+            onChange([...merged]);
+        }
+    };
+
+    const filteredCategories = permissionsByCategory
+        .map((cat) => ({
+            ...cat,
+            permissions: cat.permissions.filter(
+                (p) =>
+                    !searchLower ||
+                    p.label.toLowerCase().includes(searchLower) ||
+                    p.description.toLowerCase().includes(searchLower) ||
+                    p.id.toLowerCase().includes(searchLower),
+            ),
+        }))
+        .filter((cat) => cat.permissions.length > 0);
+
+    return (
+        <div className="space-y-3">
+            <div className="relative">
+                <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
+                <Input
+                    placeholder="Search permissions..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                />
+            </div>
+
+            <div className="space-y-4">
+                {filteredCategories.map((cat) => {
+                    const catIds = cat.permissions.map((p) => p.id).filter((id) => id !== 'all_permissions');
+                    const catAllChecked = catIds.length > 0 && catIds.every((id) => selected.includes(id));
+                    const catSomeChecked = catIds.some((id) => selected.includes(id));
+
+                    return (
+                        <div key={cat.id} className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    checked={hasAll || catAllChecked}
+                                    data-indeterminate={!catAllChecked && catSomeChecked ? true : undefined}
+                                    onCheckedChange={() => toggleCategory(cat.permissions)}
+                                    disabled={disabled || hasAll}
+                                />
+                                <span className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
+                                    {cat.label}
+                                </span>
+                            </div>
+
+                            <div className="grid gap-1.5 pl-5 sm:grid-cols-2">
+                                {cat.permissions.map((perm) => (
+                                    <label
+                                        key={perm.id}
+                                        className={cn(
+                                            'hover:bg-muted/60 flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors select-none',
+                                            disabled && 'pointer-events-none opacity-50',
+                                        )}
+                                    >
+                                        <Checkbox
+                                            checked={hasAll || selected.includes(perm.id)}
+                                            onCheckedChange={() => toggle(perm.id)}
+                                            disabled={disabled || (hasAll && perm.id !== 'all_permissions')}
+                                            className="mt-0.5"
+                                        />
+                                        <div className="flex flex-col leading-tight">
+                                            <span className="text-sm font-medium">
+                                                {perm.label}
+                                                {perm.dangerous && (
+                                                    <Badge
+                                                        variant="destructive"
+                                                        className="ml-1.5 px-1 py-0 text-[10px]"
+                                                    >
+                                                        dangerous
+                                                    </Badge>
+                                                )}
+                                            </span>
+                                            <span className="text-muted-foreground text-xs">{perm.description}</span>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+                {filteredCategories.length === 0 && (
+                    <p className="text-muted-foreground py-4 text-center text-sm">No permissions match your search.</p>
+                )}
+            </div>
+        </div>
+    );
+}

@@ -1,0 +1,416 @@
+import { playerlistAtom, serverMutexAtom, tagDefinitionsAtom } from '@/hooks/playerlist';
+import cleanPlayerName from '@shared/cleanPlayerName';
+import { PlayerTag, PlayerlistPlayerType, TagDefinition } from '@shared/socketioTypes';
+import { useAtomValue } from 'jotai';
+import { VirtualItem, useVirtualizer } from '@tanstack/react-virtual';
+import { memo, useMemo, useRef, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { FilterXIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useOpenPlayerModal } from '@/hooks/playerModal';
+import InlineCode from '@/components/InlineCode';
+import { useEventListener } from 'usehooks-ts';
+import Fuse from 'fuse.js';
+
+//NOTE: Move the styles (except color) to global.css since this component is rendered often
+function TagColor({ color }: { color: string }) {
+    return (
+        <div
+            className="outline-hidden focus:outline-hidden"
+            style={{
+                display: 'inline-block',
+                backgroundColor: color,
+                width: '0.375rem',
+                borderRadius: '2px',
+            }}
+        >
+            &nbsp;
+        </div>
+    );
+}
+
+const TAG_CONFIG: Record<PlayerTag, { label: string; color: string; priority: number }> = {
+    staff: { label: 'Staff', color: '#EF4444', priority: 1 },
+    newplayer: { label: 'Newcomer', color: '#A3E635', priority: 3 },
+    problematic: { label: 'Problematic', color: '#FB923C', priority: 2 },
+};
+
+/**
+ * Builds a lookup map from tag definitions array, with auto-tag fallbacks.
+ */
+const buildTagLookup = (defs: TagDefinition[]): Record<string, { label: string; color: string; priority: number }> => {
+    const lookup: Record<string, { label: string; color: string; priority: number }> = { ...TAG_CONFIG };
+    for (const d of defs) {
+        lookup[d.id] = { label: d.label, color: d.color, priority: d.priority };
+    }
+    return lookup;
+};
+
+/**
+ * Returns the highest-priority tag from an array of tags.
+ */
+const getTopTag = (
+    tags: PlayerTag[],
+    lookup: Record<string, { label: string; color: string; priority: number }>,
+): PlayerTag | null => {
+    if (!tags.length) return null;
+    return tags.reduce((top, tag) => {
+        const topP = lookup[top]?.priority ?? 999;
+        const tagP = lookup[tag]?.priority ?? 999;
+        return tagP < topP ? tag : top;
+    });
+};
+
+type SortMode = 'id' | 'tag';
+
+type PlayerlistFilterProps = {
+    filterString: string;
+    setFilterString: (s: string) => void;
+    tagFilters: Set<PlayerTag>;
+    setTagFilters: React.Dispatch<React.SetStateAction<Set<PlayerTag>>>;
+    sortMode: SortMode;
+    setSortMode: (s: SortMode) => void;
+    tagLookup: Record<string, { label: string; color: string; priority: number }>;
+};
+function PlayerlistFilter({
+    filterString,
+    setFilterString,
+    tagFilters,
+    setTagFilters,
+    sortMode,
+    setSortMode,
+    tagLookup,
+}: PlayerlistFilterProps) {
+    const inputRef = useRef<HTMLInputElement>(null);
+    useEventListener('message', (e: TxMessageEvent) => {
+        if (e.data.type === 'globalHotkey' && e.data.action === 'focusPlayerlistFilter') {
+            inputRef.current?.focus();
+        }
+    });
+
+    const toggleTag = (tag: PlayerTag) => {
+        setTagFilters((prev) => {
+            const next = new Set(prev);
+            if (next.has(tag)) {
+                next.delete(tag);
+            } else {
+                next.add(tag);
+            }
+            return next;
+        });
+    };
+
+    const hasActiveFilters = tagFilters.size > 0;
+
+    return (
+        <div className="flex gap-2 px-2 pt-2">
+            <div className="relative w-full">
+                <Input
+                    ref={inputRef}
+                    className="h-8"
+                    placeholder="Filter by Name or ID"
+                    value={filterString}
+                    onChange={(e) => setFilterString(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                            setFilterString('');
+                        }
+                    }}
+                />
+                {filterString ? (
+                    <button
+                        className="ring-offset-background focus-visible:ring-ring absolute inset-y-0 right-2 rounded-lg text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden"
+                        onClick={() => setFilterString('')}
+                    >
+                        <XIcon />
+                    </button>
+                ) : (
+                    <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-zinc-400 select-none">
+                        <InlineCode className="text-xs tracking-wide">ctrl+k</InlineCode>
+                    </div>
+                )}
+            </div>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild disabled={!!filterString}>
+                    <button
+                        className={cn(
+                            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                            'ring-offset-background focus-visible:ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
+                            'bg-muted border shadow-xs',
+                            'hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                            filterString && 'pointer-events-none opacity-50',
+                            hasActiveFilters && 'border-primary',
+                        )}
+                    >
+                        <SlidersHorizontalIcon className="h-5" />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuLabel>Filter by Tag</DropdownMenuLabel>
+                    {Object.keys(tagLookup)
+                        .sort((a, b) => (tagLookup[a].priority ?? 999) - (tagLookup[b].priority ?? 999))
+                        .map((tag) => (
+                            <DropdownMenuCheckboxItem
+                                key={tag}
+                                checked={tagFilters.has(tag)}
+                                onCheckedChange={() => toggleTag(tag)}
+                                className="hover:bg-secondary! focus:bg-secondary! cursor-pointer hover:text-current! focus:text-current!"
+                            >
+                                <div className="flex min-w-full justify-around">
+                                    <span className="grow pr-4">{tagLookup[tag].label}</span>
+                                    <TagColor color={tagLookup[tag].color} />
+                                </div>
+                            </DropdownMenuCheckboxItem>
+                        ))}
+                    <DropdownMenuItem
+                        onClick={() => setTagFilters(new Set())}
+                        className="hover:bg-secondary! focus:bg-secondary! cursor-pointer hover:text-current! focus:text-current!"
+                    >
+                        <FilterXIcon className="mr-2 h-4 w-4" />
+                        Clear Filter
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+                        <DropdownMenuRadioItem
+                            value="id"
+                            className="hover:bg-secondary! focus:bg-secondary! cursor-pointer hover:text-current! focus:text-current!"
+                        >
+                            Join Order
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem
+                            value="tag"
+                            className="hover:bg-secondary! focus:bg-secondary! cursor-pointer hover:text-current! focus:text-current!"
+                        >
+                            Tag Priority
+                        </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
+}
+const PlayerlistFilterMemo = memo(PlayerlistFilter);
+
+type PlayerlistPlayerProps = {
+    virtualItem: VirtualItem;
+    player: PlayerlistPlayerType;
+    modalOpener: (netid: number) => void;
+    tagLookup: Record<string, { label: string; color: string; priority: number }>;
+};
+//NOTE: the styles have been added to global.css since this component is rendered A LOT
+function PlayerlistPlayer({ virtualItem, player, modalOpener, tagLookup }: PlayerlistPlayerProps) {
+    const topTag = getTopTag(player.tags ?? [], tagLookup);
+    const topTagData = topTag ? tagLookup[topTag] : undefined;
+    const tagColor = topTagData?.color;
+    const tagStyles = tagColor
+        ? {
+              backgroundColor: `${tagColor}12`,
+              borderColor: `${tagColor}46`,
+              boxShadow: `inset 2px 0 0 ${tagColor}`,
+          }
+        : undefined;
+
+    return (
+        <div
+            className="player"
+            style={{
+                height: `${virtualItem.size}px`,
+                transform: `translateY(${virtualItem.start}px)`,
+                ...(tagStyles ?? {}),
+                backgroundImage: tagColor ? `linear-gradient(90deg, ${tagColor}12, transparent 60%)` : undefined,
+            }}
+            onClick={() => modalOpener(player.netid)}
+        >
+            <div className="pid-block leading-[1.7]">
+                <span className="pid-badge">{player.netid}</span>
+            </div>
+            <span className="pname">{player.displayName}</span>
+            {topTagData && (
+                <span
+                    className="player-tag"
+                    style={{
+                        color: topTagData.color,
+                        borderColor: `${topTagData.color}46`,
+                        backgroundColor: `${topTagData.color}1a`,
+                    }}
+                >
+                    {topTagData.label}
+                </span>
+            )}
+        </div>
+    );
+}
+
+export default function Playerlist() {
+    const playerlist = useAtomValue(playerlistAtom);
+    const serverMutex = useAtomValue(serverMutexAtom);
+    const tagDefinitions = useAtomValue(tagDefinitionsAtom);
+    const openPlayerModal = useOpenPlayerModal();
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [filterString, setFilterString] = useState('');
+    const [tagFilters, setTagFilters] = useState<Set<PlayerTag>>(new Set());
+    const [sortMode, setSortMode] = useState<SortMode>('id');
+
+    const tagLookup = useMemo(() => buildTagLookup(tagDefinitions), [tagDefinitions]);
+
+    // Build Fuse index (recreated when playerlist changes)
+    const fuse = useMemo(
+        () =>
+            new Fuse(playerlist, {
+                keys: ['pureName', 'displayName'],
+                threshold: 0.4,
+                includeScore: true,
+            }),
+        [playerlist],
+    );
+
+    // Debounced filter string (250ms)
+    const [debouncedFilter, setDebouncedFilter] = useState('');
+    useMemo(() => {
+        const timer = setTimeout(() => setDebouncedFilter(filterString), 250);
+        return () => clearTimeout(timer);
+    }, [filterString]);
+
+    const filteredPlayerlist = useMemo(() => {
+        let result: PlayerlistPlayerType[];
+
+        // Text search with Fuse.js
+        if (debouncedFilter.trim()) {
+            // Check if filter is a numeric ID
+            const numFilter = debouncedFilter.trim();
+            if (/^\d+$/.test(numFilter)) {
+                // Exact ID prefix match first, then fuzzy name
+                const idMatches = playerlist.filter((p) => p.netid.toString().startsWith(numFilter));
+                const fuseMatches = fuse.search(debouncedFilter).map((r) => r.item);
+                const seen = new Set(idMatches.map((p) => p.netid));
+                result = [...idMatches, ...fuseMatches.filter((p) => !seen.has(p.netid))];
+            } else {
+                result = fuse.search(debouncedFilter).map((r) => r.item);
+            }
+        } else {
+            result = [...playerlist];
+        }
+
+        // Tag filtering (show players that have ANY of the selected tags)
+        if (tagFilters.size > 0) {
+            result = result.filter((p) => (p.tags ?? []).some((t) => tagFilters.has(t)));
+        }
+
+        // Sorting
+        if (sortMode === 'tag' && !debouncedFilter.trim()) {
+            result.sort((a, b) => {
+                const aTag = getTopTag(a.tags ?? [], tagLookup);
+                const bTag = getTopTag(b.tags ?? [], tagLookup);
+                const aPriority = aTag ? (tagLookup[aTag]?.priority ?? 999) : 999;
+                const bPriority = bTag ? (tagLookup[bTag]?.priority ?? 999) : 999;
+                if (aPriority !== bPriority) return aPriority - bPriority;
+                return a.netid - b.netid;
+            });
+        }
+
+        return result;
+    }, [playerlist, debouncedFilter, fuse, tagFilters, sortMode, tagLookup]);
+
+    //NOTE: I tried many algorithms to calculate the minimum width of the ID column,
+    // but the simplest one was the best one when considering performance.
+    const injectedStyle = useMemo(() => {
+        const maxId = playerlist.at(-1)?.netid ?? 0;
+        const idCharLength = Math.floor(Math.log10(maxId)) + 1; //+1 because log10(1...9) < 1
+        return `.tx-playerlist .player .pid-block { min-width: ${idCharLength + 1}ch; }`; //+1 due to badge padding
+    }, [playerlist]);
+
+    // The virtualizer
+    const rowVirtualizer = useVirtualizer({
+        isScrollingResetDelay: 0,
+        count: filteredPlayerlist.length,
+        getScrollElement: () => (scrollRef.current as HTMLDivElement)?.getElementsByTagName('div')[0],
+        estimateSize: () => 30,
+        overscan: 15,
+    });
+    const virtualItems = rowVirtualizer.getVirtualItems();
+
+    const modalOpener = (netid: number) => {
+        if (!serverMutex) return;
+        openPlayerModal({ mutex: serverMutex, netid });
+    };
+
+    const isFiltered = filteredPlayerlist.length !== playerlist.length;
+
+    return (
+        <>
+            <PlayerlistFilterMemo
+                filterString={filterString}
+                setFilterString={setFilterString}
+                tagFilters={tagFilters}
+                setTagFilters={setTagFilters}
+                sortMode={sortMode}
+                setSortMode={setSortMode}
+                tagLookup={tagLookup}
+            />
+
+            <div
+                className={cn(
+                    'text-warning-inline m-1 text-center text-xs tracking-wider italic',
+                    isFiltered && virtualItems.length ? 'block' : 'hidden',
+                )}
+            >
+                Showing {filteredPlayerlist.length} of {playerlist.length} players.
+            </div>
+            <div
+                className={cn(
+                    'text-muted-foreground m-6 text-center tracking-wider italic',
+                    virtualItems.length ? 'hidden' : 'block',
+                )}
+            >
+                {playerlist.length && (filterString || tagFilters.size) ? (
+                    <p>
+                        No players to show.
+                        <span className="block text-xs opacity-75">Clear the filter to show all players.</span>
+                    </p>
+                ) : (
+                    <p>
+                        No players online.
+                        <span className="block text-xs opacity-75">Invite some friends to join in!</span>
+                    </p>
+                )}
+            </div>
+
+            <style>{injectedStyle}</style>
+            <ScrollArea className="h-full select-none" ref={scrollRef}>
+                <div
+                    className="tx-playerlist"
+                    style={{
+                        height: `${rowVirtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                    }}
+                >
+                    {virtualItems.map((virtualItem) => (
+                        <PlayerlistPlayer
+                            key={virtualItem.key}
+                            virtualItem={virtualItem}
+                            player={filteredPlayerlist[virtualItem.index]}
+                            modalOpener={modalOpener}
+                            tagLookup={tagLookup}
+                        />
+                    ))}
+                </div>
+            </ScrollArea>
+        </>
+    );
+}

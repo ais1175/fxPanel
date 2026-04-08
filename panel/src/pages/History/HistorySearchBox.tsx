@@ -1,0 +1,258 @@
+import { throttle } from 'throttle-debounce';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { ChevronsUpDownIcon, XIcon, ChevronDownIcon, ExternalLinkIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Link } from 'wouter';
+import { useAuth } from '@/hooks/auth';
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { HistoryTableSearchType } from '@shared/historyApiTypes';
+
+/**
+ * Helpers
+ */
+export const availableSearchTypes = [
+    {
+        value: 'actionId',
+        label: 'Action ID',
+        placeholder: 'XXXX-XXXX',
+        description: 'Search actions by their ID.',
+    },
+    {
+        value: 'reason',
+        label: 'Reason',
+        placeholder: 'Enter part of the reason to search for',
+        description: 'Search actions by their reason contents.',
+    },
+    {
+        value: 'identifiers',
+        label: 'Player IDs',
+        placeholder: 'License, Discord, Steam, etc.',
+        description: 'Search actions by their player IDs separated by a comma.',
+    },
+] as const;
+
+export const SEARCH_ANY_STRING = '!any';
+
+//FIXME: this doesn't require exporting, but HMR doesn't work without it
+// eslint-disable-next-line react-refresh/only-export-components
+export const throttleFunc = throttle(
+    1250,
+    (func: any) => {
+        func();
+    },
+    { noLeading: true },
+);
+
+/**
+ * Component
+ */
+export type HistorySearchBoxReturnStateType = {
+    search: HistoryTableSearchType;
+    filterbyType?: string;
+    filterbyAdmin?: string;
+};
+
+type HistorySearchBoxProps = {
+    doSearch: (
+        search: HistoryTableSearchType,
+        filterbyType: string | undefined,
+        filterbyAdmin: string | undefined,
+    ) => void;
+    initialState: HistorySearchBoxReturnStateType;
+    adminStats: {
+        name: string;
+        actions: number;
+    }[];
+};
+
+export function HistorySearchBox({ doSearch, initialState, adminStats }: HistorySearchBoxProps) {
+    const { authData } = useAuth();
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [isSearchTypeDropdownOpen, setSearchTypeDropdownOpen] = useState(false);
+    const [currSearchType, setCurrSearchType] = useState<string>(initialState.search.type);
+    const [hasSearchText, setHasSearchText] = useState(!!initialState.search.value);
+    const [typeFilter, setTypeFilter] = useState(initialState.filterbyType);
+    const [adminNameFilter, setAdminNameFilter] = useState(initialState.filterbyAdmin);
+
+    const updateSearch = () => {
+        if (!inputRef.current) return;
+        const searchValue = inputRef.current.value.trim();
+        const effectiveTypeFilter = typeFilter !== SEARCH_ANY_STRING ? typeFilter : undefined;
+        const effectiveAdminNameFilter = adminNameFilter !== SEARCH_ANY_STRING ? adminNameFilter : undefined;
+        doSearch({ value: searchValue, type: currSearchType }, effectiveTypeFilter, effectiveAdminNameFilter);
+    };
+
+    //Call onSearch when params change
+    useEffect(() => {
+        updateSearch();
+    }, [currSearchType, typeFilter, adminNameFilter]);
+
+    //Input handlers
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            throttleFunc.cancel({ upcomingOnly: true });
+            updateSearch();
+        } else if (e.key === 'Escape') {
+            inputRef.current!.value = '';
+            throttleFunc(updateSearch);
+            setHasSearchText(false);
+        } else {
+            throttleFunc(updateSearch);
+            setHasSearchText(true);
+        }
+    };
+
+    const clearSearchBtn = () => {
+        inputRef.current!.value = '';
+        throttleFunc.cancel({ upcomingOnly: true });
+        updateSearch();
+        setHasSearchText(false);
+    };
+
+    //It's render time! 🎉
+    const selectedSearchType = availableSearchTypes.find((type) => type.value === currSearchType);
+    if (!selectedSearchType) throw new Error(`Invalid search type: ${currSearchType}`);
+    if (!authData) throw new Error(`authData is not available`);
+    const filteredAdmins = useMemo(() => {
+        return adminStats.filter((admin) => admin.name !== authData.name);
+    }, [adminStats, authData.name]);
+    const selfActionCount = useMemo(() => {
+        return adminStats.find((admin) => admin.name === authData.name)?.actions || 0;
+    }, [adminStats, authData.name]);
+    return (
+        <div className="border-border bg-card text-card-foreground mb-2 border p-4 shadow-xs md:mb-4 md:rounded-xl">
+            <div className="flex flex-wrap-reverse gap-2">
+                <div className="relative min-w-44 grow">
+                    <Input
+                        type="text"
+                        autoFocus
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        ref={inputRef}
+                        placeholder={selectedSearchType.placeholder}
+                        defaultValue={initialState.search.value}
+                        onKeyDown={handleInputKeyDown}
+                    />
+                    {hasSearchText && (
+                        <button
+                            className="ring-offset-background focus-visible:ring-ring absolute inset-y-0 right-2 rounded-lg text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden"
+                            onClick={clearSearchBtn}
+                        >
+                            <XIcon />
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex grow flex-wrap content-start gap-2">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={isSearchTypeDropdownOpen}
+                                onClick={() => setSearchTypeDropdownOpen(!isSearchTypeDropdownOpen)}
+                                className="xs:w-48 border-input hover:bg-primary grow justify-between bg-black/30 md:grow-0"
+                            >
+                                Search by {selectedSearchType.label}
+                                <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-48">
+                            <DropdownMenuLabel>Search Type</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuRadioGroup value={currSearchType} onValueChange={setCurrSearchType}>
+                                {availableSearchTypes.map((searchType) => (
+                                    <DropdownMenuRadioItem
+                                        key={searchType.value}
+                                        value={searchType.value}
+                                        className="cursor-pointer"
+                                    >
+                                        {searchType.label}
+                                    </DropdownMenuRadioItem>
+                                ))}
+                            </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Select defaultValue={typeFilter} onValueChange={setTypeFilter}>
+                        <SelectTrigger className="w-36 grow md:grow-0">
+                            <SelectValue placeholder="Filter by admin" />
+                        </SelectTrigger>
+                        <SelectContent className="px-0">
+                            <SelectItem value={SEARCH_ANY_STRING} className="cursor-pointer">
+                                Any type
+                            </SelectItem>
+                            <SelectItem value={'ban'} className="cursor-pointer">
+                                Bans
+                            </SelectItem>
+                            <SelectItem value={'warn'} className="cursor-pointer">
+                                Warns
+                            </SelectItem>
+                            <SelectItem value={'kick'} className="cursor-pointer">
+                                Kicks
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    <Select defaultValue={adminNameFilter} onValueChange={setAdminNameFilter}>
+                        <SelectTrigger className="w-36 grow md:grow-0">
+                            <SelectValue placeholder="Filter by admin" />
+                        </SelectTrigger>
+                        <SelectContent className="px-0">
+                            <SelectItem value={SEARCH_ANY_STRING} className="cursor-pointer">
+                                By any admin
+                            </SelectItem>
+                            <SelectItem value={authData.name} className="cursor-pointer">
+                                {authData.name} <span className="opacity-50">({selfActionCount})</span>
+                            </SelectItem>
+
+                            <SelectSeparator />
+                            {filteredAdmins.map((admin) => (
+                                <SelectItem className="cursor-pointer" key={admin.name} value={admin.name}>
+                                    {admin.name} <span className="opacity-50">({admin.actions})</span>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <div className="flex grow justify-end">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="grow md:grow-0">
+                                    More
+                                    <ChevronDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuItem className="h-10 py-2 pr-2 pl-1" asChild>
+                                    <Link href="/system/master-actions#cleandb" className="cursor-pointer">
+                                        <ExternalLinkIcon className="mr-1 inline h-4" />
+                                        Bulk Remove
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="h-10 py-2 pr-2 pl-1" asChild>
+                                    <Link href="/settings/ban-templates" className="cursor-pointer">
+                                        <ExternalLinkIcon className="mr-1 inline h-4" />
+                                        Ban Templates
+                                    </Link>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </div>
+            </div>
+            <div className="text-muted-foreground mt-1 px-1 text-xs">{selectedSearchType.description}</div>
+        </div>
+    );
+}

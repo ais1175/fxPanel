@@ -1,0 +1,8 @@
+{
+    "compilerOptions": {
+        "composite": true,
+        "module": "ESNext",
+        "allowSyntheticDefaultImports": true
+    },
+    "include": ["vite.config.ts", "../scripts/build/config.ts", "../scripts/build/utils.ts", "../shared/txDevEnv.ts"]
+}

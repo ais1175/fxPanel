@@ -1,0 +1,24 @@
+.App {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    transition: opacity 0.15s linear;
+}
+
+/* width */
+::-webkit-scrollbar {
+    width: 7px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+    border-radius: 20px;
+    background: rgba(22, 25, 35, 0.72);
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+    background: #1c202e;
+    border: 1px solid rgba(124, 134, 171, 0.2);
+    border-radius: 20px;
+}

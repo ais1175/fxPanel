@@ -1,0 +1,108 @@
+import React from 'react';
+import { FileCopy, GpsFixed, PersonPinCircle, Restore } from '@mui/icons-material';
+import { useDialogContext } from '../../../provider/DialogProvider';
+import { fetchNui } from '../../../utils/fetchNui';
+import { useTranslate } from 'react-polyglot';
+import { useSnackbar } from 'notistack';
+import { TeleportMode, useTeleportMode } from '../../../state/teleportmode.state';
+import { copyToClipboard } from '../../../utils/copyToClipboard';
+import { useNuiEvent } from '@nui/src/hooks/useNuiEvent';
+import { usePlayerModalContext } from '@nui/src/provider/PlayerModalProvider';
+
+export function useTeleportActions() {
+    const t = useTranslate();
+    const { enqueueSnackbar } = useSnackbar();
+    const { openDialog } = useDialogContext();
+    const [teleportMode, setTeleportMode] = useTeleportMode();
+    const { closeMenu } = usePlayerModalContext();
+
+    const handleTeleportCoords = (autoClose = false) => {
+        openDialog({
+            title: t('nui_menu.page_main.teleport.coords.dialog_title'),
+            description: t('nui_menu.page_main.teleport.coords.dialog_desc'),
+            placeholder: '340, 480, 12',
+            onSubmit: (coords: string) => {
+                let [x, y, z] = Array.from(coords.matchAll(/-?\d+(?:\.\d+)?/g), (m) => parseFloat(m[0]));
+                if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                    return enqueueSnackbar(t('nui_menu.page_main.teleport.coords.dialog_error'), { variant: 'error' });
+                }
+                if (!Number.isFinite(z)) {
+                    z = 0;
+                }
+
+                enqueueSnackbar(t('nui_menu.page_main.teleport.generic_success'), { variant: 'success' });
+                fetchNui('tpToCoords', { x, y, z });
+                if (autoClose) {
+                    closeMenu();
+                }
+            },
+        });
+    };
+    useNuiEvent('openTeleportCoordsDialog', () => {
+        handleTeleportCoords(true);
+    });
+
+    const handleTeleportBack = () => {
+        fetchNui('tpBack');
+    };
+
+    const handleCopyCoords = () => {
+        fetchNui<{ coords: string }>('copyCurrentCoords')
+            .then(({ coords }) => {
+                if (!coords) {
+                    return enqueueSnackbar(t('nui_menu.common.error'), { variant: 'error' });
+                }
+                copyToClipboard(coords);
+                enqueueSnackbar(t('nui_menu.common.copied'), { variant: 'success' });
+            })
+            .catch(() => {
+                enqueueSnackbar(t('nui_menu.common.error'), { variant: 'error' });
+            });
+    };
+
+    return {
+        teleportMode,
+        menuItem: {
+            title: t('nui_menu.page_main.teleport.title'),
+            requiredPermission: 'players.teleport',
+            isMultiAction: true,
+            initialValue: teleportMode,
+            actions: [
+                {
+                    name: t('nui_menu.page_main.teleport.waypoint.title'),
+                    label: t('nui_menu.page_main.teleport.waypoint.label'),
+                    value: TeleportMode.WAYPOINT,
+                    icon: <PersonPinCircle />,
+                    onSelect: () => {
+                        setTeleportMode(TeleportMode.WAYPOINT);
+                        fetchNui('tpToWaypoint', {});
+                    },
+                },
+                {
+                    name: t('nui_menu.page_main.teleport.coords.title'),
+                    label: t('nui_menu.page_main.teleport.coords.label'),
+                    value: TeleportMode.COORDINATES,
+                    icon: <GpsFixed />,
+                    onSelect: () => {
+                        setTeleportMode(TeleportMode.COORDINATES);
+                        handleTeleportCoords();
+                    },
+                },
+                {
+                    name: t('nui_menu.page_main.teleport.back.title'),
+                    label: t('nui_menu.page_main.teleport.back.label'),
+                    value: TeleportMode.PREVIOUS,
+                    icon: <Restore />,
+                    onSelect: handleTeleportBack,
+                },
+                {
+                    name: t('nui_menu.page_main.teleport.copy.title'),
+                    label: t('nui_menu.page_main.teleport.copy.label'),
+                    value: TeleportMode.COPY,
+                    icon: <FileCopy />,
+                    onSelect: handleCopyCoords,
+                },
+            ],
+        },
+    };
+}

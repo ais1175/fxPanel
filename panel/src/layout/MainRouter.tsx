@@ -1,0 +1,246 @@
+import { ErrorBoundary } from 'react-error-boundary';
+import { Route as WouterRoute, Switch } from 'wouter';
+import { PageErrorFallback } from '@/components/errorFallback';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { contentRefreshKeyAtom, pageErrorStatusAtom, useSetPageTitle } from '@/hooks/pages';
+import { navigate as setLocation } from 'wouter/use-browser-location';
+
+import NotFound from '@/pages/NotFound';
+import TestingPage from '@/pages/TestingPage/TestingPage';
+import LiveConsolePage from '@/pages/LiveConsole/LiveConsolePage';
+import AdminManagerPage from '@/pages/AdminManager/AdminManagerPage';
+import PlayersPage from '@/pages/Players/PlayersPage';
+import HistoryPage from '@/pages/History/HistoryPage';
+import BanTemplatesPage from '@/pages/BanTemplates/BanTemplatesPage';
+import SystemLogPage from '@/pages/SystemLogPage';
+import ActionLogPage from '@/pages/ActionLog/ActionLogPage';
+import ServerLogPage from '@/pages/ServerLog/ServerLogPage';
+import AddLegacyBanPage from '@/pages/AddLegacyBanPage';
+import DashboardPage from '@/pages/Dashboard/DashboardPage';
+import InsightsPage from '@/pages/InsightsPage/InsightsPage';
+import ReportsPage from '@/pages/Reports/ReportsPage';
+import PlayerDropsPage from '@/pages/PlayerDropsPage/PlayerDropsPage';
+import SettingsPage from '@/pages/Settings/SettingsPage';
+import EmbedEditorPage from '@/pages/Settings/EmbedEditorPage';
+import FxUpdaterPage from '@/pages/FxUpdater/FxUpdaterPage';
+import WhitelistPage from '@/pages/Whitelist/WhitelistPage';
+import ResourcesPage from '@/pages/ResourcesPage/ResourcesPage';
+import AdvancedPage from '@/pages/AdvancedPage';
+import DiagnosticsPage from '@/pages/DiagnosticsPage';
+import MasterActionsPage from '@/pages/MasterActionsPage';
+import CfgEditorPage from '@/pages/CfgEditorPage';
+import SetupPage from '@/pages/SetupPage';
+import DeployerPage from '@/pages/DeployerPage';
+import { useAdminPerms } from '@/hooks/auth';
+import UnauthorizedPage from '@/pages/UnauthorizedPage';
+
+type RouteType = {
+    path: string;
+    title: string;
+    permission?: string;
+    Page: JSX.Element;
+};
+
+const allRoutes: RouteType[] = [
+    //Global Routes
+    {
+        path: '/players',
+        title: 'Players',
+        Page: <PlayersPage />,
+    },
+    {
+        path: '/history',
+        title: 'History',
+        Page: <HistoryPage />,
+    },
+    {
+        path: '/reports',
+        title: 'Reports',
+        permission: 'players.reports',
+        Page: <ReportsPage />,
+    },
+    {
+        path: '/insights',
+        title: 'Insights',
+        Page: <InsightsPage />,
+    },
+    {
+        path: '/insights/player-drops',
+        title: 'Player Drops',
+        Page: <PlayerDropsPage />,
+    },
+    {
+        path: '/whitelist',
+        title: 'Whitelist',
+        Page: <WhitelistPage />,
+    },
+    {
+        path: '/admins',
+        title: 'Admins',
+        permission: 'manage.admins',
+        Page: <AdminManagerPage />,
+    },
+    {
+        path: '/settings',
+        title: 'Settings',
+        permission: 'settings.view',
+        Page: <SettingsPage />,
+    },
+    {
+        path: '/system/master-actions',
+        title: 'Master Actions',
+        //NOTE: content is readonly for unauthorized accounts
+        Page: <MasterActionsPage />,
+    },
+    {
+        path: '/system/diagnostics',
+        title: 'Diagnostics',
+        Page: <DiagnosticsPage />,
+    },
+    {
+        path: '/system/artifacts',
+        title: 'Artifacts',
+        permission: 'all_permissions',
+        Page: <FxUpdaterPage />,
+    },
+    {
+        path: '/system/console-log',
+        title: 'Console Log',
+        permission: 'txadmin.log.view',
+        Page: <SystemLogPage pageName="console" />,
+    },
+    {
+        path: '/system/action-log',
+        title: 'Action Log',
+        permission: 'txadmin.log.view',
+        Page: <ActionLogPage />,
+    },
+
+    //Server Routes
+    {
+        path: '/',
+        title: 'Dashboard',
+        Page: <DashboardPage />,
+    },
+    {
+        path: '/server/console',
+        title: 'Live Console',
+        permission: 'console.view',
+        Page: <LiveConsolePage />,
+    },
+    {
+        path: '/server/resources',
+        title: 'Resources',
+        Page: <ResourcesPage />,
+    },
+    {
+        path: '/server/server-log',
+        title: 'Server Log',
+        permission: 'server.log.view',
+        Page: <ServerLogPage />,
+    },
+    {
+        path: '/server/cfg-editor',
+        title: 'CFG Editor',
+        permission: 'server.cfg.editor',
+        Page: <CfgEditorPage />,
+    },
+    {
+        path: '/server/setup',
+        title: 'Server Setup',
+        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        Page: <SetupPage />,
+    },
+    {
+        path: '/server/deployer',
+        title: 'Server Deployer',
+        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        Page: <DeployerPage />,
+    },
+    {
+        path: '/advanced',
+        title: 'Advanced',
+        permission: 'all_permissions',
+        Page: <AdvancedPage />,
+    },
+
+    //No nav routes
+    {
+        path: '/settings/ban-templates',
+        title: 'Ban Templates',
+        //NOTE: content is readonly for unauthorized accounts
+        Page: <BanTemplatesPage />,
+    },
+    {
+        path: '/settings/embed-editor',
+        title: 'Embed Editor',
+        permission: 'settings.write',
+        Page: <EmbedEditorPage />,
+    },
+    {
+        path: '/ban-identifiers',
+        title: 'Ban Identifiers',
+        Page: <AddLegacyBanPage />,
+    },
+    //FIXME: decide on how to organize the url for the player drops page - /server/ prefix?
+    //       This will likely be a part of the insights page, eventually
+    // {
+    //     path: '/player-crashes',
+    //     title: 'Player Crashes',
+    //     children: <PlayerCrashesPage />
+    // },
+];
+
+function Route(route: RouteType) {
+    const { hasPerm } = useAdminPerms();
+    const setPageTitle = useSetPageTitle();
+    setPageTitle(route.title);
+    const nodeToRender =
+        route.permission && !hasPerm(route.permission) ? (
+            <UnauthorizedPage pageName={route.title} permission={route.permission} />
+        ) : (
+            route.Page
+        );
+    return <WouterRoute path={route.path}>{nodeToRender}</WouterRoute>;
+}
+
+export function MainRouterInner() {
+    return (
+        <Switch>
+            {allRoutes.map((route) => (
+                <Route key={route.path} {...route} />
+            ))}
+
+            {/* Other Routes - they need to set the title manuually */}
+            {import.meta.env.DEV && (
+                <WouterRoute path="/test">
+                    <TestingPage />
+                </WouterRoute>
+            )}
+            <WouterRoute component={NotFound} />
+        </Switch>
+    );
+}
+
+export default function MainRouter() {
+    const setPageErrorStatus = useSetAtom(pageErrorStatusAtom);
+    const contentRefreshKey = useAtomValue(contentRefreshKeyAtom);
+
+    return (
+        <ErrorBoundary
+            key={contentRefreshKey}
+            FallbackComponent={PageErrorFallback}
+            onError={() => {
+                console.log('Page ErrorBoundary caught an error');
+                setPageErrorStatus(true);
+            }}
+            onReset={() => {
+                console.log('Page ErrorBoundary reset');
+                setLocation('/');
+                setPageErrorStatus(false);
+            }}
+        >
+            <MainRouterInner />
+        </ErrorBoundary>
+    );
+}

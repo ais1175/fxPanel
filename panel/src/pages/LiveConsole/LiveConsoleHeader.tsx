@@ -1,0 +1,59 @@
+import { RocketIcon, SkipBackIcon } from 'lucide-react';
+
+type LiveConsoleHeaderProps = {
+    isConnected: boolean;
+    hasSpawnLines: boolean;
+    onJumpToLastStart: () => void;
+    onJumpToPrevStart: () => void;
+};
+
+export default function LiveConsoleHeader({
+    isConnected,
+    hasSpawnLines,
+    onJumpToLastStart,
+    onJumpToPrevStart,
+}: LiveConsoleHeaderProps) {
+    return (
+        <div className="flex shrink flex-col space-y-4 border-b px-1 py-2 sm:px-4">
+            <div className="flex items-center space-x-2">
+                <svg
+                    className="h-4 w-4 text-green-500"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <polyline points="4 17 10 11 4 5" />
+                    <line x1="12" x2="20" y1="19" y2="19" />
+                </svg>
+                <p className="font-mono text-sm">Live Console</p>
+
+                {isConnected && hasSpawnLines && (
+                    <div className="flex items-center gap-1 pl-2">
+                        <button
+                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
+                            onClick={onJumpToLastStart}
+                            title="Jump to last server start"
+                        >
+                            <RocketIcon className="h-3 w-3" />
+                            <span className="hidden sm:inline">Last Start</span>
+                        </button>
+                        <button
+                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
+                            onClick={onJumpToPrevStart}
+                            title="Jump to previous server start"
+                        >
+                            <SkipBackIcon className="h-3 w-3" />
+                            <span className="hidden sm:inline">Prev Start</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

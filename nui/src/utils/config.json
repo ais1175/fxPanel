@@ -1,0 +1,17 @@
+{
+    "serverCtx": {
+        "locale": "en",
+        "localeData": false,
+        "oneSync": {
+            "type": null,
+            "status": false
+        },
+        "announceNotiPos": "top-center",
+        "projectName": "Context Loading...",
+        "maxClients": 48,
+        "switchPageKey": "Tab",
+        "txAdminVersion": "0.1.0-Beta",
+        "alignRight": false,
+        "tagDefinitions": []
+    }
+}

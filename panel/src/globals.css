@@ -1,0 +1,222 @@
+@import '@fontsource-variable/inter' layer(base);
+@import '@fontsource-variable/jetbrains-mono' layer(base);
+
+@import 'tailwindcss';
+
+@config '../tailwind.config.cjs';
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentcolor);
+    }
+}
+
+@layer base {
+    /*
+        cfx-ui inspired theme
+        Based on the FiveM/cfx-ui dark theme color palette:
+        - bg: #161923, bg-light: #1c202e, bg-dark: #11131c
+        - fg: #f1f1e4 (warm off-white), secondary: #9ea4bd
+        - accent: #f40552 (cfx pink/red)
+        - success: #01a370, warning: #ffae00, error: #e33131
+    */
+    :root {
+        /* Default background color of <body />...etc - cfx bg #161923 */
+        --background: 226 23% 11.2%;
+        --foreground: 60 32% 92%;
+
+        /* Background color for <Card /> - cfx bg-light #1c202e */
+        --card: 227 24% 14.5%;
+        --card-foreground: 60 32% 92%;
+
+        /* Background color for popovers - slightly lighter than bg */
+        --popover: 227 24% 14.5%;
+        --popover-foreground: 60 32% 92%;
+
+        /* Primary colors for <Button /> - warm off-white on dark */
+        --primary: 60 32% 92%;
+        --primary-foreground: 226 23% 11.2%;
+
+        /* Secondary colors for <Button /> - slightly elevated surface */
+        --secondary: 226 20% 19%;
+        --secondary-foreground: 60 32% 92%;
+
+        /* Muted backgrounds such as <TabsList />, <Skeleton /> and <Switch /> */
+        --muted: 227 24% 14.5%;
+        --muted-foreground: 228 19% 68%;
+
+        /* Used for accents - cfx pink #f40552 */
+        --accent: 341 96% 49%;
+        --accent-foreground: 0 0% 100%;
+
+        /* Default border color - subtle blue-grey */
+        --border: 226 16% 20%;
+
+        /* Border color for inputs */
+        --input: 226 16% 22%;
+
+        /* Used for focus ring - accent color */
+        --ring: 341 96% 49%;
+
+        /* Semantic colors - vivid for dark theme */
+        --destructive: 0 76% 54%;
+        --destructive-foreground: 0 0% 100%;
+        --destructive-hint: 0 50% 15%;
+        --destructive-inline: 0 76% 54%;
+        --warning: 41 100% 50%;
+        --warning-foreground: 41 100% 8%;
+        --warning-hint: 35 60% 14%;
+        --warning-inline: 41 100% 50%;
+        --success: 161 99% 32%;
+        --success-foreground: 161 80% 95%;
+        --success-hint: 161 70% 12%;
+        --success-inline: 161 99% 32%;
+        --info: 193 70% 50%;
+        --info-foreground: 193 60% 95%;
+        --info-hint: 200 50% 14%;
+        --info-inline: 193 70% 50%;
+
+        /* Other stuff */
+        --font-sans: 'Inter Variable';
+        --font-mono: 'JetBrains Mono Variable';
+        --radius: 0.5rem;
+    }
+
+    /* Dark class mirrors root - cfx-ui is dark-only */
+    .dark {
+        --background: 226 23% 11.2%;
+        --foreground: 60 32% 92%;
+        --card: 227 24% 14.5%;
+        --card-foreground: 60 32% 92%;
+        --popover: 227 24% 14.5%;
+        --popover-foreground: 60 32% 92%;
+        --primary: 60 32% 92%;
+        --primary-foreground: 226 23% 11.2%;
+        --secondary: 226 20% 19%;
+        --secondary-foreground: 60 32% 92%;
+        --muted: 227 24% 14.5%;
+        --muted-foreground: 228 19% 68%;
+        --accent: 341 96% 49%;
+        --accent-foreground: 0 0% 100%;
+        --border: 226 16% 20%;
+        --input: 226 16% 22%;
+        --ring: 341 96% 49%;
+        --destructive: 0 76% 54%;
+        --destructive-foreground: 0 0% 100%;
+        --destructive-hint: 0 50% 15%;
+        --destructive-inline: 0 76% 54%;
+        --warning: 41 100% 50%;
+        --warning-foreground: 41 100% 8%;
+        --warning-hint: 35 60% 14%;
+        --warning-inline: 41 100% 50%;
+        --success: 161 99% 32%;
+        --success-foreground: 161 80% 95%;
+        --success-hint: 161 70% 12%;
+        --success-inline: 161 99% 32%;
+        --info: 193 70% 50%;
+        --info-foreground: 193 60% 95%;
+        --info-hint: 200 50% 14%;
+        --info-inline: 193 70% 50%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    html {
+        font-size: 12px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: hsl(var(--secondary)) hsl(var(--background));
+
+        /*
+            Sizing Vars:
+            - Header: 3.5rem + 1px = h-14 + border
+        */
+        --page-pt: 0.5rem;
+        --page-pb: 0rem;
+        @media (min-width: 768px) {
+            --page-pt: 1rem;
+            --page-pb: 1rem;
+        }
+        --navbar-vh: calc(3.5rem + 1px); /* h-14 + border */
+        --content-offset: calc(var(--navbar-vh) + var(--page-pt)); /* navbar + pt */
+        --content-vh: calc(100vh - var(--content-offset) - var(--page-pb)); /* navbar + pt + pb */
+    }
+    html[data-tx-shell-density='compact'] {
+        font-size: 11px;
+    }
+    body {
+        @apply bg-background text-foreground antialiased;
+    }
+
+    /* TODO: remove once this issue is fixed: https://github.com/radix-ui/primitives/issues/3251 */
+    html body[data-scroll-locked] {
+        margin-right: 0 !important;
+        padding-right: 0 !important;
+        --removed-body-scroll-bar-size: 0 !important;
+    }
+
+    .tx-sidebar {
+        @apply w-sidebar top-contentoffset sticky z-0 shrink-0 self-start;
+    }
+
+    /* Since this is going to be repeated a lot, better to externalize the style */
+    .tx-playerlist {
+        & > .player {
+            @apply absolute top-0 left-0 flex w-full items-center gap-2 overflow-clip px-2 py-1;
+            @apply cursor-pointer rounded-md border border-transparent text-sm text-ellipsis whitespace-nowrap;
+            @apply hover:bg-secondary hover:text-secondary-foreground transition-colors duration-75;
+
+            & > .pid-block {
+                @apply inline-block shrink-0 text-right;
+
+                & > .pid-badge {
+                    @apply ml-auto rounded-[0.35rem] border px-1 pt-0.5;
+                    @apply font-mono tracking-wider;
+                    @apply border-zinc-700 bg-zinc-800/50 text-zinc-400;
+                }
+            }
+
+            & > .pname {
+                @apply min-w-0 flex-1 truncate font-semibold;
+            }
+
+            & > .player-tag {
+                @apply shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.04em];
+            }
+        }
+    }
+
+    /* Blurs the text input when filled and not focused */
+    .blur-input:not(:focus):not(:placeholder-shown) {
+        color: transparent !important;
+        text-shadow: 0 0 5px rgba(235, 235, 235, 0.5) !important;
+    }
+
+    /* Attempts to break line without breaking words, but will break if needed */
+    .attempt-word-wrap {
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .pattern-dots {
+        background-image: radial-gradient(circle, #1c202e 1px, transparent 1px);
+        background-size: 20px 20px;
+        background-position: center;
+        transition: background-size 0.5s ease;
+    }
+}

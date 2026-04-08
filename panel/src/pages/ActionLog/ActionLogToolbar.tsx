@@ -1,0 +1,278 @@
+import { useState, useRef } from 'react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { openExternalLink } from '@/lib/navigation';
+import {
+    RadioIcon,
+    PauseIcon,
+    SearchIcon,
+    XIcon,
+    CheckCheckIcon,
+    XCircleIcon,
+    ZapIcon,
+    TerminalIcon,
+    SettingsIcon,
+    LogInIcon,
+    ActivityIcon,
+    ClockIcon,
+    CpuIcon,
+    UserIcon,
+    HistoryIcon,
+    DownloadIcon,
+} from 'lucide-react';
+import type { ActionLogFilterKey, ActionLogFiltersState } from './actionLogTypes';
+import { ACTION_LOG_FILTERS } from './actionLogTypes';
+import type { SessionFile } from './useActionLog';
+
+const iconMap: Record<string, typeof ZapIcon> = {
+    Zap: ZapIcon,
+    Terminal: TerminalIcon,
+    Settings: SettingsIcon,
+    LogIn: LogInIcon,
+    Activity: ActivityIcon,
+    Clock: ClockIcon,
+    Cpu: CpuIcon,
+};
+
+type ActionLogToolbarProps = {
+    isLive: boolean;
+    isConnected: boolean;
+    filters: ActionLogFiltersState;
+    eventCounts: Record<ActionLogFilterKey, number>;
+    searchText: string;
+    adminFilter: string | null;
+    sessions: SessionFile[];
+    activeSession: string | null;
+    toggleLive: () => void;
+    goLive: () => void;
+    loadSession: (fileName: string) => void;
+    toggleFilter: (key: ActionLogFilterKey) => void;
+    setAllFilters: (enabled: boolean) => void;
+    setSearchText: (text: string) => void;
+    setAdminFilter: (name: string | null) => void;
+    jumpToTime: (ts: number) => void;
+};
+
+export default function ActionLogToolbar({
+    isLive,
+    isConnected,
+    filters,
+    eventCounts,
+    searchText,
+    adminFilter,
+    sessions,
+    activeSession,
+    toggleLive,
+    goLive,
+    loadSession,
+    toggleFilter,
+    setAllFilters,
+    setSearchText,
+    setAdminFilter,
+    jumpToTime,
+}: ActionLogToolbarProps) {
+    const [showJumpInput, setShowJumpInput] = useState(false);
+    const jumpInputRef = useRef<HTMLInputElement>(null);
+
+    const handleJump = () => {
+        if (!jumpInputRef.current?.value) return;
+        const ts = new Date(jumpInputRef.current.value).getTime();
+        if (isNaN(ts)) return;
+        jumpToTime(ts);
+        setShowJumpInput(false);
+    };
+
+    const allEnabled = Object.values(filters).every(Boolean);
+    const noneEnabled = Object.values(filters).every((v) => !v);
+
+    return (
+        <div className="bg-card sticky top-0 z-10 space-y-2 border-b px-4 py-2">
+            {/* Row 1: Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+                {/* Live/Pause toggle */}
+                {isLive ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="default" size="xs" onClick={toggleLive} className="gap-1.5">
+                                <RadioIcon className="h-3.5 w-3.5" />
+                                <span>Live</span>
+                                {isConnected && (
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                                        <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                                    </span>
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Click to pause live updates</TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="outline" size="xs" onClick={goLive} className="gap-1.5">
+                                <PauseIcon className="h-3.5 w-3.5" />
+                                <span>Paused</span>
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Click to resume live updates</TooltipContent>
+                    </Tooltip>
+                )}
+
+                {/* Session picker */}
+                {sessions.length > 0 && (
+                    <Select
+                        value={activeSession ?? '__live__'}
+                        onValueChange={(val) => {
+                            if (val === '__live__') {
+                                goLive();
+                            } else {
+                                loadSession(val);
+                            }
+                        }}
+                    >
+                        <SelectTrigger className="h-7 w-auto min-w-36 gap-1 text-xs">
+                            <HistoryIcon className="h-3.5 w-3.5 shrink-0" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__live__">Current Session</SelectItem>
+                            {sessions.map((s) => (
+                                <SelectItem key={s.name} value={s.name}>
+                                    <span>{s.ts}</span>
+                                    <span className="text-muted-foreground ml-1.5">({s.size})</span>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
+
+                {/* Separator */}
+                <div className="bg-border h-5 w-px" />
+
+                {/* Search */}
+                <div className="relative max-w-xs min-w-40 flex-1">
+                    <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+                    <Input
+                        placeholder="Search actions..."
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        className="h-7 pr-7 pl-8 text-sm"
+                    />
+                    {searchText && (
+                        <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
+                            onClick={() => setSearchText('')}
+                        >
+                            <XIcon className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
+
+                {/* Admin filter */}
+                {adminFilter && (
+                    <Badge
+                        variant="secondary"
+                        className="hover:bg-destructive/20 cursor-pointer gap-1"
+                        onClick={() => setAdminFilter(null)}
+                    >
+                        <UserIcon className="h-3 w-3" />
+                        {adminFilter}
+                        <XIcon className="h-3 w-3" />
+                    </Badge>
+                )}
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Jump to time */}
+                {showJumpInput ? (
+                    <div className="flex items-center gap-1">
+                        <Input ref={jumpInputRef} type="datetime-local" className="h-7 w-48 text-xs" autoFocus />
+                        <Button size="xs" variant="default" onClick={handleJump}>
+                            Go
+                        </Button>
+                        <Button size="xs" variant="ghost" onClick={() => setShowJumpInput(false)}>
+                            <XIcon className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                ) : (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="ghost" size="xs" onClick={() => setShowJumpInput(true)}>
+                                <ClockIcon className="h-3.5 w-3.5" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Jump to time</TooltipContent>
+                    </Tooltip>
+                )}
+
+                {/* Download */}
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="ghost" size="xs" onClick={() => openExternalLink('/logs/system/download')}>
+                            <DownloadIcon className="h-3.5 w-3.5" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Download log</TooltipContent>
+                </Tooltip>
+            </div>
+
+            {/* Row 2: Filter chips */}
+            <div className="flex flex-wrap items-center gap-1.5">
+                {ACTION_LOG_FILTERS.map((filter) => {
+                    const Icon = iconMap[filter.icon];
+                    const active = filters[filter.key];
+                    const count = eventCounts[filter.key];
+                    return (
+                        <button
+                            key={filter.key}
+                            type="button"
+                            onClick={() => toggleFilter(filter.key)}
+                            className={cn(
+                                'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
+                                active
+                                    ? 'bg-secondary text-secondary-foreground border-border'
+                                    : 'text-muted-foreground/50 hover:border-border border-transparent bg-transparent',
+                            )}
+                        >
+                            {Icon && <Icon className={cn('h-3 w-3', active ? filter.color : '')} />}
+                            <span>{filter.label}</span>
+                            <span
+                                className={cn(
+                                    'ml-0.5 text-[10px] tabular-nums',
+                                    active ? 'text-muted-foreground' : 'text-muted-foreground/40',
+                                )}
+                            >
+                                {count}
+                            </span>
+                        </button>
+                    );
+                })}
+
+                <div className="bg-border mx-0.5 h-4 w-px" />
+
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            type="button"
+                            onClick={() => setAllFilters(!allEnabled)}
+                            className="text-muted-foreground hover:text-foreground p-0.5 transition-colors"
+                        >
+                            {allEnabled || noneEnabled ? (
+                                <CheckCheckIcon className="h-3.5 w-3.5" />
+                            ) : (
+                                <XCircleIcon className="h-3.5 w-3.5" />
+                            )}
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{allEnabled ? 'Deselect all filters' : 'Select all filters'}</TooltipContent>
+                </Tooltip>
+            </div>
+        </div>
+    );
+}

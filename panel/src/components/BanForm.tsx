@@ -1,0 +1,245 @@
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useClosePlayerModal } from '@/hooks/playerModal';
+import { ClipboardPasteIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-react';
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+    DropDownSelect,
+    DropDownSelectContent,
+    DropDownSelectItem,
+    DropDownSelectTrigger,
+} from '@/components/dropDownSelect';
+import { banDurationToShortString, banDurationToString, cn } from '@/lib/utils';
+import { Link, useLocation } from 'wouter';
+import { useBanTemplates } from '@/hooks/banTemplates';
+
+// Consts
+const reasonTruncateLength = 150;
+const ADD_NEW_SELECT_OPTION = '!add-new';
+const defaultDurations = ['permanent', '2 hours', '8 hours', '1 day', '2 days', '1 week', '2 weeks'];
+
+// Types
+type BanFormRespType = {
+    reason: string;
+    duration: string;
+};
+export type BanFormType = HTMLDivElement & {
+    focusReason: () => void;
+    clearData: () => void;
+    getData: () => BanFormRespType;
+};
+type BanFormProps = {
+    disabled?: boolean;
+    onNavigateAway?: () => void;
+};
+
+/**
+ * A form to set ban reason and duration.
+ */
+export default forwardRef(function BanForm({ disabled, onNavigateAway }: BanFormProps, ref) {
+    const banTemplates = useBanTemplates();
+    const reasonRef = useRef<HTMLInputElement>(null);
+    const customMultiplierRef = useRef<HTMLInputElement>(null);
+    const setLocation = useLocation()[1];
+    const [currentDuration, setCurrentDuration] = useState('2 days');
+    const [customUnits, setCustomUnits] = useState('days');
+    const closeModal = useClosePlayerModal();
+
+    //Exposing methods to the parent
+    useImperativeHandle(ref, () => {
+        return {
+            getData: () => {
+                return {
+                    reason: reasonRef.current?.value.trim(),
+                    duration:
+                        currentDuration === 'custom'
+                            ? `${customMultiplierRef.current?.value} ${customUnits}`
+                            : currentDuration,
+                };
+            },
+            clearData: () => {
+                if (!reasonRef.current || !customMultiplierRef.current) return;
+                reasonRef.current.value = '';
+                customMultiplierRef.current.value = '';
+                setCurrentDuration('2 days');
+                setCustomUnits('days');
+            },
+            focusReason: () => {
+                reasonRef.current?.focus();
+            },
+        };
+    }, [reasonRef, customMultiplierRef, currentDuration, customUnits]);
+
+    const handleTemplateSelectChange = (value: string) => {
+        if (value === ADD_NEW_SELECT_OPTION) {
+            setLocation('/settings/ban-templates');
+            onNavigateAway?.();
+        } else {
+            if (!banTemplates) return;
+            const template = banTemplates.find((template) => template.id === value);
+            if (!template) return;
+
+            const processedDuration = banDurationToString(template.duration);
+            if (defaultDurations.includes(processedDuration)) {
+                setCurrentDuration(processedDuration);
+            } else if (typeof template.duration === 'object') {
+                setCurrentDuration('custom');
+                customMultiplierRef.current!.value = template.duration.value.toString();
+                setCustomUnits(template.duration.unit);
+            }
+
+            reasonRef.current!.value = template.reason;
+            setTimeout(() => {
+                reasonRef.current!.focus();
+            }, 50);
+        }
+    };
+
+    //Ban templates render optimization
+    const processedTemplates = useMemo(() => {
+        if (!banTemplates) return;
+        return banTemplates.map((template, index) => {
+            const duration = banDurationToShortString(template.duration);
+            const reason =
+                template.reason.length > reasonTruncateLength
+                    ? template.reason.slice(0, reasonTruncateLength - 3) + '...'
+                    : template.reason;
+            return (
+                <DropDownSelectItem
+                    key={index}
+                    value={template.id}
+                    className="focus:bg-secondary focus:text-secondary-foreground"
+                >
+                    <span className="inline-block min-w-[4ch] pr-1 font-mono opacity-75">{duration}</span> {reason}
+                </DropDownSelectItem>
+            );
+        });
+    }, [banTemplates]);
+
+    // Simplifying the jsx below
+    let banTemplatesContentNode: React.ReactNode;
+    if (!Array.isArray(banTemplates)) {
+        banTemplatesContentNode = (
+            <div className="text-secondary-foreground p-4 text-center">
+                <Loader2Icon className="inline size-6 animate-spin" />
+            </div>
+        );
+    } else {
+        if (!banTemplates.length) {
+            banTemplatesContentNode = (
+                <div className="text-warning-inline p-4 text-center">
+                    You do not have any template configured. <br />
+                    <Link
+                        href="/settings/ban-templates"
+                        className="hover:text-accent cursor-pointer underline"
+                        onClick={() => {
+                            closeModal();
+                        }}
+                    >
+                        Add Ban Template
+                        <ExternalLinkIcon className="mr-1 inline h-4" />
+                    </Link>
+                </div>
+            );
+        } else {
+            banTemplatesContentNode = (
+                <>
+                    {processedTemplates}
+                    <DropDownSelectItem value={ADD_NEW_SELECT_OPTION} className="text-warning-inline font-bold">
+                        Add Ban Template
+                        <ExternalLinkIcon className="mr-1 inline h-4" />
+                    </DropDownSelectItem>
+                </>
+            );
+        }
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3">
+                <Label htmlFor="banReason">Reason</Label>
+                <div className="flex gap-1">
+                    <Input
+                        id="banReason"
+                        ref={reasonRef}
+                        placeholder="The reason for the ban, rule violated, etc."
+                        className="w-full"
+                        disabled={disabled}
+                        autoFocus
+                    />
+                    <DropDownSelect onValueChange={handleTemplateSelectChange} disabled={disabled}>
+                        <DropDownSelectTrigger className="tracking-wide">
+                            <button
+                                className={cn(
+                                    'inline-flex size-10 shrink-0 items-center justify-center rounded-md',
+                                    'ring-offset-background focus-visible:ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
+                                    'border bg-black/20 shadow-xs',
+                                    'hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                    'disabled:cursor-not-allowed disabled:opacity-50',
+                                )}
+                            >
+                                <ClipboardPasteIcon className="size-5" />
+                            </button>
+                        </DropDownSelectTrigger>
+                        <DropDownSelectContent
+                            className="w-[calc(100vw-1rem)] tracking-wide sm:max-w-(--breakpoint-sm)"
+                            align="end"
+                        >
+                            {banTemplatesContentNode}
+                        </DropDownSelectContent>
+                    </DropDownSelect>
+                </div>
+            </div>
+            <div className="flex flex-col gap-3">
+                <Label htmlFor="durationSelect">Duration</Label>
+                <div className="space-y-1">
+                    <Select onValueChange={setCurrentDuration} value={currentDuration} disabled={disabled}>
+                        <SelectTrigger id="durationSelect" className="tracking-wide">
+                            <SelectValue placeholder="Select Duration" />
+                        </SelectTrigger>
+                        <SelectContent className="tracking-wide">
+                            <SelectItem value="custom" className="font-bold">
+                                Custom (set below)
+                            </SelectItem>
+                            <SelectItem value="2 hours">2 HOURS</SelectItem>
+                            <SelectItem value="8 hours">8 HOURS</SelectItem>
+                            <SelectItem value="1 day">1 DAY</SelectItem>
+                            <SelectItem value="2 days">2 DAYS</SelectItem>
+                            <SelectItem value="1 week">1 WEEK</SelectItem>
+                            <SelectItem value="2 weeks">2 WEEKS</SelectItem>
+                            <SelectItem value="permanent" className="font-bold">
+                                Permanent
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div className="flex flex-row gap-2">
+                        <Input
+                            id="durationMultiplier"
+                            type="number"
+                            placeholder="123"
+                            required
+                            disabled={currentDuration !== 'custom' || disabled}
+                            ref={customMultiplierRef}
+                        />
+                        <Select onValueChange={setCustomUnits} value={customUnits}>
+                            <SelectTrigger
+                                className="tracking-wide"
+                                id="durationUnits"
+                                disabled={currentDuration !== 'custom' || disabled}
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="tracking-wide">
+                                <SelectItem value="hours">HOURS</SelectItem>
+                                <SelectItem value="days">DAYS</SelectItem>
+                                <SelectItem value="weeks">WEEKS</SelectItem>
+                                <SelectItem value="months">MONTHS</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});

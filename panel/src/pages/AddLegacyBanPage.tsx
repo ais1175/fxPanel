@@ -1,0 +1,125 @@
+import InlineCode from '@/components/InlineCode';
+import { useAdminPerms } from '@/hooks/auth';
+import { useRef, useState } from 'react';
+import { ApiAddLegacyBanReqSchema } from '@shared/otherTypes';
+import { useBackendApi } from '@/hooks/fetch';
+import { Loader2Icon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import BanForm, { BanFormType } from '@/components/BanForm';
+import { txToast } from '@/components/txToaster';
+import { GenericApiOkResp } from '@shared/genericApiTypes';
+
+export default function AddLegacyBanPage() {
+    const idsTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const banFormRef = useRef<BanFormType>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const { hasPerm } = useAdminPerms();
+
+    const legacyBanApi = useBackendApi<GenericApiOkResp, ApiAddLegacyBanReqSchema>({
+        method: 'POST',
+        path: `/history/addLegacyBan`,
+        throwGenericErrors: true,
+    });
+
+    const handleSave = () => {
+        if (!idsTextareaRef.current || !banFormRef.current) return;
+        const { reason, duration } = banFormRef.current.getData();
+
+        if (!reason || reason.length < 3) {
+            txToast.warning(`The reason must be at least 3 characters long.`);
+            banFormRef.current.focusReason();
+            return;
+        }
+        const rawIds = idsTextareaRef.current.value;
+        if (!rawIds) {
+            txToast.warning(`You must enter at least one identifier.`);
+            idsTextareaRef.current.focus();
+            return;
+        }
+        const identifiers = rawIds
+            .toLowerCase()
+            .split(/[,;\s\n]+/g)
+            .map((id) => id.trim())
+            .filter(Boolean);
+        if (!identifiers.length) {
+            txToast.warning(`You must enter at least one valid identifier.`);
+            idsTextareaRef.current.focus();
+            return;
+        }
+
+        setIsSaving(true);
+        legacyBanApi({
+            data: { identifiers, reason, duration },
+            toastLoadingMessage: 'Banning identifiers...',
+            genericHandler: {
+                successMsg: 'Identifiers banned.',
+            },
+            success: (data) => {
+                setIsSaving(false);
+                idsTextareaRef.current!.value = '';
+                idsTextareaRef.current!.focus();
+            },
+            error: (error) => {
+                setIsSaving(false);
+                idsTextareaRef.current!.focus();
+            },
+        });
+    };
+
+    const canBan = hasPerm('players.ban');
+    return (
+        <div className="mx-auto w-full max-w-(--breakpoint-lg) space-y-4 px-2 md:px-0">
+            <div className="px-2 md:px-0">
+                <h1 className="mb-2 text-3xl">Ban Identifiers</h1>
+                <p>
+                    Here you can ban specific player identifiers (like <InlineCode>license</InlineCode> and{' '}
+                    <InlineCode>discord</InlineCode>) without having to search for a registered player.
+                    <br />
+                    Bans without a single <InlineCode>license</InlineCode> identifier are considered{' '}
+                    <em>Legacy Bans</em> and should be avoided if possible. <br />
+                    {!canBan ? (
+                        <span className="text-warning-inline">
+                            You need the <InlineCode className="text-warning-inline">Player: Ban</InlineCode> permission
+                            to use this feature.
+                        </span>
+                    ) : null}
+                </p>
+            </div>
+            <div className="bg-card grid gap-4 rounded-lg border p-4 lg:grid-cols-2">
+                <div className="flex flex-col gap-3">
+                    <Label htmlFor="banIdentifiers">Identifiers</Label>
+                    <Textarea
+                        ref={idsTextareaRef}
+                        className="h-full"
+                        disabled={isSaving || !canBan}
+                        placeholder="discord:xxxx, fivem:xxxx, license:xxxx, steam:xxxx, etc..."
+                    />
+                </div>
+                <BanForm ref={banFormRef} disabled={isSaving || !canBan} />
+            </div>
+            <div className="flex place-content-center gap-4">
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isSaving || !canBan}
+                    onClick={() => {
+                        banFormRef.current?.clearData();
+                    }}
+                >
+                    Clear
+                </Button>
+                <Button size="sm" variant="destructive" disabled={isSaving || !canBan} onClick={handleSave}>
+                    {isSaving ? (
+                        <span className="flex items-center leading-relaxed">
+                            <Loader2Icon className="inline h-4 animate-spin" /> Banning...
+                        </span>
+                    ) : (
+                        'Apply Ban'
+                    )}
+                </Button>
+            </div>
+        </div>
+    );
+}

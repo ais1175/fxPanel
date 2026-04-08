@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "target": "ES6",
+        "useDefineForClassFields": true,
+        "lib": ["DOM", "DOM.Iterable", "ES6"],
+        "allowJs": false,
+        "skipLibCheck": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "module": "ES6",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
+        "jsx": "react-jsx",
+
+        /* mod resolution. */
+        "paths": {
+            "@shared/*": ["../shared/*"],
+            "@nui/*": ["./*"]
+        }
+    },
+    "include": ["src"],
+    "references": [{ "path": "./tsconfig.node.json" }, { "path": "../shared" }]
+}
