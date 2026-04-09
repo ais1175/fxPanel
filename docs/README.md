@@ -1,97 +1,133 @@
 ﻿<p align="center">
-    <img src="banner.png" alt="fxPanel">
+    <img src="banner.png" alt="fxPanel" width="600">
 </p>
 
-# fxPanel
+<p align="center">
+    <b>A full-featured web panel & in-game menu to manage and monitor your FiveM/RedM server.</b>
+</p>
 
-**fxPanel** is a full overhaul built on top of the existing [txAdmin](https://github.com/tabarra/txAdmin) codebase — a **full-featured web panel & in-game menu** to manage and monitor your FiveM/RedM server.
+<p align="center">
+    <a href="https://github.com/SomeAussieGaymer/fxpanel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/SomeAussieGaymer/fxpanel?style=flat-square&color=blue" alt="License"></a>
+    <a href="https://github.com/SomeAussieGaymer/fxpanel/releases"><img src="https://img.shields.io/github/v/release/SomeAussieGaymer/fxpanel?style=flat-square&color=green" alt="Release"></a>
+    <a href="https://github.com/SomeAussieGaymer/fxpanel/stargazers"><img src="https://img.shields.io/github/stars/SomeAussieGaymer/fxpanel?style=flat-square" alt="Stars"></a>
+    <a href="https://discord.gg/6FcqBYwxH5"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
+    <a href="https://fxpanel.org"><img src="https://img.shields.io/badge/docs-fxpanel.org-orange?style=flat-square" alt="Docs"></a>
+</p>
 
-The goal is to retain full compatibility with existing txAdmin-based servers, allowing them to migrate with minimal or no changes.
+<p align="center">
+    <a href="https://fxpanel.org/docs">Documentation</a> •
+    <a href="https://fxpanel.org/docs/recipes">Recipes</a> •
+    <a href="https://discord.gg/6FcqBYwxH5">Discord</a> •
+    <a href="https://github.com/SomeAussieGaymer/fxpanel/releases">Releases</a> •
+    <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-## Features
+---
 
-Everything from txAdmin, plus ongoing improvements:
+**fxPanel** is a full overhaul built on top of [txAdmin](https://github.com/tabarra/txAdmin) — designed as a **drop-in replacement** with full compatibility for existing txAdmin servers, databases, and configurations.
 
-- **Recipe-based Server Deployer**: create a server in under 60 seconds ([docs](https://fxpanel.org/docs/recipes))
-    - Private GitHub repository support via `$requiresGithubToken` recipes
-    - Headless CLI mode for automated deployments
-- **Start/Stop/Restart** your server instance or resources
-- **Artifact Management**: Download and apply FXServer artifact builds directly from the panel
-- **Full-featured in-game admin menu**:
-    - Player Mode: NoClip, God, SuperJump
-    - Teleport: waypoint, coords, back, or to players (`/tpm`, `/goto`)
-    - Vehicle: Spawn, Fix, Delete, Boost
-    - Heal: yourself, everyone, or within a configurable radius
-    - Send Announcements, Reset World Area
-    - Show player IDs with overhead tags
-    - Player search/sort by distance, ID, name
-    - Player interactions: Go To, Bring, Spectate, Freeze
-    - Player troll: make drunk, set fire, wild attack
-    - Player ban/warn/dm with editable ban durations
-    - **Live Spectate**: Watch a player's screen in real-time from the web panel
-    - **Screenshot Capture**: Built-in player screenshot (no `screenshot-basic` needed)
-    - **Report System**: Player-initiated tickets (Player Report, Bug Report, Question) with admin review workflow and Discord notifications
-- **Access control**:
-    - Login via Cfx.re or password
-    - Admin permission system with 40+ granular permissions and built-in presets ([docs](https://fxpanel.org/docs/permissions))
-    - Per-admin statistics (bans, warns, kicks, revocations)
-    - Action logging with structured JSONL system logger
-- **Discord Integration**:
-    - Server configurable, persistent, auto-updated status embed with customizable footer
-    - Commands: `/status`, `/whitelist`, `/info` (public), `/admininfo` (admin-only)
-    - Admin channel notifications for player reports, bans, crashes, whitelist requests
-- **Monitoring**:
-    - Auto Restart FXServer on crash or hang
-    - Server CPU/RAM consumption
-    - Live Console with block-based buffer, lazy-load older output, persistent clear, timestamp options, and jump-to-server-start
-    - Server threads performance chart with player count, FXS/Node memory toggles, and pan navigation
-    - Server Activity Log (connections, disconnections, kills, chat, explosions and [custom commands](https://fxpanel.org/docs/logs))
-    - Per-resource runtime performance stats (CPU, memory, tick time)
-- **Insights / Analytics Dashboard**:
-    - Player count timeline with memory usage (up to 96h)
-    - New players per day, cumulative growth, retention metrics (1d/7d/30d)
-    - Top players by playtime, playtime distribution histogram
-    - Peak hours heatmap (day-of-week x hour-of-day)
-    - Admin actions timeline, session length distribution
-    - Server uptime timeline and disconnect reasons
-- **Player Manager**:
-    - Warning & Ban system with editable durations and `players.delete` for data management
-    - Whitelist system (Discord member, Discord Role, Approved License, Admin-only)
-    - Player tags: auto-tags (Staff, Problematic, Newcomer) + up to 20 custom server-defined tags with resource exports
-    - Player Activity tab with 28-day heatmap, peak hours, per-hour breakdown
-    - Player Insights tab with identifier change detection, risk assessment, name history
-    - Notes, play time tracking, session history
-    - Self-contained player database (no MySQL required)
-    - Database cleanup tools for old players, bans, warns, whitelists
-- **Real-time playerlist** with fuzzy search, tag-based filtering and coloring
-- Scheduled restarts with precision minute-boundary timing, postponable temp schedules, and warning announcements ([docs](https://fxpanel.org/docs/events))
-- Translated into over 30 languages ([docs](https://fxpanel.org/docs/translation))
-- FiveM Server CFG editor & validator
-- Responsive web interface with Dark Mode
+> **Migrating?** Just replace the `monitor` folder in your FXServer artifacts with the fxPanel build. Existing `txData` directories work without modification.
 
-## Migrating from txAdmin
+<!-- Replace with an actual screenshot of your panel -->
+<!-- <p align="center"><img src="screenshot.png" alt="fxPanel Dashboard" width="800"></p> -->
 
-fxPanel is designed as a drop-in replacement. Existing `txData` directories, databases, configs, and server resources should work without modification.
+## Highlights
 
-## Running fxPanel
+<table>
+<tr>
+<td width="50%" valign="top">
 
-1. Replace the monitor folder in your FXServer artifacts with the fxPanel build.
-2. Run FXServer **without** any `+exec server.cfg` launch argument - fxPanel will start automatically.
-3. On first boot, open the URL provided in the console to configure your account and server.
+###  Web Panel
+- Live console with block-based buffer & lazy-loading
+- Server performance charts (CPU, memory, threads)
+- Per-resource runtime stats (CPU, memory, tick time)
+- CFG editor & validator with dark mode UI
+- Real-time playerlist with fuzzy search & tag filtering
 
-## Configuration & Integrations
+</td>
+<td width="50%" valign="top">
 
-- Most configuration is available in the fxPanel settings page. Some options (TCP interface, port, etc.) are only available through Environment Variables - see the [Configuration docs](https://fxpanel.org/docs/configuration).
-- You can listen to server events broadcasted by fxPanel to add custom behavior in your resources - see the [Events docs](https://fxpanel.org/docs/events).
+###  In-Game Menu
+- Player Mode: NoClip, God, SuperJump
+- Teleport, Vehicle, Heal, Announcements
+- Live Spectate from the web panel
+- Built-in screenshot capture (no `screenshot-basic`)
+- Ban/Warn/DM with editable durations
 
-## Contributing & Development
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
-- All PRs should be based on the develop branch, including translation PRs.
-- Before starting any significant PR, join the Discord and discuss it first.
-- To build or run from source, see the [Development docs](https://fxpanel.org/docs/development).
+###  Insights & Analytics
+- Player count & memory timeline (up to 96h)
+- Retention metrics (1d / 7d / 30d)
+- Peak hours heatmap & playtime distribution
+- Admin actions timeline & session stats
+- Server uptime and disconnect reasons
 
-## License, Credits and Thanks
+</td>
+<td width="50%" valign="top">
 
-- This project is licensed under the [MIT License](LICENSE).
-- Originally created by [tabarra](https://github.com/tabarra) as [txAdmin](https://github.com/tabarra/txAdmin).
-- Special thanks to everyone who contributed, especially the Discord community.
+###  Player Management
+- Warning & Ban system with full history
+- Whitelist (Discord, License, Role, Admin-only)
+- Auto-tags + up to 20 custom tags via resource exports
+- Activity heatmap, risk assessment, name history
+- Self-contained database — no MySQL required
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+###  Access Control
+- Login via Cfx.re or password
+- 40+ granular permissions with presets
+- Per-admin statistics & action logging
+- Structured JSONL system logger
+
+</td>
+<td width="50%" valign="top">
+
+###  Discord Integration
+- Auto-updated status embed with custom footer
+- `/status`, `/whitelist`, `/info`, `/admininfo` commands
+- Notifications for reports, bans, crashes, whitelist
+
+</td>
+</tr>
+</table>
+
+**Plus:** Recipe-based server deployer (<60s) with GitHub token support & headless CLI • Artifact management • Scheduled restarts with postponable temp schedules • Report system with Discord notifications • 30+ languages • [Full feature list →](https://fxpanel.org/docs)
+
+## Quick Start
+
+**1.** Download the [latest release](https://github.com/SomeAussieGaymer/fxpanel/releases).
+
+**2.** Replace the `monitor/` folder in your FXServer artifacts with the fxPanel build.
+
+**3.** Start FXServer **without** `+exec server.cfg` — fxPanel starts automatically.
+
+**4.** Open the URL shown in the console to set up your account and server.
+
+> See the [Configuration docs](https://fxpanel.org/docs/configuration) for environment variables and advanced options.
+> Listen to fxPanel server events in your resources with the [Events API](https://fxpanel.org/docs/events).
+
+## Contributing
+
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before getting started.
+
+- All PRs target the `dev` branch
+- Join the [Discord](https://discord.gg/6FcqBYwxH5) before starting significant work
+- See [Development docs](https://fxpanel.org/docs/development) for build & dev setup
+
+## License
+
+[MIT](LICENSE) — Originally created by [tabarra](https://github.com/tabarra) as [txAdmin](https://github.com/tabarra/txAdmin).
+
+---
+
+<p align="center">
+    <sub>Built with ❤️ by <a href="https://github.com/SomeAussieGaymer">SomeAussieGaymer</a> and <a href="https://github.com/SomeAussieGaymer/fxpanel/graphs/contributors">contributors</a></sub>
+</p>
