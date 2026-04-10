@@ -150,7 +150,7 @@ local function syncServerCtx()
     -- Reports enabled flag
     ServerCtxObj.reportsEnabled = GetConvarBool('txAdmin-reportsEnabled')
 
-    DebugPrint('Updated ServerCtx.')
+    DebugPrint('Updated TX_SERVER_CTX.')
     GlobalState.txAdminServerCtx = ServerCtxObj
 
     -- Telling admins that the server context changed
@@ -159,7 +159,7 @@ local function syncServerCtx()
     end
 end
 
-RegisterNetEvent('txsv:req:serverCtx', function()
+RegisterNetEvent('txsv:req:TX_SERVER_CTX', function()
     local src = source
     TriggerClientEvent('txcl:setServerCtx', src, ServerCtxObj)
 end)

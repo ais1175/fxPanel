@@ -22,7 +22,7 @@ export const msToDuration = humanizeDuration.humanizer({
 export const msToShortDuration = humanizeDuration.humanizer({
     round: true,
     spacer: '',
-    language: 'shortEn',
+    language: 'shortestEn',
     fallbacks: ['en'],
 } satisfies HumanizerOptions);
 

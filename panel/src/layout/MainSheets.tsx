@@ -57,7 +57,7 @@ export function GlobalMenuSheet() {
                                     Reports
                                 </MenuNavLink>
                             )}
-                            <MenuNavLink href="/insights/player-drops">
+                            <MenuNavLink href="/server/player-drops">
                                 <DoorOpenIcon className="mr-2 h-4 w-4" />
                                 Player Drops
                             </MenuNavLink>

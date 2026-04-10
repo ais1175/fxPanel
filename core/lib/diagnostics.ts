@@ -47,7 +47,8 @@ let _hostStaticDataCache: HostStaticDataType;
 
 /**
  * Gets the Processes Data.
- * FIXME: migrate to use gwmi on windows by default
+ * On Windows, uses Get-CimInstance for more reliable process info.
+ * On Linux/macOS, uses systeminformation's process tree.
  */
 export const getProcessesData = async () => {
     type ProcDataType = {
@@ -61,39 +62,89 @@ export const getProcessesData = async () => {
     const procList: ProcDataType[] = [];
     try {
         const txProcessId = process.pid;
-        const processes = await pidUsageTree(txProcessId);
 
-        //NOTE: Cleaning invalid processes that might show up in Linux
-        Object.keys(processes).forEach((pid) => {
-            if (processes[pid] === null) delete processes[pid];
-        });
+        if (txEnv.isWindows) {
+            // Use Get-CimInstance for more reliable Windows process data
+            const { execSync } = await import('node:child_process');
+            const psOutput = execSync(
+                `powershell -NoProfile -Command "Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, WorkingSetSize, Name | ConvertTo-Json -Compress"`,
+                { encoding: 'utf8', timeout: 10_000 },
+            );
+            const parsed = JSON.parse(psOutput);
+            const procs = Array.isArray(parsed) ? parsed : [parsed];
 
-        //Foreach PID
-        Object.keys(processes).forEach((pid) => {
-            const curr = processes[pid];
-            const currPidInt = parseInt(pid);
-
-            //Define name and order
-            let procName;
-            let order = curr.timestamp || 1;
-            if (currPidInt === txProcessId) {
-                procName = 'fxPanel (inside FXserver)';
-                order = 0; //forcing order because all process can start at the same second
-            } else if (curr.memory <= 10 * MEGABYTE) {
-                procName = 'FXServer MiniDump';
-            } else {
-                procName = 'FXServer';
+            // Collect all PIDs from the direct query, then BFS for descendants
+            const targetPids = new Set<number>([txProcessId]);
+            let changed = true;
+            while (changed) {
+                changed = false;
+                for (const proc of procs) {
+                    if (!targetPids.has(proc.ProcessId) && targetPids.has(proc.ParentProcessId)) {
+                        targetPids.add(proc.ProcessId);
+                        changed = true;
+                    }
+                }
             }
 
-            procList.push({
-                pid: currPidInt,
-                ppid: curr.ppid === txProcessId ? `${txProcessId} (fxPanel)` : curr.ppid,
-                name: procName,
-                cpu: curr.cpu,
-                memory: curr.memory / MEGABYTE,
-                order: order,
+            for (const proc of procs) {
+                if (!targetPids.has(proc.ProcessId)) continue;
+                const memBytes = proc.WorkingSetSize ?? 0;
+                let procName: string;
+                let order = Date.now();
+                if (proc.ProcessId === txProcessId) {
+                    procName = 'fxPanel (inside FXserver)';
+                    order = 0;
+                } else if (memBytes <= 10 * MEGABYTE) {
+                    procName = 'FXServer MiniDump';
+                } else {
+                    procName = 'FXServer';
+                }
+
+                procList.push({
+                    pid: proc.ProcessId,
+                    ppid: proc.ParentProcessId === txProcessId ? `${txProcessId} (fxPanel)` : proc.ParentProcessId,
+                    name: procName,
+                    cpu: 0, // CIM doesn't provide instantaneous CPU %; would need a second sample
+                    memory: memBytes / MEGABYTE,
+                    order,
+                });
+            }
+        } else {
+            // Linux/macOS: use systeminformation via pidUsageTree
+            const processes = await pidUsageTree(txProcessId);
+
+            //NOTE: Cleaning invalid processes that might show up in Linux
+            Object.keys(processes).forEach((pid) => {
+                if (processes[pid] === null) delete processes[pid];
             });
-        });
+
+            //Foreach PID
+            Object.keys(processes).forEach((pid) => {
+                const curr = processes[pid];
+                const currPidInt = parseInt(pid);
+
+                //Define name and order
+                let procName;
+                let order = curr.timestamp || 1;
+                if (currPidInt === txProcessId) {
+                    procName = 'fxPanel (inside FXserver)';
+                    order = 0;
+                } else if (curr.memory <= 10 * MEGABYTE) {
+                    procName = 'FXServer MiniDump';
+                } else {
+                    procName = 'FXServer';
+                }
+
+                procList.push({
+                    pid: currPidInt,
+                    ppid: curr.ppid === txProcessId ? `${txProcessId} (fxPanel)` : curr.ppid,
+                    name: procName,
+                    cpu: curr.cpu,
+                    memory: curr.memory / MEGABYTE,
+                    order: order,
+                });
+            });
+        }
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             console.error('Failed to get processes tree usage data.');

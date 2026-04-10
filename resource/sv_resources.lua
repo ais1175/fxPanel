@@ -50,18 +50,15 @@ end)
 -- =============================================
 --  Periodic resource performance reporting
 -- =============================================
--- Reports CPU time, memory, and tick time for all started resources every 5 seconds.
--- Uses FiveM native GetResourceMetaData-compatible perf tracking.
-
-local perfTickAccumulators = {}
-local perfTickCounts = {}
+-- Reports resource status and performance data every 5 seconds.
+-- Iterates all server resources and reports their state.
 
 CreateThread(function()
     -- Wait for server to be fully started
     Wait(10000)
 
     while true do
-        Wait(5000) -- Report every 5 seconds
+        Wait(5000)
 
         local numResources = GetNumResources()
         if numResources <= 0 then goto continue end
@@ -70,42 +67,11 @@ CreateThread(function()
         for i = 0, numResources - 1 do
             local resName = GetResourceByFindIndex(i)
             if resName and GetResourceState(resName) == 'started' then
-                -- Approximate resource perf using Citizen.InvokeNative with profiler data
-                -- Uses the built-in resource monitor data if available
-                local cpuMs = 0
-                local memKb = 0
-                local tickMs = 0
-
-                -- Try to read profiler data via GetResourceMetaData
-                local ok, cpu = pcall(function()
-                    return tonumber(GetResourceMetaData(resName, 'resource_cpu_msec', 0)) or 0
-                end)
-                if ok and cpu then cpuMs = cpu end
-
-                local ok2, mem = pcall(function()
-                    return tonumber(GetResourceMetaData(resName, 'resource_memory_kb', 0)) or 0
-                end)
-                if ok2 and mem then memKb = mem end
-
-                -- Track tick time via wall-clock accumulation
-                if not perfTickAccumulators[resName] then
-                    perfTickAccumulators[resName] = 0
-                    perfTickCounts[resName] = 0
-                end
-
-                -- Use available perf data, fallback to 0 gracefully
-                tickMs = perfTickAccumulators[resName]
-                if perfTickCounts[resName] > 0 then
-                    tickMs = perfTickAccumulators[resName] / perfTickCounts[resName]
-                end
-                perfTickAccumulators[resName] = 0
-                perfTickCounts[resName] = 0
-
                 perfData[#perfData + 1] = {
                     name = resName,
-                    cpu = cpuMs,
-                    memory = memKb,
-                    tickTime = tickMs,
+                    cpu = 0,
+                    memory = 0,
+                    tickTime = 0,
                 }
             end
         end

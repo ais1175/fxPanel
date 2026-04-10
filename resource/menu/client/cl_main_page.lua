@@ -17,10 +17,10 @@ RegisterSecureNuiCallback('tpToCoords', function(data, cb)
     cb({})
 end)
 RegisterCommand('txAdmin:menu:tpToCoords', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.teleport') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.teleport') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     toggleMenuVisibility(true)
@@ -36,18 +36,18 @@ local function reqTpToWaypoint(_, cb)
 end
 RegisterSecureNuiCallback('tpToWaypoint', reqTpToWaypoint)
 RegisterCommand('txAdmin:menu:tpToWaypoint', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.teleport') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.teleport') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpToWaypoint()
 end)
 
 local function reqTpBack(_, cb)
-    if lastTpCoords then
-        TriggerServerEvent('txsv:req:tpToCoords', lastTpCoords.x, lastTpCoords.y, lastTpCoords.z)
+    if TX_LAST_TP_COORDS then
+        TriggerServerEvent('txsv:req:tpToCoords', TX_LAST_TP_COORDS.x, TX_LAST_TP_COORDS.y, TX_LAST_TP_COORDS.z)
     else
         SendSnackbarMessage('error', 'nui_menu.page_main.teleport.back.error', true)
     end
@@ -57,10 +57,10 @@ local function reqTpBack(_, cb)
 end
 RegisterSecureNuiCallback('tpBack', reqTpBack)
 RegisterCommand('txAdmin:menu:tpBack', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.teleport') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.teleport') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpBack()
@@ -73,10 +73,10 @@ end)
 
 -- /goto [player_id] - teleport to a player
 RegisterCommand('goto', function(_, args)
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.teleport') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.teleport') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     if #args < 1 then
@@ -91,10 +91,10 @@ end)
 
 -- /tpm - teleport to marker (waypoint)
 RegisterCommand('tpm', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.teleport') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.teleport') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpToWaypoint()
@@ -119,10 +119,10 @@ RegisterSecureNuiCallback('clearArea', function(radius, cb)
     cb({})
 end)
 RegisterCommand('txAdmin:menu:clearArea', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.clear_area') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.clear_area') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     toggleMenuVisibility(true)
@@ -160,10 +160,10 @@ local function reqHealMyself(_, cb)
 end
 RegisterSecureNuiCallback('healMyself', reqHealMyself)
 RegisterCommand('txAdmin:menu:healMyself', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.heal') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.heal') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqHealMyself()
@@ -308,10 +308,10 @@ local function teleportToCoords(coords)
 
     if IsFreecamActive() then
         local curCamPos = GetFreecamPosition()
-        lastTpCoords = curCamPos
+        TX_LAST_TP_COORDS = curCamPos
         handleTpForFreecam(x, y, z)
     else
-        lastTpCoords = GetEntityCoords(ped)
+        TX_LAST_TP_COORDS = GetEntityCoords(ped)
         handleTpNormally(x, y, z)
     end
 

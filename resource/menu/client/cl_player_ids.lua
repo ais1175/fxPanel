@@ -52,12 +52,12 @@ local autoTagHudColors = {
 }
 local defaultCustomHudColor = 4 -- HUD_COLOUR_BLUE for custom tags
 
---- Builds the tag display config and priority list from ServerCtx.tagDefinitions
+--- Builds the tag display config and priority list from TX_SERVER_CTX.tagDefinitions
 local tagDisplayConfig = {}
 local tagPriority = {}
 
 local function rebuildTagConfig()
-    local defs = ServerCtx and ServerCtx.tagDefinitions or {}
+    local defs = TX_SERVER_CTX and TX_SERVER_CTX.tagDefinitions or {}
     local newConfig = {}
     local newPriority = {}
 
@@ -90,11 +90,11 @@ local function rebuildTagConfig()
 end
 rebuildTagConfig()
 
---- Gets the highest-priority tag for a player from LOCAL_PLAYERLIST
+--- Gets the highest-priority tag for a player from TX_LOCAL_PLAYERLIST
 local function getPlayerTopTag(serverId)
     local pidStr = tostring(serverId)
-    if LOCAL_PLAYERLIST[pidStr] == nil then return nil end
-    local tags = LOCAL_PLAYERLIST[pidStr].tags
+    if TX_LOCAL_PLAYERLIST[pidStr] == nil then return nil end
+    local tags = TX_LOCAL_PLAYERLIST[pidStr].tags
     if tags == nil then return nil end
     local tagSet = {}
     for _, t in ipairs(tags) do
@@ -247,7 +247,7 @@ end
 
 --- Function to enable or disable the player ids
 function toggleShowPlayerIDs(enabled, showNotification)
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
 
@@ -283,10 +283,10 @@ RegisterSecureNuiCallback('togglePlayerIDs', function(_, cb)
 end)
 
 RegisterCommand('txAdmin:menu:togglePlayerIDs', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.viewids') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.viewids') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     togglePlayerIDsHandler()

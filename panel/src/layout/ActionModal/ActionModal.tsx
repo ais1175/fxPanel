@@ -194,8 +194,7 @@ export default function ActionModal() {
                         ))}
                     </div>
                     {/* NOTE: consistent height: sm:h-66 */}
-                    {/* FIXME: the number below is based off mobile screen sizes, and should be h-full while the modal content controls the actual height  */}
-                    <ScrollArea className="max-h-[calc(100vh-3.125rem-4rem)] min-h-66 w-full px-4 py-2 md:max-h-[50vh] md:py-0">
+                    <ScrollArea className="max-h-[calc(100dvh-3.125rem-4rem)] min-h-66 w-full px-4 py-2 md:max-h-[50vh] md:py-0">
                         {!modalData ? (
                             <ModalCentralMessage>
                                 {modalError ? (

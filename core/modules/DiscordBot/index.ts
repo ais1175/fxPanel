@@ -1,5 +1,6 @@
 const modulename = 'DiscordBot';
 import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits } from 'discord.js';
+import { Agent } from 'undici';
 import slashCommands from './slash';
 import interactionCreateHandler from './interactionCreateHandler';
 import { generateStatusMessage } from './commands/status';
@@ -7,6 +8,7 @@ import consoleFactory from '@lib/console';
 import { embedColors } from './discordHelpers';
 import { DiscordBotStatus } from '@shared/enums';
 import { UpdateConfigKeySet } from '@modules/ConfigStore/utils';
+import { txHostConfig } from '@core/globalData';
 const console = consoleFactory(modulename);
 
 //Types
@@ -36,12 +38,13 @@ export default class DiscordBot {
             parse: ['users'],
             repliedUser: true,
         },
-        //FIXME: fixme
-        // http: {
-        //     agent: {
-        //         localAddress: txHostConfig.netInterface,
-        //     }
-        // }
+        ...(txHostConfig.netInterface && txHostConfig.netInterface !== '0.0.0.0' ? {
+            rest: {
+                agent: new Agent({
+                    localAddress: txHostConfig.netInterface,
+                }),
+            },
+        } : {}),
     };
     readonly cooldowns = new Map();
     #client: Client | undefined;

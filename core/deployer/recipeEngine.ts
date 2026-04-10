@@ -17,7 +17,12 @@ const console = consoleFactory(modulename);
 //=============================================================
 const safePath = (base: string, suffix: string) => {
     const safeSuffix = path.normalize(suffix).replace(/^(\.\.(\/|\\|$))+/, '');
-    return path.join(base, safeSuffix);
+    const resolved = path.resolve(base, safeSuffix);
+    const normalizedBase = path.resolve(base);
+    if (!resolved.startsWith(normalizedBase + path.sep) && resolved !== normalizedBase) {
+        throw new Error(`Path traversal blocked: "${suffix}" escapes base directory`);
+    }
+    return resolved;
 };
 
 const isPathLinear = (pathInput: string) => {
@@ -299,9 +304,13 @@ const taskReplaceString = async (task: RecipeTask, basePath: string, ctx: Deploy
 
     const fileList = Array.isArray(task.file) ? (task.file as string[]) : [task.file as string];
     //Pre-compute regex and replacement value outside the file loop
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const searchRegex =
         task.mode === undefined || task.mode === 'template' || task.mode === 'literal'
-            ? new RegExp(task.search as string, 'g')
+            ? new RegExp(
+                task.mode === 'literal' ? escapeRegExp(task.search as string) : (task.search as string),
+                'g',
+            )
             : null;
     const replacedValue =
         task.mode === undefined || task.mode === 'template'

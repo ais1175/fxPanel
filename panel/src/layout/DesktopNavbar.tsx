@@ -107,7 +107,7 @@ export default function DesktopNavbar() {
                             <HeaderMenuLink className="w-36 justify-start" href="/insights">
                                 Overview
                             </HeaderMenuLink>
-                            <HeaderMenuLink className="w-36 justify-start" href="/insights/player-drops">
+                            <HeaderMenuLink className="w-36 justify-start" href="/server/player-drops">
                                 Player Drops
                             </HeaderMenuLink>
                         </NavigationMenuContent>

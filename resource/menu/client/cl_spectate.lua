@@ -189,7 +189,7 @@ end
 local function handleSpecCycle(isNext)
     -- We don't want to cycle if the player is moving down the menu using arrow keys
     -- or if pause is open, or if spectate isn't enabled
-    if IsMenuVisible or IsPauseMenuActive() or not isSpectateEnabled then
+    if TX_MENU_VISIBLE or IsPauseMenuActive() or not isSpectateEnabled then
         return
     end
     if isInTransitionState then
@@ -265,7 +265,7 @@ local function createInstructionalThreads()
     --controls thread for redm - disabled when menu is visible
     CreateThread(function()
         while isSpectateEnabled do
-            if not IsMenuVisible then
+            if not TX_MENU_VISIBLE then
                 checkControlsFunc()
             end
             Wait(5)

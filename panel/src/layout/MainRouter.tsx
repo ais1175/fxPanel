@@ -65,7 +65,7 @@ const allRoutes: RouteType[] = [
         Page: <InsightsPage />,
     },
     {
-        path: '/insights/player-drops',
+        path: '/server/player-drops',
         title: 'Player Drops',
         Page: <PlayerDropsPage />,
     },
@@ -148,13 +148,13 @@ const allRoutes: RouteType[] = [
     {
         path: '/server/setup',
         title: 'Server Setup',
-        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        permission: 'master',
         Page: <SetupPage />,
     },
     {
         path: '/server/deployer',
         title: 'Server Deployer',
-        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        permission: 'master',
         Page: <DeployerPage />,
     },
     {

@@ -83,8 +83,20 @@ export class DbInstance {
     #writePending: SavePriority = SavePriority.STANDBY;
     lastWrite: number = 0;
     isReady: boolean = false;
+    readonly #readyPromise: Promise<void>;
+    #resolveReady!: () => void;
+
+    /**
+     * Returns a promise that resolves when the database is ready
+     */
+    whenReady(): Promise<void> {
+        return this.#readyPromise;
+    }
 
     constructor() {
+        this.#readyPromise = new Promise<void>((resolve) => {
+            this.#resolveReady = resolve;
+        });
         this.dbPath = txEnv.profileSubPath('data', 'playersDB.json');
         this.backupPath = txEnv.profileSubPath('data', 'playersDB.backup.json');
 
@@ -170,6 +182,7 @@ export class DbInstance {
 
             this.lastWrite = Date.now();
             this.isReady = true;
+            this.#resolveReady();
         } catch (error) {
             fatalError.Database(1, 'Failed to setup database object.', error);
         }

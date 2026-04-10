@@ -35,14 +35,11 @@ export default class Database {
         this.reports = new ReportsDao(this.#db);
 
         // Wait for database to be ready, then build indexes
-        const checkReadyAndBuildIndexes = () => {
-            if (this.#db.isReady) {
-                this.actions.buildIndexes();
-            } else {
-                setTimeout(checkReadyAndBuildIndexes, 100);
-            }
-        };
-        setTimeout(checkReadyAndBuildIndexes, 100);
+        this.#db.whenReady().then(() => {
+            this.actions.buildIndexes();
+        }).catch((error) => {
+            console.error('Failed to build database indexes:', error.message ?? error);
+        });
 
         //Database optimization cron function
         const optimizerTask = () => {

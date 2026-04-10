@@ -44,27 +44,6 @@ export default function LiveConsoleOptionsDropdown({ options, onOptionsChange }:
     };
 
     const saveAndUpdate = (newOpts: LiveConsoleOptions) => {
-        try {
-            //Save timestamp setting
-            if (newOpts.timestampDisabled) {
-                localStorage.setItem('liveConsoleTimestamp', 'off');
-            } else if (newOpts.timestampForceHour12 === true) {
-                localStorage.setItem('liveConsoleTimestamp', '12h');
-            } else if (newOpts.timestampForceHour12 === false) {
-                localStorage.setItem('liveConsoleTimestamp', '24h');
-            } else {
-                localStorage.removeItem('liveConsoleTimestamp');
-            }
-
-            //Save copy options
-            const copyParts: string[] = [];
-            if (newOpts.copyTimestamp) copyParts.push('ts');
-            if (newOpts.copyTag) copyParts.push('tag');
-            localStorage.setItem('liveConsoleCopyOpts', copyParts.join(','));
-        } catch (error) {
-            console.warn('Failed to save LiveConsole settings to localStorage:', error);
-        }
-
         onOptionsChange(newOpts);
     };
 

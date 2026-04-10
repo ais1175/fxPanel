@@ -70,7 +70,9 @@ function getEjsOptions(filePath: string) {
 const templateCache = new Map();
 const RESOURCE_PATH = 'nui://monitor/web/public/';
 
-const legacyNavigateHtmlTemplate = `<style>
+const legacyNavigateHtml = (nonce?: string) => {
+    const nonceAttr = nonce ? ` nonce="${nonce}"` : '';
+    return `<style${nonceAttr}>
 body {
     margin: 0;
 }
@@ -91,7 +93,7 @@ body {
     <p class="notice">
         Redirecting to <a href="{{href}}" target="_parent">{{href}}</a>...
     </p>
-<script>
+<script${nonceAttr}>
     // Notify parent window that auth failed
     window.parent.postMessage({ type: 'navigateToPage', href: '{{href}}'});
     // If parent redirect didn't work, redirect here
@@ -99,6 +101,7 @@ body {
         window.parent.location.href = '{{href}}';
     }, 2000);
 </script>`;
+};
 
 /**
  * Loads re-usable base templates
@@ -209,7 +212,7 @@ export default async function ctxUtilsMw(ctx: CtxWithVars, next: Next) {
     //Legacy page util to navigate parent (react) to some page
     //NOTE: in use by deployer/stepper.js and setup/get.js
     const legacyNavigateToPage = (href: string) => {
-        ctx.body = legacyNavigateHtmlTemplate.replace(/{{href}}/g, href);
+        ctx.body = legacyNavigateHtml(ctx.state.cspNonce).replace(/{{href}}/g, href);
         ctx.type = 'text/html';
     };
 
