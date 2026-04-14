@@ -19,7 +19,8 @@ import type { GetConfigsResp, PartialTxConfigs, SaveConfigsReq, SaveConfigsResp 
 
 import SettingsTab from './SettingsTab';
 import ConfigCardBans from './tabCards/bans';
-import ConfigCardDiscord from './tabCards/discord';
+import ConfigCardDiscordBot from './tabCards/discord';
+import ConfigCardDiscordOAuth from './tabCards/discordOAuth';
 import ConfigCardFxserver from './tabCards/fxserver';
 import ConfigCardGameMenu from './tabCards/gameMenu';
 import ConfigCardGameNotifications from './tabCards/gameNotifications';
@@ -41,7 +42,13 @@ const settingsTabsBase = [
     { name: 'FXServer', Component: ConfigCardFxserver },
     { name: 'Bans', Component: ConfigCardBans },
     { name: 'Whitelist', Component: ConfigCardWhitelist },
-    { name: 'Discord', Component: ConfigCardDiscord },
+    {
+        name: 'Discord',
+        cards: [
+            { name: 'Bot', Component: ConfigCardDiscordBot },
+            { name: 'OAuth', Component: ConfigCardDiscordOAuth },
+        ],
+    },
     {
         name: 'Game',
         cards: [
@@ -123,6 +130,21 @@ export default function SettingsPage() {
         return settingsTabs.find((tab) => tab.ctx.tabId === pageHash)?.ctx.tabId ?? settingsTabs[0].ctx.tabId;
     });
 
+    // Listen for hash changes (e.g. from addon warning bar)
+    useEffect(() => {
+        const onHashChange = () => {
+            const hash = window.location.hash.slice(1);
+            if (hash === 'addons' || hash.startsWith('addon-')) {
+                setTab(hash);
+            } else {
+                const match = settingsTabs.find((t) => t.ctx.tabId === hash);
+                if (match) setTab(match.ctx.tabId);
+            }
+        };
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+    }, []);
+
     //Warn on navigate-away with unsaved changes
     useEffect(() => {
         if (!cardPendingSave) return;
@@ -176,7 +198,7 @@ export default function SettingsPage() {
             const saveResp = await saveApi({
                 pathParams: { card: source.cardId },
                 data: { resetKeys, changes },
-                timeout: source.cardId === 'discord' ? ApiTimeout.REALLY_REALLY_LONG : ApiTimeout.LONG,
+                timeout: source.cardId === 'discord-bot' ? ApiTimeout.REALLY_REALLY_LONG : ApiTimeout.LONG,
                 toastId,
             });
             if (!saveResp) throw new Error('empty_response');

@@ -47,7 +47,8 @@ const cardNamesMap = {
     fxserver: 'FXServer',
     bans: 'Bans',
     whitelist: 'Whitelist',
-    discord: 'Discord',
+    'discord-bot': 'Discord Bot',
+    'discord-oauth': 'Discord OAuth',
     'game-menu': 'Game Menu',
     'game-notifications': 'Game Notifications',
     'game-reports': 'Game Reports',
@@ -112,7 +113,7 @@ export default async function SaveSettingsConfigs(ctx: AuthedCtx) {
             handlerResp = await handleGeneralCard(inputConfig, sendTypedResp);
         } else if (cardId === 'fxserver') {
             handlerResp = await handleFxserverCard(inputConfig, sendTypedResp);
-        } else if (cardId === 'discord') {
+        } else if (cardId === 'discord-bot') {
             handlerResp = await handleDiscordCard(inputConfig, sendTypedResp);
         }
     } catch (error) {

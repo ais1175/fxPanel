@@ -6,6 +6,7 @@ import { ServerSidebar } from './ServerSidebar/ServerSidebar';
 import { PlayerlistSidebar } from './PlayerlistSidebar/PlayerlistSidebar';
 import MainSheets from './mainSheets';
 import WarningBar from './WarningBar';
+import AddonWarningBar from './AddonWarningBar';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PromptDialog from '@/components/PromptDialog';
 import TxToaster from '@/components/txToaster';
@@ -104,6 +105,7 @@ export default function MainShell() {
 
                 <MainSheets />
                 <WarningBar />
+                <AddonWarningBar />
                 <ConfirmDialog />
                 <PromptDialog />
                 <TxToaster />

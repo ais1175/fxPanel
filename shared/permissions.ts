@@ -3,7 +3,7 @@
  * Used by both the backend (AdminStore) and the panel UI.
  */
 
-export type PermCategoryId = 'system' | 'server' | 'ingame' | 'players';
+export type PermCategoryId = 'system' | 'server' | 'ingame' | 'players' | 'addons';
 
 export type PermissionDefinition = {
     id: string;
@@ -13,6 +13,8 @@ export type PermissionDefinition = {
     dangerous?: boolean;
     /** If this perm was split from an old combined perm, list the old id here for migration */
     migratedFrom?: string;
+    /** The addon ID that registered this permission (only for addon-registered perms) */
+    addonId?: string;
 };
 
 export type PermCategory = {
@@ -25,6 +27,7 @@ export const permCategories: PermCategory[] = [
     { id: 'server', label: 'Server' },
     { id: 'ingame', label: 'In-Game Menu' },
     { id: 'players', label: 'Player Management' },
+    { id: 'addons', label: 'Addons' },
 ];
 
 /**

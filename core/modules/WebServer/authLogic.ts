@@ -51,6 +51,15 @@ const validCfxreSessAuthSchema = z.object({
 });
 export type CfxreSessAuthType = z.infer<typeof validCfxreSessAuthSchema>;
 
+const validDiscordSessAuthSchema = z.object({
+    type: z.literal('discord'),
+    username: z.string(),
+    csrfToken: z.string(),
+    expiresAt: z.number(),
+    identifier: z.string(),
+});
+export type DiscordSessAuthType = z.infer<typeof validDiscordSessAuthSchema>;
+
 // 2FA pending session — password verified, awaiting TOTP code
 const validPending2faSessSchema = z.object({
     type: z.literal('pending_2fa'),
@@ -59,7 +68,7 @@ const validPending2faSessSchema = z.object({
 });
 export type Pending2faSessAuthType = z.infer<typeof validPending2faSessSchema>;
 
-const validSessAuthSchema = z.discriminatedUnion('type', [validPassSessAuthSchema, validCfxreSessAuthSchema]);
+const validSessAuthSchema = z.discriminatedUnion('type', [validPassSessAuthSchema, validCfxreSessAuthSchema, validDiscordSessAuthSchema]);
 
 /**
  * Autentication logic used in both websocket and webserver, for both web and nui requests.
@@ -116,6 +125,14 @@ export const normalAuthLogic = (sessTools: SessToolsType): AuthLogicReturnType =
                 storedAdmin.providers.citizenfx.identifier !== sessAuth.identifier
             ) {
                 return failResp(`Cfxre identifier doesn't match for '${sessAuth.username}'.`);
+            }
+            return successResp(storedAdmin, sessAuth.csrfToken);
+        } else if (sessAuth.type === 'discord') {
+            if (
+                typeof storedAdmin.providers.discord !== 'object' ||
+                storedAdmin.providers.discord.identifier !== sessAuth.identifier
+            ) {
+                return failResp(`Discord identifier doesn't match for '${sessAuth.username}'.`);
             }
             return successResp(storedAdmin, sessAuth.csrfToken);
         } else {

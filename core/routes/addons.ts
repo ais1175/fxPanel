@@ -163,6 +163,64 @@ export async function addonsProxy(ctx: AuthedCtx) {
 }
 
 /**
+ * ALL /site/:addonId/*
+ * Proxy public (unauthenticated) HTTP requests to addon child processes.
+ */
+export async function addonsPublicProxy(ctx: InitializedCtx) {
+    const { addonId } = ctx.params;
+    if (!addonId || typeof addonId !== 'string') {
+        ctx.status = 400;
+        return ctx.send({ error: 'Invalid addon ID.' });
+    }
+
+    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(addonId)) {
+        ctx.status = 400;
+        return ctx.send({ error: 'Invalid addon ID format.' });
+    }
+
+    const addonManager = txCore.addonManager;
+
+    // Check addon has publicRoutes enabled
+    if (!addonManager.hasPublicRoutes(addonId)) {
+        ctx.status = 403;
+        return ctx.send({ error: 'Addon does not support public routes.' });
+    }
+
+    const addonProcess = addonManager.getProcess(addonId);
+    if (!addonProcess) {
+        ctx.status = 503;
+        return ctx.send({ error: 'Addon is not running.' });
+    }
+
+    const fullPath = ctx.path;
+    const prefix = `/site/${addonId}`;
+    const addonPath = fullPath.slice(prefix.length) || '/';
+
+    try {
+        const result = await addonProcess.handlePublicRequest({
+            method: ctx.method,
+            path: addonPath,
+            headers: ctx.headers as Record<string, string>,
+            body: ctx.request.body,
+        });
+
+        ctx.status = result.status;
+        if (result.headers) {
+            for (const [key, value] of Object.entries(result.headers)) {
+                const lowerKey = key.toLowerCase();
+                if (lowerKey === 'set-cookie' || lowerKey === 'content-security-policy') continue;
+                ctx.set(key, value);
+            }
+        }
+        ctx.body = result.body;
+    } catch (error) {
+        console.error(`Public proxy error for ${addonId}: ${(error as Error).message}`);
+        ctx.status = 504;
+        ctx.body = { error: 'Addon request timed out.' };
+    }
+}
+
+/**
  * GET /addons/:addonId/panel/*
  * Serve addon panel static files.
  */
@@ -240,4 +298,92 @@ export async function addonsServeStaticFile(ctx: InitializedCtx) {
     ctx.type = MIME_TYPES[ext] || 'application/octet-stream';
     ctx.set('Cache-Control', 'public, max-age=300');
     ctx.body = fs.createReadStream(resolved);
+}
+
+/**
+ * POST /api/addons/:addonId/reload
+ * Hot-reload a single addon (stop, re-read manifest, restart).
+ */
+export async function addonsReload(ctx: AuthedCtx) {
+    if (!ctx.admin.testPermission('all_permissions', modulename)) {
+        return ctx.send({ error: 'Insufficient permissions.' });
+    }
+
+    const { addonId } = ctx.params;
+    if (!addonId || typeof addonId !== 'string') {
+        return ctx.send({ error: 'Invalid addon ID.' });
+    }
+
+    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(addonId)) {
+        return ctx.send({ error: 'Invalid addon ID format.' });
+    }
+
+    const result = await txCore.addonManager.reloadAddon(addonId);
+    return ctx.send(result);
+}
+
+/**
+ * POST /api/addons/:addonId/stop
+ * Stop a running addon without revoking approval.
+ */
+export async function addonsStop(ctx: AuthedCtx) {
+    if (!ctx.admin.testPermission('all_permissions', modulename)) {
+        return ctx.send({ error: 'Insufficient permissions.' });
+    }
+
+    const { addonId } = ctx.params;
+    if (!addonId || typeof addonId !== 'string') {
+        return ctx.send({ error: 'Invalid addon ID.' });
+    }
+
+    const result = await txCore.addonManager.stopAddon(addonId);
+    return ctx.send(result);
+}
+
+/**
+ * POST /api/addons/:addonId/start
+ * Start a stopped/approved addon.
+ */
+export async function addonsStart(ctx: AuthedCtx) {
+    if (!ctx.admin.testPermission('all_permissions', modulename)) {
+        return ctx.send({ error: 'Insufficient permissions.' });
+    }
+
+    const { addonId } = ctx.params;
+    if (!addonId || typeof addonId !== 'string') {
+        return ctx.send({ error: 'Invalid addon ID.' });
+    }
+
+    const result = await txCore.addonManager.startAddon(addonId);
+    return ctx.send(result);
+}
+
+/**
+ * POST /api/addons/reload-all
+ * Hot-reload all addons.
+ */
+export async function addonsReloadAll(ctx: AuthedCtx) {
+    if (!ctx.admin.testPermission('all_permissions', modulename)) {
+        return ctx.send({ error: 'Insufficient permissions.' });
+    }
+
+    const result = await txCore.addonManager.reloadAllAddons();
+    return ctx.send(result);
+}
+
+/**
+ * GET /api/addons/:addonId/logs
+ * Get addon log entries.
+ */
+export async function addonsLogs(ctx: AuthedCtx) {
+    if (!ctx.admin.testPermission('all_permissions', modulename)) {
+        return ctx.send({ error: 'Insufficient permissions.' });
+    }
+
+    const { addonId } = ctx.params;
+    if (!addonId || typeof addonId !== 'string') {
+        return ctx.send({ error: 'Invalid addon ID.' });
+    }
+
+    return ctx.send({ logs: txCore.addonManager.getAddonLogs(addonId) });
 }

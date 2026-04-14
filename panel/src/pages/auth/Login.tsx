@@ -129,6 +129,25 @@ export default function Login() {
         }
     };
 
+    const handleDiscordRedirect = async () => {
+        try {
+            setIsFetching(true);
+            const data = await fetchWithTimeout<ApiOauthRedirectResp>(
+                `/auth/discord/redirect?origin=${encodeURIComponent(window.location.origin)}`,
+            );
+            if ('error' in data) {
+                onErrorResponse(data.error);
+                setIsFetching(false);
+            } else {
+                console.log('Redirecting to', data.authUrl);
+                window.location.href = data.authUrl;
+            }
+        } catch (error) {
+            onError(error);
+            setIsFetching(false);
+        }
+    };
+
     //Prefill username/password if dev pass enabled
     useEffect(() => {
         try {
@@ -236,6 +255,21 @@ export default function Login() {
                     )}{' '}
                     Login with Cfx.re
                 </Button>
+                {window.txConsts.discordOAuthEnabled && (
+                    <Button
+                        className="border-none bg-[#5865F2] text-white hover:bg-[#4752C4]"
+                        variant="outline"
+                        disabled={isFetching}
+                        onClick={handleDiscordRedirect}
+                    >
+                        {isFetching ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <LogInIcon className="mr-2 inline h-4 w-4" />
+                        )}{' '}
+                        Login with Discord
+                    </Button>
+                )}
             </CardContent>
         </form>
     );

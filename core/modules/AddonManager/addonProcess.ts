@@ -27,10 +27,22 @@ interface PendingRequest {
 /**
  * Manages a single addon's child process lifecycle and IPC communication.
  */
+export interface AddonLogEntry {
+    timestamp: number;
+    level: 'info' | 'warn' | 'error';
+    message: string;
+}
+
+const MAX_LOG_ENTRIES = 200;
+
 export default class AddonProcess {
     public readonly addonId: string;
     public state: AddonState = 'discovered';
     public routes: AddonRouteDescriptor[] = [];
+    public readonly logs: AddonLogEntry[] = [];
+    public startedAt: number | null = null;
+    public startupDurationMs: number | null = null;
+    public crashCount = 0;
 
     private child: ChildProcess | null = null;
     private readonly entryPath: string;
@@ -39,6 +51,7 @@ export default class AddonProcess {
     private readonly storage: AddonStorageScope;
     private readonly pendingRequests = new Map<string, PendingRequest>();
     private readonly onWsPush: (addonId: string, event: string, data: unknown) => void;
+    private readonly onCrash: ((addonId: string) => void) | undefined;
     private readonly logPrefix: string;
 
     constructor(opts: {
@@ -48,6 +61,7 @@ export default class AddonProcess {
         permissions: string[];
         storage: AddonStorageScope;
         onWsPush: (addonId: string, event: string, data: unknown) => void;
+        onCrash?: (addonId: string) => void;
     }) {
         this.addonId = opts.addonId;
         this.entryPath = opts.entryPath;
@@ -55,6 +69,7 @@ export default class AddonProcess {
         this.permissions = opts.permissions;
         this.storage = opts.storage;
         this.onWsPush = opts.onWsPush;
+        this.onCrash = opts.onCrash;
         this.logPrefix = `[addon:${opts.addonId}]`;
     }
 
@@ -63,6 +78,7 @@ export default class AddonProcess {
      */
     async start(timeoutMs: number): Promise<{ success: boolean; error?: string }> {
         this.state = 'starting';
+        const startTime = performance.now();
 
         // Resolve entry path relative to addon dir
         const resolvedEntry = path.resolve(this.addonDir, this.entryPath);
@@ -106,6 +122,8 @@ export default class AddonProcess {
                 if (this.state === 'running') {
                     console.error(`${this.logPrefix} Process crashed (code=${code}, signal=${signal})`);
                     this.state = 'crashed';
+                    this.crashCount++;
+                    this.onCrash?.(this.addonId);
                 } else if (this.state !== 'stopped' && this.state !== 'stopping') {
                     this.state = 'failed';
                 }
@@ -138,6 +156,8 @@ export default class AddonProcess {
             }
 
             this.state = 'running';
+            this.startedAt = Date.now();
+            this.startupDurationMs = performance.now() - startTime;
             return { success: true };
         } catch (error) {
             this.state = 'failed';
@@ -203,6 +223,34 @@ export default class AddonProcess {
     }
 
     /**
+     * Send a public (unauthenticated) HTTP request to the addon and wait for the response.
+     */
+    async handlePublicRequest(opts: {
+        method: string;
+        path: string;
+        headers: Record<string, string>;
+        body: unknown;
+    }): Promise<{ status: number; headers?: Record<string, string>; body: unknown }> {
+        if (this.state !== 'running') {
+            return { status: 503, body: { error: 'Addon is not running' } };
+        }
+
+        const id = randomUUID();
+
+        const response = await this.sendRequest<{ status: number; headers?: Record<string, string>; body: unknown }>(
+            {
+                type: 'public-request',
+                id,
+                payload: opts,
+            },
+            id,
+            IPC_TIMEOUT_MS,
+        );
+
+        return response;
+    }
+
+    /**
      * Send an event to the addon (fire-and-forget).
      */
     sendEvent(event: string, data: unknown): void {
@@ -217,11 +265,22 @@ export default class AddonProcess {
      * Graceful shutdown.
      */
     async stop(): Promise<void> {
-        if (!this.child || this.state === 'stopped' || this.state === 'stopping') return;
+        if (this.state === 'stopped' || this.state === 'stopping') return;
         this.state = 'stopping';
 
+        // If child is already dead, just clean up state
+        if (!this.child) {
+            this.state = 'stopped';
+            this.rejectAllPending(new Error('Addon process already exited'));
+            return;
+        }
+
         // Send shutdown signal
-        this.send({ type: 'shutdown', payload: {} });
+        try {
+            this.send({ type: 'shutdown', payload: {} });
+        } catch {
+            // IPC channel may already be closed if the process crashed
+        }
 
         // Wait for graceful exit
         await new Promise<void>((resolve) => {
@@ -307,6 +366,8 @@ export default class AddonProcess {
                 const { level, message } = msg.payload as { level: 'info' | 'warn' | 'error'; message: string };
                 const truncatedMsg = message.length > 2000 ? message.slice(0, 2000) + '...' : message;
                 console[level](`${this.logPrefix} ${truncatedMsg}`);
+                this.logs.push({ timestamp: Date.now(), level, message: truncatedMsg });
+                if (this.logs.length > MAX_LOG_ENTRIES) this.logs.shift();
                 break;
             }
             case 'api-call': {

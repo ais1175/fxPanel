@@ -40,6 +40,7 @@ const sendStatsToFxApi = async () => {
         timestamp: Date.now(),
         server: {
             os: process.platform,
+            name: txConfig.general.serverName,
             playerSlots: maxClients ?? 0,
             currentPlayers: playerCount,
         },

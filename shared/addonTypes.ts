@@ -51,11 +51,21 @@ export const AddonManifestSchema = z.object({
         maxVersion: z.string().optional(),
     }),
 
+    // Addon dependencies (other addon IDs that must be running)
+    dependencies: z.array(z.string().regex(addonIdRegex)).default([]),
+
     // Permissions
     permissions: z.object({
         required: z.array(z.string()).default([]),
         optional: z.array(z.string()).default([]),
     }),
+
+    // Custom admin permissions this addon registers
+    adminPermissions: z.array(z.object({
+        id: z.string().min(1).max(64).regex(/^[a-z][a-z0-9._-]*$/, 'Permission ID must be lowercase alphanumeric with dots, hyphens, or underscores'),
+        label: z.string().min(1).max(64),
+        description: z.string().max(256),
+    })).default([]),
 
     // Entry points
     server: z.object({
@@ -67,6 +77,7 @@ export const AddonManifestSchema = z.object({
         styles: z.string().optional(),
         pages: z.array(AddonPageSchema).default([]),
         widgets: z.array(AddonWidgetSchema).default([]),
+        settingsComponent: z.string().optional(),
     }).optional(),
 
     nui: z.object({
@@ -78,6 +89,12 @@ export const AddonManifestSchema = z.object({
     resource: z.object({
         server_scripts: z.array(z.string()).default([]),
         client_scripts: z.array(z.string()).default([]),
+    }).optional(),
+
+    // Public route support (unauthenticated HTTP)
+    publicRoutes: z.boolean().default(false),
+    publicServer: z.object({
+        defaultPort: z.number().int().min(1).max(65535),
     }).optional(),
 });
 
@@ -138,6 +155,7 @@ export const AddonConfigSchema = z.object({
     maxAddons: z.number().int().min(1).max(100).default(20),
     maxStorageMb: z.number().min(1).max(100).default(10),
     processTimeoutMs: z.number().int().min(1000).max(60000).default(10000),
+    publicServerPort: z.number().int().min(0).max(65535).default(0),
     approved: z.record(z.string(), AddonApprovalSchema).default({}),
     disabled: z.array(z.string()).default([]),
 });
@@ -166,6 +184,7 @@ export type CoreToAddonMessage =
     | { type: 'init'; payload: { addonId: string; permissions: string[] } }
     | { type: 'shutdown'; payload: Record<string, never> }
     | { type: 'http-request'; id: string; payload: { method: string; path: string; headers: Record<string, string>; body: unknown; admin: { name: string; permissions: string[] } } }
+    | { type: 'public-request'; id: string; payload: { method: string; path: string; headers: Record<string, string>; body: unknown } }
     | { type: 'event'; payload: { event: string; data: unknown } }
     | { type: 'storage-response'; id: string; payload: { data: unknown; error?: string } }
     | { type: 'api-call-response'; id: string; payload: { data: unknown; error?: string } }
@@ -174,7 +193,7 @@ export type CoreToAddonMessage =
 
 // Addon → Core messages
 export type AddonToCoreMessage =
-    | { type: 'ready'; payload: { routes: AddonRouteDescriptor[] } }
+    | { type: 'ready'; payload: { routes: AddonRouteDescriptor[]; publicRoutes?: AddonRouteDescriptor[] } }
     | { type: 'http-response'; id: string; payload: { status: number; headers?: Record<string, string>; body: unknown } }
     | { type: 'storage-request'; id: string; payload: { op: 'get' | 'set' | 'delete' | 'list'; key?: string; value?: unknown } }
     | { type: 'api-call'; id: string; payload: { method: string; args: unknown[] } }
@@ -194,6 +213,7 @@ export interface AddonPanelDescriptor {
     stylesUrl: string | null;
     pages: z.infer<typeof AddonPageSchema>[];
     widgets: z.infer<typeof AddonWidgetSchema>[];
+    settingsComponent: string | null;
 }
 
 export interface AddonNuiDescriptor {
@@ -212,6 +232,12 @@ export interface AddonListItem {
     version: string;
     author: string;
     state: AddonState;
+    /** True when the addon was previously approved but now requires new permissions. */
+    needsReapproval: boolean;
+    /** True when the addon exports a settings component. */
+    hasSettings: boolean;
+    /** Other addon IDs this addon depends on. */
+    dependencies: string[];
     permissions: {
         required: string[];
         optional: string[];

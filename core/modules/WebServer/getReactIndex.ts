@@ -127,6 +127,10 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
         },
         hideFxsUpdateNotification: txConfig.general.hideFxsUpdateNotification,
         allowSelfIdentifierEdit: txConfig.general.allowSelfIdentifierEdit,
+        discordOAuthEnabled: !!(txConfig.discordBot.oauthClientId && txConfig.discordBot.oauthClientSecret),
+
+        //addon permissions
+        addonPermissions: txCore.adminStore.getAddonPermissions(),
 
         //auth
         preAuth: authedAdmin && authedAdmin.getAuthData(),

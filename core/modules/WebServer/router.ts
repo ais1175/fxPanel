@@ -106,6 +106,8 @@ export default () => {
     router.post('/auth/addMaster/save', authLimiter, routes.auth_addMasterSave);
     router.get('/auth/discourse/redirect', authLimiter, wrapRoute('DiscourseRedirect', routes.auth_discourseRedirect));
     router.post('/auth/discourse/callback', authLimiter, routes.auth_discourseCallback);
+    router.get('/auth/discord/redirect', authLimiter, wrapRoute('DiscordRedirect', routes.auth_discordRedirect));
+    router.post('/auth/discord/callback', authLimiter, routes.auth_discordCallback);
     router.post('/auth/changePassword', apiAuthMw, routes.auth_changePassword);
     router.get('/auth/getIdentifiers', apiAuthMw, wrapRoute('GetIdentifiers', routes.auth_getIdentifiers));
     router.post('/auth/changeIdentifiers', apiAuthMw, routes.auth_changeIdentifiers);
@@ -236,11 +238,18 @@ export default () => {
     router.get('/addons/nui-manifest', apiAuthMw, routes.addons_nuiManifest);
     router.post('/addons/:addonId/approve', apiAuthMw, mutationLimiter, routes.addons_approve);
     router.post('/addons/:addonId/revoke', apiAuthMw, mutationLimiter, routes.addons_revoke);
+    router.post('/addons/:addonId/reload', apiAuthMw, mutationLimiter, routes.addons_reload);
+    router.post('/addons/:addonId/stop', apiAuthMw, mutationLimiter, routes.addons_stop);
+    router.post('/addons/:addonId/start', apiAuthMw, mutationLimiter, routes.addons_start);
+    router.post('/addons/reload-all', apiAuthMw, mutationLimiter, routes.addons_reloadAll);
+    router.get('/addons/:addonId/logs', apiAuthMw, readLimiter, routes.addons_logs);
     router.all('/addons/:addonId/api/(.*)', apiAuthMw, readLimiter, routes.addons_proxy);
     //Addon static file serving (panel bundles, NUI bundles & static assets)
     router.get('/addons/:addonId/panel/(.*)', routes.addons_servePanelFile);
     router.get('/nui/addons/:addonId/(.*)', routes.addons_serveNuiFile);
     router.get('/addons/:addonId/static/(.*)', routes.addons_serveStaticFile);
+    //Addon public routes (unauthenticated, for addons with publicRoutes enabled)
+    router.all('/site/:addonId/(.*)', readLimiter, routes.addons_publicProxy);
 
     //Host routes
     router.get('/host/status', hostAuthMw, routes.host_status);

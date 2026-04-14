@@ -106,7 +106,7 @@ export const useHudListenersService = () => {
             persist: true,
             anchorOrigin: {
                 horizontal: 'center',
-                vertical: 'top',
+                vertical: 'bottom',
             },
         });
         alertMap.set(key, snackbarItem);

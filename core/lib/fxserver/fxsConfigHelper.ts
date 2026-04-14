@@ -390,13 +390,13 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
             continue;
         }
 
-        //Check for start/stop/ensure txAdmin/txAdminClient/monitor
+        //Check for start/stop/ensure fxPanel/fxPanelClient/monitor
         if (
             ['start', 'stop', 'ensure'].includes(cmd.command) &&
             cmd.args.length >= 1 &&
-            ['txadmin', 'txadminclient', 'monitor'].includes(cmd.args[0].toLowerCase())
+            ['fxpanel', 'fxpanelclient', 'monitor'].includes(cmd.args[0].toLowerCase())
         ) {
-            toCommentOut.add(cmd.file, cmd.line, 'you MUST NOT start/stop/ensure txadmin resources.');
+            toCommentOut.add(cmd.file, cmd.line, 'you MUST NOT start/stop/ensure fxPanel resources.');
             continue;
         }
 
@@ -432,20 +432,20 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
 
         //Comment out any onesync sets
         if (cmd.isConvarSetterFor('onesync')) {
-            toCommentOut.add(cmd.file, cmd.line, 'onesync MUST only be set in the txAdmin settings page.');
+            toCommentOut.add(cmd.file, cmd.line, 'onesync MUST only be set in the fx settings page.');
             continue;
         }
 
-        //Comment out any txAdmin-managed convar sets
+        //Comment out any fxPanel-managed convar sets
         if (
             ['set', 'sets', 'setr'].includes(cmd.command) &&
             cmd.args.length === 2 &&
-            cmd.args[0].toLowerCase().startsWith('txadmin')
+            cmd.args[0].toLowerCase().startsWith('fxpanel')
         ) {
             toCommentOut.add(
                 cmd.file,
                 cmd.line,
-                `'${cmd.args[0]}' is managed by txAdmin and MUST NOT be set in the server config.`,
+                `'${cmd.args[0]}' is managed by fxPanel and MUST NOT be set in the server config.`,
             );
             continue;
         }
@@ -503,7 +503,7 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
                 errors.add(
                     cmd.file,
                     cmd.line,
-                    `the \`${cmd.command}\` port \`${port}\` is dedicated for txAdmin and CAN NOT be used for FXServer.`,
+                    `the \`${cmd.command}\` port \`${port}\` is dedicated for fxPanel and CAN NOT be used for FXServer.`,
                 );
                 continue;
             }
@@ -511,7 +511,7 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
                 errors.add(
                     cmd.file,
                     cmd.line,
-                    `the \`${cmd.command}\` port \`${port}\` is being used by txAdmin and CAN NOT be used for FXServer at the same time.`,
+                    `the \`${cmd.command}\` port \`${port}\` is being used by fxPanel and CAN NOT be used for FXServer at the same time.`,
                 );
                 continue;
             }
@@ -619,7 +619,7 @@ export const validateFixServerConfig = async (cfgPath: string, serverDataPath: s
                 if (typeof cfgLines[ln - 1] !== 'string') {
                     throw new Error(`Line ${ln} not found.`);
                 }
-                cfgLines[ln - 1] = `## [txAdmin CFG validator]: ${reason}${fileEOL}# ${cfgLines[ln - 1]}`;
+                cfgLines[ln - 1] = `## [fxPanel CFG validator]: ${reason}${fileEOL}# ${cfgLines[ln - 1]}`;
                 warnings.add(targetCfgPath, ln, `Commented out: ${reason}`);
             }
 

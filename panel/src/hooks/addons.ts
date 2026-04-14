@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import React from 'react';
 import { useAuthedFetcher } from '@/hooks/fetch';
-import { useCsrfToken } from '@/hooks/auth';
+import { useCsrfToken, useAdminPerms } from '@/hooks/auth';
 import type { AddonPanelDescriptor } from '@shared/addonTypes';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '@/lib/utils';
@@ -13,6 +13,7 @@ export interface AddonPanelModule {
     /** Maps component names to React components */
     pages?: Record<string, React.ComponentType<any>>;
     widgets?: Record<string, React.ComponentType<any>>;
+    settings?: React.ComponentType<any>;
 }
 
 /**
@@ -119,9 +120,6 @@ export function useAddonLoader() {
 
                 for (const descriptor of resp.addons) {
                     try {
-                        // Skip CSS injection — addon stylesheets are injected server-side
-                        // into the HTML <head> so they apply on all pages including auth
-
                         // Dynamically import the addon entry script
                         // The entry URL is served by the core at /addons/:id/panel/index.js
                         const mod = await import(/* @vite-ignore */ descriptor.entryUrl);
@@ -131,6 +129,9 @@ export function useAddonLoader() {
                             module: {
                                 pages: mod.pages ?? {},
                                 widgets: mod.widgets ?? {},
+                                settings: descriptor.settingsComponent
+                                    ? (mod.widgets?.[descriptor.settingsComponent] ?? mod.pages?.[descriptor.settingsComponent] ?? mod[descriptor.settingsComponent])
+                                    : undefined,
                             },
                         });
                     } catch (err) {
@@ -203,19 +204,30 @@ export function useAddonLoader() {
 }
 
 /**
- * Get widgets for a specific slot.
+ * Get widgets for a specific slot (filtered by permission).
  */
 export function useAddonWidgets(slot: string): AddonWidgetEntry[] {
     const { widgets } = useAddonLoader();
-    return widgets.filter(w => w.slot === slot);
+    const { hasPerm } = useAdminPerms();
+    return widgets.filter(w => w.slot === slot && (!w.permission || hasPerm(w.permission)));
 }
 
 /**
- * Get widgets matching a slot prefix (e.g. 'settings.tab.' matches 'settings.tab.discord').
+ * Get widgets matching a slot prefix (filtered by permission).
  */
 export function useAddonWidgetsByPrefix(prefix: string): AddonWidgetEntry[] {
     const { widgets } = useAddonLoader();
-    return widgets.filter(w => w.slot.startsWith(prefix));
+    const { hasPerm } = useAdminPerms();
+    return widgets.filter(w => w.slot.startsWith(prefix) && (!w.permission || hasPerm(w.permission)));
+}
+
+/**
+ * Get the settings component for a specific addon, if it has one.
+ */
+export function useAddonSettings(addonId: string): React.ComponentType<any> | undefined {
+    const { addons } = useAddonLoader();
+    const addon = addons.find(a => a.descriptor.id === addonId);
+    return addon?.module.settings;
 }
 
 /**

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { SearchIcon } from 'lucide-react';
-import { permissionsByCategory, type PermissionDefinition } from '@shared/permissions';
+import { permissionsByCategory, permCategories, type PermissionDefinition } from '@shared/permissions';
 import { cn } from '@/lib/utils';
 
 type PermissionsEditorProps = {
@@ -41,7 +41,27 @@ export default function PermissionsEditor({ selected, onChange, disabled }: Perm
         }
     };
 
-    const filteredCategories = permissionsByCategory
+    // Merge static permissions with dynamic addon permissions from txConsts
+    const allCategories = useMemo(() => {
+        const addonPerms: PermissionDefinition[] = window.txConsts?.addonPermissions ?? [];
+        if (addonPerms.length === 0) return permissionsByCategory;
+
+        // Start with the built-in categories (which won't have addon perms)
+        const result = permissionsByCategory.map((cat) => ({ ...cat, permissions: [...cat.permissions] }));
+
+        // Find or create the addons category
+        let addonsCat = result.find((c) => c.id === 'addons');
+        if (!addonsCat) {
+            const catDef = permCategories.find((c) => c.id === 'addons');
+            addonsCat = { id: 'addons' as const, label: catDef?.label ?? 'Addons', permissions: [] };
+            result.push(addonsCat);
+        }
+        addonsCat.permissions.push(...addonPerms);
+
+        return result;
+    }, []);
+
+    const filteredCategories = allCategories
         .map((cat) => ({
             ...cat,
             permissions: cat.permissions.filter(

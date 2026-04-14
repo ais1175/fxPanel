@@ -92,7 +92,7 @@ export default function EmbedEditorPage() {
                 },
             };
             const resp = await saveApi({
-                pathParams: { card: 'discord' },
+                pathParams: { card: 'discord-bot' },
                 data: { resetKeys: [], changes },
                 timeout: ApiTimeout.LONG,
                 toastId,
@@ -138,7 +138,7 @@ export default function EmbedEditorPage() {
                             The server status embed is customizable by editing the JSON below. <br />
                             You can use the placeholders to include dynamic server information in the embed. <br />
                             For information refer to{' '}
-                            <TxAnchor href="https://fxpanel.org/docs/v0.1.1-Beta/discord">
+                            <TxAnchor href="https://fxpanel.org/docs/v0.2.1-Beta/discord">
                                 our docs
                             </TxAnchor>
                             .

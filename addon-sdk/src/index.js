@@ -18,6 +18,7 @@ export function createAddon() {
     let permissions = [];
     let isReady = false;
     const routes = [];
+    const publicRoutes = [];
     const eventHandlers = new Map();
     const pendingStorage = new Map();
     const pendingApiCalls = new Map();
@@ -55,6 +56,14 @@ export function createAddon() {
         list(prefix) {
             return storageRequest('list', prefix);
         },
+        async has(key) {
+            const value = await storageRequest('get', key);
+            return value != null;
+        },
+        async getOr(key, defaultValue) {
+            const value = await storageRequest('get', key);
+            return value ?? defaultValue;
+        },
     };
 
     function storageRequest(op, key, value) {
@@ -79,11 +88,18 @@ export function createAddon() {
     // Route Registration
     // ============================================
     const routeHandlers = new Map();
+    const publicRouteHandlers = new Map();
 
     function registerRoute(method, path, handler) {
         const key = `${method.toUpperCase()}:${path}`;
         routeHandlers.set(key, { method: method.toUpperCase(), path, handler });
         routes.push({ method: method.toUpperCase(), path });
+    }
+
+    function registerPublicRoute(method, path, handler) {
+        const key = `${method.toUpperCase()}:${path}`;
+        publicRouteHandlers.set(key, { method: method.toUpperCase(), path, handler });
+        publicRoutes.push({ method: method.toUpperCase(), path });
     }
 
     // ============================================
@@ -114,6 +130,18 @@ export function createAddon() {
             eventHandlers.set(event, []);
         }
         eventHandlers.get(event).push(handler);
+    }
+
+    function off(event, handler) {
+        const handlers = eventHandlers.get(event);
+        if (!handlers) return;
+        if (handler) {
+            const idx = handlers.indexOf(handler);
+            if (idx !== -1) handlers.splice(idx, 1);
+            if (handlers.length === 0) eventHandlers.delete(event);
+        } else {
+            eventHandlers.delete(event);
+        }
     }
 
     // ============================================
@@ -163,7 +191,10 @@ export function createAddon() {
         isReady = true;
         send({
             type: 'ready',
-            payload: { routes },
+            payload: {
+                routes,
+                publicRoutes: publicRoutes.length > 0 ? publicRoutes : undefined,
+            },
         });
     }
 
@@ -226,6 +257,72 @@ export function createAddon() {
                             isMaster: !!admin.isMaster,
                             hasPermission: (perm) => !!admin.isMaster || admin.permissions.includes('all_permissions') || admin.permissions.includes(perm),
                         },
+                    };
+
+                    const result = await matchedHandler(req);
+
+                    send({
+                        type: 'http-response',
+                        id: msg.id,
+                        payload: {
+                            status: result.status || 200,
+                            headers: result.headers || {},
+                            body: result.body ?? null,
+                        },
+                    });
+                } catch (error) {
+                    send({
+                        type: 'http-response',
+                        id: msg.id,
+                        payload: {
+                            status: 500,
+                            body: { error: 'Internal addon error' },
+                        },
+                    });
+                    send({
+                        type: 'error',
+                        payload: {
+                            message: error.message || 'Unknown error',
+                            stack: error.stack,
+                        },
+                    });
+                }
+                break;
+            }
+
+            case 'public-request': {
+                const { method, path: reqPath, headers, body } = msg.payload;
+
+                let matchedHandler = null;
+                let params = {};
+
+                for (const [key, route] of publicRouteHandlers) {
+                    if (route.method !== method.toUpperCase() && route.method !== 'ALL') continue;
+                    const match = matchPath(route.path, reqPath);
+                    if (match) {
+                        matchedHandler = route.handler;
+                        params = match.params;
+                        break;
+                    }
+                }
+
+                if (!matchedHandler) {
+                    send({
+                        type: 'http-response',
+                        id: msg.id,
+                        payload: { status: 404, body: { error: 'Route not found' } },
+                    });
+                    return;
+                }
+
+                try {
+                    const req = {
+                        method,
+                        path: reqPath,
+                        headers,
+                        body: body || {},
+                        params,
+                        admin: null,
                     };
 
                     const result = await matchedHandler(req);
@@ -341,34 +438,44 @@ export function createAddon() {
 
     return {
         id: addonId,
+        get permissions() { return [...permissions]; },
         storage,
         players,
         registerRoute,
+        registerPublicRoute,
         ws,
         on,
+        off,
         log,
         ready,
     };
 }
 
 /**
- * Simple path matching with express-like params.
+ * Simple path matching with express-like params and wildcard support.
  * Matches "/notes/:playerId" against "/notes/abc123".
+ * Matches "/pages/*" against "/pages/foo/bar/baz" (catch-all).
  */
 function matchPath(pattern, actual) {
     const patternParts = pattern.split('/').filter(Boolean);
     const actualParts = actual.split('/').filter(Boolean);
 
-    if (patternParts.length !== actualParts.length) return null;
-
     const params = {};
     for (let i = 0; i < patternParts.length; i++) {
+        if (patternParts[i] === '*') {
+            // Wildcard catch-all — matches all remaining segments
+            params['*'] = actualParts.slice(i).map(decodeURIComponent).join('/');
+            return { params };
+        }
+        if (i >= actualParts.length) return null;
         if (patternParts[i].startsWith(':')) {
             params[patternParts[i].slice(1)] = decodeURIComponent(actualParts[i]);
         } else if (patternParts[i] !== actualParts[i]) {
             return null;
         }
     }
+
+    if (patternParts.length !== actualParts.length) return null;
 
     return { params };
 }

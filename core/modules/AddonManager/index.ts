@@ -6,8 +6,12 @@ import semver from 'semver';
 
 import consoleFactory from '@lib/console';
 import { txEnv } from '@core/globalData';
+import { SYM_SYSTEM_AUTHOR } from '@lib/symbols';
 import AddonStorage from './addonStorage';
 import AddonProcess from './addonProcess';
+import AddonFileWatcher from './addonFileWatcher';
+import AddonPublicServer from './addonPublicServer';
+import { topologicalSort as topoSort, getMissingDependencies as getMissingDeps } from './addonUtils';
 import {
     AddonManifestSchema,
     AddonConfigSchema,
@@ -47,6 +51,9 @@ export default class AddonManager {
     private readonly storage: AddonStorage;
     private readonly addonsDir: string;
     private readonly configPath: string;
+    private fileWatcher: AddonFileWatcher | null = null;
+    private publicServer: AddonPublicServer | null = null;
+    private readonly crashRestartTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor() {
         // Resolve paths
@@ -120,10 +127,34 @@ export default class AddonManager {
         // 3. Start addon processes
         await this.startProcesses();
 
-        // 4. Register panel/NUI extensions (done passively via getters)
+        // 4. Start file watcher for hot-reload
+        this.fileWatcher = new AddonFileWatcher(this.addonsDir, (dirName, nuiOnly) => {
+            const addonId = this.resolveAddonIdFromDir(dirName);
+            if (nuiOnly) {
+                // Only NUI/panel static files changed — no need to restart addon process
+                const addon = addonId ? this.addons.get(addonId) : undefined;
+                if (addon?.state === 'running' && addon.manifest.nui) {
+                    console.log(`NUI-only change in addon "${addonId}", refreshing monitor resource...`);
+                    this.ensureMonitorResource();
+                    this.broadcastReloadEvent(addonId!, 'reloaded');
+                }
+                return;
+            }
+            // For full reloads, use the addon ID if known, otherwise pass the dir name
+            // so reloadAddon can discover the addon from the directory
+            const reloadId = addonId ?? dirName;
+            this.reloadAddon(reloadId).catch((err) => {
+                console.error(`Hot-reload failed for ${reloadId}: ${(err as Error).message}`);
+            });
+        });
+
+        // 5. Register panel/NUI extensions (done passively via getters)
         const running = [...this.addons.values()].filter(a => a.state === 'running').length;
         const total = this.addons.size;
         console.log(`Addon system ready: ${running}/${total} addons running`);
+
+        // 6. Start public server if any addon has publicRoutes
+        await this.maybeStartPublicServer();
     }
 
     /**
@@ -164,9 +195,9 @@ export default class AddonManager {
                 const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
                 const manifest = AddonManifestSchema.parse(raw);
 
-                // Verify ID matches directory name
-                if (manifest.id !== entry) {
-                    console.warn(`Addon ${entry}: manifest id "${manifest.id}" does not match directory name, skipping`);
+                // Check for duplicate IDs (different folder, same manifest ID)
+                if (this.addons.has(manifest.id)) {
+                    console.warn(`Addon ${entry}: duplicate manifest id "${manifest.id}" (already loaded from another folder), skipping`);
                     continue;
                 }
 
@@ -299,14 +330,25 @@ export default class AddonManager {
 
     /**
      * Step 3: Start all approved addons that have server entries.
+     * Addons are started in dependency order — dependencies first.
      */
     private async startProcesses(): Promise<void> {
         const approvedAddons = [...this.addons.values()].filter(a => a.state === 'approved');
+        const sorted = this.topologicalSort(approvedAddons);
 
-        for (const addon of approvedAddons) {
+        for (const addon of sorted) {
+            // Check dependencies are running
+            const missingDeps = this.getMissingDependencies(addon);
+            if (missingDeps.length > 0) {
+                addon.state = 'failed';
+                console.error(`Addon ${addon.manifest.id}: missing dependencies: ${missingDeps.join(', ')}`);
+                continue;
+            }
+
             if (!addon.manifest.server) {
                 // No server process needed — just mark as running
                 addon.state = 'running';
+                this.registerAddonPerms(addon);
                 continue;
             }
 
@@ -317,11 +359,13 @@ export default class AddonManager {
                 permissions: addon.grantedPermissions,
                 storage: this.storage.getScope(addon.manifest.id),
                 onWsPush: this.handleWsPush.bind(this),
+                onCrash: this.handleAddonCrash.bind(this),
             });
 
             const result = await addon.process.start(this.config.processTimeoutMs);
             if (result.success) {
                 addon.state = 'running';
+                this.registerAddonPerms(addon);
                 console.log(`Addon ${addon.manifest.id}: process started successfully`);
             } else {
                 addon.state = 'failed';
@@ -329,6 +373,49 @@ export default class AddonManager {
                 console.error(`Addon ${addon.manifest.id}: failed to start — ${result.error}`);
             }
         }
+    }
+
+    /**
+     * Handle addon crash — schedule restart with exponential backoff.
+     * Delays: 5s, 15s, 45s; gives up after 3 attempts.
+     */
+    private handleAddonCrash(addonId: string): void {
+        const addon = this.addons.get(addonId);
+        if (!addon?.process) return;
+
+        const attempts = addon.process.crashCount;
+        const MAX_CRASH_RESTARTS = 3;
+        if (attempts > MAX_CRASH_RESTARTS) {
+            console.error(`Addon ${addonId}: exceeded ${MAX_CRASH_RESTARTS} crash restarts, giving up`);
+            return;
+        }
+
+        const delayMs = 5_000 * Math.pow(3, attempts - 1); // 5s, 15s, 45s
+        console.warn(`Addon ${addonId}: scheduling restart attempt ${attempts}/${MAX_CRASH_RESTARTS} in ${delayMs / 1000}s`);
+
+        // Clear any existing restart timer for this addon
+        const existing = this.crashRestartTimers.get(addonId);
+        if (existing) clearTimeout(existing);
+
+        const timer = setTimeout(async () => {
+            this.crashRestartTimers.delete(addonId);
+            const current = this.addons.get(addonId);
+            if (!current || current.state !== 'crashed') return;
+
+            console.log(`Addon ${addonId}: attempting crash restart (attempt ${attempts}/${MAX_CRASH_RESTARTS})`);
+            try {
+                const result = await this.reloadAddon(addonId);
+                if (result.success) {
+                    console.log(`Addon ${addonId}: crash restart succeeded`);
+                } else {
+                    console.error(`Addon ${addonId}: crash restart failed: ${result.error}`);
+                }
+            } catch (error) {
+                console.error(`Addon ${addonId}: crash restart threw: ${(error as Error).message}`);
+            }
+        }, delayMs);
+
+        this.crashRestartTimers.set(addonId, timer);
     }
 
     /**
@@ -372,12 +459,31 @@ export default class AddonManager {
             version: addon.manifest.version,
             author: addon.manifest.author,
             state: addon.state,
+            needsReapproval: addon.state === 'discovered' && !!this.config.approved[addon.manifest.id],
+            hasSettings: !!addon.manifest.panel?.settingsComponent,
+            dependencies: addon.manifest.dependencies,
             permissions: {
                 required: addon.manifest.permissions.required,
                 optional: addon.manifest.permissions.optional,
                 granted: addon.grantedPermissions,
             },
         }));
+    }
+
+    /**
+     * Get the number of addons awaiting approval or re-approval.
+     */
+    getPendingApprovalCount(): number {
+        return [...this.addons.values()].filter(a => a.state === 'discovered').length;
+    }
+
+    /**
+     * Get log entries for a specific addon.
+     */
+    getAddonLogs(addonId: string): import('./addonProcess').AddonLogEntry[] {
+        const addon = this.addons.get(addonId);
+        if (!addon?.process) return [];
+        return [...addon.process.logs];
     }
 
     /**
@@ -398,6 +504,7 @@ export default class AddonManager {
                     : null,
                 pages: addon.manifest.panel.pages,
                 widgets: addon.manifest.panel.widgets,
+                settingsComponent: addon.manifest.panel.settingsComponent ?? null,
             });
         }
         return result;
@@ -440,9 +547,18 @@ export default class AddonManager {
     }
 
     /**
-     * Approve an addon with specific permissions.
+     * Check if an addon has publicRoutes enabled in its manifest.
      */
-    approveAddon(addonId: string, grantedPermissions: string[], approvedBy: string): { success: boolean; error?: string } {
+    hasPublicRoutes(addonId: string): boolean {
+        const addon = this.addons.get(addonId);
+        return !!addon && addon.state === 'running' && addon.manifest.publicRoutes === true;
+    }
+
+    /**
+     * Approve an addon with specific permissions.
+     * Saves config then triggers a reload to start the addon immediately.
+     */
+    async approveAddon(addonId: string, grantedPermissions: string[], approvedBy: string): Promise<{ success: boolean; error?: string }> {
         const addon = this.addons.get(addonId);
         if (!addon) return { success: false, error: 'Addon not found' };
 
@@ -468,18 +584,37 @@ export default class AddonManager {
         this.config.disabled = this.config.disabled.filter(id => id !== addonId);
 
         this.saveConfig(this.config);
-        return { success: true };
+
+        // Hot-reload to start the addon immediately
+        return this.reloadAddon(addonId);
     }
 
     /**
      * Revoke addon approval.
+     * Stops the addon process then removes approval from config.
      */
-    revokeAddon(addonId: string): { success: boolean; error?: string } {
+    async revokeAddon(addonId: string): Promise<{ success: boolean; error?: string }> {
         const addon = this.addons.get(addonId);
         if (!addon) return { success: false, error: 'Addon not found' };
 
+        // Stop the process if running
+        if (addon.process && (addon.state === 'running' || addon.state === 'starting')) {
+            try {
+                await addon.process.stop();
+            } catch (err) {
+                console.warn(`Failed to stop addon ${addonId} during revoke: ${(err as Error).message}`);
+            }
+            addon.process = null;
+        }
+        addon.state = 'discovered';
+        addon.grantedPermissions = [];
+
+        txCore.adminStore.unregisterAddonPermissions(addonId);
+        await this.maybeStopPublicServer();
+
         delete this.config.approved[addonId];
         this.saveConfig(this.config);
+        this.broadcastReloadEvent(addonId, 'reloaded');
         return { success: true };
     }
 
@@ -498,6 +633,110 @@ export default class AddonManager {
 
         this.saveConfig(this.config);
         return { success: true };
+    }
+
+    /**
+     * Stop a running addon's process without revoking approval.
+     */
+    async stopAddon(addonId: string): Promise<{ success: boolean; error?: string }> {
+        const addon = this.addons.get(addonId);
+        if (!addon) return { success: false, error: 'Addon not found' };
+
+        if (addon.state !== 'running' && addon.state !== 'starting') {
+            return { success: false, error: `Addon is not running (state: ${addon.state})` };
+        }
+
+        // Cancel any pending crash-restart timer
+        const crashTimer = this.crashRestartTimers.get(addonId);
+        if (crashTimer) {
+            clearTimeout(crashTimer);
+            this.crashRestartTimers.delete(addonId);
+        }
+
+        if (addon.process) {
+            try {
+                await addon.process.stop();
+            } catch (err) {
+                console.warn(`Error stopping addon ${addonId}: ${(err as Error).message}`);
+            }
+            addon.process = null;
+        }
+
+        addon.state = 'stopped';
+        this.setAddonDisabled(addonId, true);
+        txCore.adminStore.unregisterAddonPermissions(addonId);
+        await this.maybeStopPublicServer();
+        this.broadcastReloadEvent(addonId, 'reloaded');
+        console.log(`Addon ${addonId} stopped`);
+        return { success: true };
+    }
+
+    /**
+     * Start a stopped/approved addon.
+     */
+    async startAddon(addonId: string): Promise<{ success: boolean; error?: string }> {
+        const addon = this.addons.get(addonId);
+        if (!addon) return { success: false, error: 'Addon not found' };
+
+        if (addon.state === 'running' || addon.state === 'starting') {
+            return { success: false, error: 'Addon is already running' };
+        }
+
+        // Must be approved
+        const approval = this.config.approved[addonId];
+        if (!approval) {
+            return { success: false, error: 'Addon is not approved' };
+        }
+
+        // Remove from disabled list
+        this.setAddonDisabled(addonId, false);
+
+        // Check dependencies
+        const missingDeps = this.getMissingDependencies(addon);
+        if (missingDeps.length > 0) {
+            addon.state = 'failed';
+            const msg = `Missing dependencies: ${missingDeps.join(', ')}`;
+            console.error(`Addon ${addonId}: ${msg}`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: false, error: msg };
+        }
+
+        // No server entry — just mark running
+        if (!addon.manifest.server) {
+            addon.state = 'running';
+            addon.grantedPermissions = approval.granted;
+            this.registerAddonPerms(addon);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            console.log(`Addon ${addonId} started (no server process)`);
+            return { success: true };
+        }
+
+        addon.grantedPermissions = approval.granted;
+        addon.process = new AddonProcess({
+            addonId: addon.manifest.id,
+            entryPath: addon.manifest.server.entry,
+            addonDir: addon.dir,
+            permissions: addon.grantedPermissions,
+            storage: this.storage.getScope(addon.manifest.id),
+            onWsPush: this.handleWsPush.bind(this),
+            onCrash: this.handleAddonCrash.bind(this),
+        });
+
+        const result = await addon.process.start(this.config.processTimeoutMs);
+        if (result.success) {
+            addon.state = 'running';
+            this.registerAddonPerms(addon);
+            await this.maybeStartPublicServer();
+            console.log(`Addon ${addonId} started`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: true };
+        } else {
+            addon.state = 'failed';
+            addon.process = null;
+            console.error(`Addon ${addonId} failed to start: ${result.error}`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: false, error: result.error };
+        }
     }
 
     /**
@@ -550,6 +789,399 @@ export default class AddonManager {
     }
 
     //============================================
+    // Hot-Reload
+    //============================================
+
+    /**
+     * Check which dependencies of an addon are not in 'running' state.
+     */
+    private getMissingDependencies(addon: AddonDescriptor): string[] {
+        const runningIds = new Set<string>();
+        for (const [id, a] of this.addons) {
+            if (a.state === 'running') runningIds.add(id);
+        }
+        return getMissingDeps(addon.manifest.dependencies, runningIds);
+    }
+
+    /**
+     * Topological sort of addons by dependencies (dependencies come first).
+     * Addons with circular or unresolvable dependencies are placed at the end.
+     */
+    private topologicalSort(addons: AddonDescriptor[]): AddonDescriptor[] {
+        return topoSort(addons.map(a => ({ ...a, id: a.manifest.id, dependencies: a.manifest.dependencies })))
+            .map(n => addons.find(a => a.manifest.id === n.id)!);
+    }
+
+    /**
+     * Register an addon's custom admin permissions with AdminStore.
+     */
+    private registerAddonPerms(addon: AddonDescriptor): void {
+        if (addon.manifest.adminPermissions.length > 0) {
+            txCore.adminStore.registerAddonPermissions(addon.manifest.id, addon.manifest.adminPermissions);
+        }
+    }
+
+    /**
+     * Reload a single addon: stop process → re-read manifest → re-validate → re-start → notify clients.
+     * Returns a result object indicating success or failure.
+     */
+    async reloadAddon(addonId: string, skipEnsure = false): Promise<{ success: boolean; error?: string }> {
+        console.log(`Reloading addon: ${addonId}`);
+
+        // Clear any pending debounce timer to prevent stale reloads
+        this.fileWatcher?.clearPending(addonId);
+
+        // Cancel any pending crash-restart timer
+        const crashTimer = this.crashRestartTimers.get(addonId);
+        if (crashTimer) {
+            clearTimeout(crashTimer);
+            this.crashRestartTimers.delete(addonId);
+        }
+
+        let existing = this.addons.get(addonId);
+
+        // If addonId isn't a known key, it might be a directory name — try to resolve
+        if (!existing) {
+            const resolved = this.resolveAddonIdFromDir(addonId);
+            if (resolved) {
+                existing = this.addons.get(resolved);
+            }
+        }
+
+        // 1. Stop existing process if running
+        if (existing?.process) {
+            try {
+                await existing.process.stop();
+            } catch (err) {
+                console.warn(`Failed to stop addon ${addonId} during reload: ${(err as Error).message}`);
+            }
+            existing.process = null;
+        }
+
+        // Unregister addon permissions (will re-register if start succeeds)
+        txCore.adminStore.unregisterAddonPermissions(addonId);
+
+        // 2. Re-read and validate the manifest
+        const addonDir = existing?.dir ?? path.join(this.addonsDir, addonId);
+        const manifestPath = path.join(addonDir, 'addon.json');
+
+        if (!fs.existsSync(manifestPath)) {
+            // Addon was removed — clean up
+            if (existing) {
+                this.addons.delete(addonId);
+                this.fileWatcher?.removeAddon(addonId);
+                console.log(`Addon ${addonId} removed (addon.json not found)`);
+                this.broadcastReloadEvent(addonId, 'removed');
+            }
+            return { success: true };
+        }
+
+        let manifest: AddonManifest;
+        try {
+            const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            manifest = AddonManifestSchema.parse(raw);
+        } catch (error) {
+            const msg = error instanceof z.ZodError
+                ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
+                : (error as Error).message;
+            console.error(`Addon ${addonId}: invalid manifest on reload — ${msg}`);
+            if (existing) {
+                existing.state = 'invalid';
+                existing.process = null;
+            }
+            return { success: false, error: `Invalid manifest: ${msg}` };
+        }
+
+        // 3. If manifest ID changed (or addonId was a dir name), re-key the map
+        if (manifest.id !== addonId) {
+            if (existing) {
+                this.addons.delete(addonId);
+                console.log(`Addon re-keyed: "${addonId}" → "${manifest.id}"`);
+            }
+            addonId = manifest.id;
+        }
+
+        // 4. Verify version compatibility
+        if (!this.checkVersionCompat(manifest)) {
+            if (existing) existing.state = 'invalid';
+            return { success: false, error: 'Version incompatible' };
+        }
+
+        // 5. Path traversal check on server entry
+        if (manifest.server?.entry) {
+            const resolved = path.resolve(addonDir, manifest.server.entry);
+            if (!resolved.startsWith(path.resolve(addonDir))) {
+                console.warn(`Addon ${addonId}: server entry escapes addon directory on reload`);
+                if (existing) existing.state = 'invalid';
+                return { success: false, error: 'Server entry escapes addon directory' };
+            }
+        }
+
+        // 6. Check disabled
+        if (this.config.disabled.includes(addonId)) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'stopped',
+                process: null,
+                grantedPermissions: existing?.grantedPermissions ?? [],
+            });
+            console.log(`Addon ${addonId} reloaded (disabled)`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: true };
+        }
+
+        // 7. Check approval
+        const approval = this.config.approved[addonId];
+        if (!approval) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'discovered',
+                process: null,
+                grantedPermissions: [],
+            });
+            console.log(`Addon ${addonId} reloaded (pending approval)`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: true };
+        }
+
+        // 8. Check required permissions
+        const missingRequired = manifest.permissions.required.filter(
+            p => !approval.granted.includes(p)
+        );
+        if (missingRequired.length > 0) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'discovered',
+                process: null,
+                grantedPermissions: [],
+            });
+            console.warn(`Addon ${addonId}: missing permissions on reload: ${missingRequired.join(', ')}`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: true };
+        }
+
+        const grantedPermissions = approval.granted;
+
+        // 9. Check dependencies are running
+        const missingDeps = manifest.dependencies.filter(depId => {
+            const dep = this.addons.get(depId);
+            return !dep || dep.state !== 'running';
+        });
+        if (missingDeps.length > 0) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'failed',
+                process: null,
+                grantedPermissions,
+            });
+            const msg = `Missing dependencies: ${missingDeps.join(', ')}`;
+            console.warn(`Addon ${addonId}: ${msg}`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            return { success: false, error: msg };
+        }
+
+        // 10. Start the process (if server entry exists)
+        if (!manifest.server) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'running',
+                process: null,
+                grantedPermissions,
+            });
+            this.registerAddonPerms(this.addons.get(addonId)!);
+            console.log(`Addon ${addonId} reloaded (no server process)`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            if (!skipEnsure && manifest.nui) this.ensureMonitorResource();
+            return { success: true };
+        }
+
+        const addonProcess = new AddonProcess({
+            addonId: manifest.id,
+            entryPath: manifest.server.entry,
+            addonDir,
+            permissions: grantedPermissions,
+            storage: this.storage.getScope(manifest.id),
+            onWsPush: this.handleWsPush.bind(this),
+            onCrash: this.handleAddonCrash.bind(this),
+        });
+
+        const result = await addonProcess.start(this.config.processTimeoutMs);
+        if (result.success) {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'running',
+                process: addonProcess,
+                grantedPermissions,
+            });
+            this.registerAddonPerms(this.addons.get(addonId)!);
+            console.log(`Addon ${addonId} reloaded and running`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            await this.maybeStartPublicServer();
+            if (!skipEnsure && manifest.nui) this.ensureMonitorResource();
+            return { success: true };
+        } else {
+            this.addons.set(addonId, {
+                manifest,
+                dir: addonDir,
+                state: 'failed',
+                process: null,
+                grantedPermissions,
+            });
+            console.error(`Addon ${addonId} failed to start on reload: ${result.error}`);
+            this.broadcastReloadEvent(addonId, 'reloaded');
+            await this.maybeStopPublicServer();
+            return { success: false, error: result.error };
+        }
+    }
+
+    /**
+     * Reload all addons. Also picks up newly added addon directories.
+     */
+    async reloadAllAddons(): Promise<{ results: Record<string, { success: boolean; error?: string }> }> {
+        console.log('Reloading all addons...');
+        const results: Record<string, { success: boolean; error?: string }> = {};
+
+        // Get current addon IDs + scan for new directories
+        const knownIds = new Set(this.addons.keys());
+        const dirEntries = fs.existsSync(this.addonsDir)
+            ? fs.readdirSync(this.addonsDir).filter(e =>
+                fs.statSync(path.join(this.addonsDir, e)).isDirectory())
+            : [];
+
+        // For on-disk dirs, resolve to addon ID if already known, otherwise use dir name
+        // so reloadAddon can discover new addons from their directory
+        const onDiskIds = dirEntries.map(dir => this.resolveAddonIdFromDir(dir) ?? dir);
+
+        // Merge known + on-disk
+        const allIds = new Set([...knownIds, ...onDiskIds]);
+
+        for (const addonId of allIds) {
+            results[addonId] = await this.reloadAddon(addonId, true);
+        }
+
+        // If any running addon has NUI content, ensure monitor once to refresh all NUI
+        const hasNuiAddon = [...this.addons.values()].some(
+            a => a.state === 'running' && a.manifest.nui,
+        );
+        if (hasNuiAddon) this.ensureMonitorResource();
+
+        const running = [...this.addons.values()].filter(a => a.state === 'running').length;
+        console.log(`Reload complete: ${running}/${this.addons.size} addons running`);
+        return { results };
+    }
+
+    /**
+     * Ensure (restart) the monitor resource so the NUI browser is recreated
+     * with fresh addon JS/CSS. Players stay connected — only the NUI resets.
+     */
+    private ensureMonitorResource(): void {
+        try {
+            const setCmdResult = txCore.fxRunner.sendCommand(
+                'set',
+                ['txAdmin-luaComToken', txCore.webServer.luaComToken],
+                SYM_SYSTEM_AUTHOR,
+            );
+            if (!setCmdResult) {
+                console.warn('Failed to reset luaComToken before ensure monitor');
+                return;
+            }
+            const ok = txCore.fxRunner.sendCommand('ensure', ['monitor'], SYM_SYSTEM_AUTHOR);
+            if (ok) {
+                console.log('Ensured monitor resource for NUI addon reload');
+            } else {
+                console.warn('Failed to ensure monitor resource (server might not be running)');
+            }
+        } catch (err) {
+            console.warn(`ensure monitor failed: ${(err as Error).message}`);
+        }
+    }
+
+    /**
+     * Broadcast an addon reload event to all connected panel/NUI clients.
+     */
+    private broadcastReloadEvent(addonId: string, action: 'reloaded' | 'removed'): void {
+        try {
+            txCore.webServer.webSocket.pushEvent('addonReloaded', { addonId, action });
+        } catch {
+            // WebSocket might not be initialized yet during early boot
+        }
+    }
+
+    /**
+     * Resolve a directory name (from file watcher) to the addon ID in our Map.
+     * Returns the addon ID if found, or null if no addon is loaded from that directory.
+     */
+    private resolveAddonIdFromDir(dirName: string): string | null {
+        const dirPath = path.resolve(this.addonsDir, dirName);
+        for (const [id, addon] of this.addons) {
+            if (path.resolve(addon.dir) === dirPath) return id;
+        }
+        return null;
+    }
+
+    //============================================
+    // Public Server Lifecycle
+    //============================================
+
+    /**
+     * Start the public server if any running addon has publicRoutes and a port is configured.
+     * Resolves the port from the first addon's publicServer.defaultPort or config.publicServerPort.
+     */
+    private async maybeStartPublicServer(): Promise<void> {
+        if (this.publicServer?.isListening) return;
+
+        // Find first addon with publicRoutes enabled
+        const publicAddon = [...this.addons.values()].find(
+            a => a.state === 'running' && a.manifest.publicRoutes === true,
+        );
+        if (!publicAddon) return;
+
+        // Determine port: config override > manifest default
+        let port = this.config.publicServerPort;
+        if (!port && publicAddon.manifest.publicServer?.defaultPort) {
+            port = publicAddon.manifest.publicServer.defaultPort;
+        }
+        if (!port) {
+            console.warn('Addon has publicRoutes but no port configured (set publicServerPort in addon config)');
+            return;
+        }
+
+        this.publicServer = new AddonPublicServer(
+            port,
+            publicAddon.manifest.id,
+            (addonId) => this.getProcess(addonId),
+        );
+
+        try {
+            await this.publicServer.start();
+        } catch (err) {
+            console.error(`Failed to start public server: ${(err as Error).message}`);
+            this.publicServer = null;
+        }
+    }
+
+    /**
+     * Stop the public server if no remaining addons need it.
+     */
+    private async maybeStopPublicServer(): Promise<void> {
+        if (!this.publicServer?.isListening) return;
+
+        const hasPublicAddon = [...this.addons.values()].some(
+            a => a.state === 'running' && a.manifest.publicRoutes === true,
+        );
+        if (hasPublicAddon) return;
+
+        await this.publicServer.stop();
+        this.publicServer = null;
+    }
+
+    //============================================
     // Shutdown
     //============================================
 
@@ -558,6 +1190,24 @@ export default class AddonManager {
      */
     async handleShutdown(): Promise<void> {
         console.log('Shutting down addon system...');
+
+        // Clear all crash-restart timers
+        for (const timer of this.crashRestartTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.crashRestartTimers.clear();
+
+        // Close file watcher
+        if (this.fileWatcher) {
+            this.fileWatcher.close();
+            this.fileWatcher = null;
+        }
+
+        // Stop public server
+        if (this.publicServer) {
+            await this.publicServer.stop();
+            this.publicServer = null;
+        }
 
         // Stop all addon processes
         const stopPromises: Promise<void>[] = [];

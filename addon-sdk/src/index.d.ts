@@ -23,11 +23,26 @@ export interface AddonResponse {
 
 export type RouteHandler = (req: AddonRequest) => Promise<AddonResponse> | AddonResponse;
 
+export interface PublicAddonRequest {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    body: unknown;
+    params: Record<string, string>;
+    admin: null;
+}
+
+export type PublicRouteHandler = (req: PublicAddonRequest) => Promise<AddonResponse> | AddonResponse;
+
 export interface AddonStorage {
     get(key: string): Promise<unknown>;
     set(key: string, value: unknown): Promise<boolean>;
     delete(key: string): Promise<boolean>;
     list(prefix?: string): Promise<string[]>;
+    /** Check whether a key exists in storage. */
+    has(key: string): Promise<boolean>;
+    /** Get a value or return the default if the key doesn't exist. */
+    getOr<T = unknown>(key: string, defaultValue: T): Promise<T>;
 }
 
 export interface AddonPlayers {
@@ -49,11 +64,16 @@ export interface AddonLog {
 
 export interface Addon {
     readonly id: string;
+    /** The permissions granted to this addon by the admin. */
+    readonly permissions: string[];
     storage: AddonStorage;
     players: AddonPlayers;
     registerRoute(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, handler: RouteHandler): void;
+    registerPublicRoute(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'ALL', path: string, handler: PublicRouteHandler): void;
     ws: AddonWebSocket;
     on(event: string, handler: (data: unknown) => void | Promise<void>): void;
+    /** Remove an event handler. If no handler is given, removes all handlers for the event. */
+    off(event: string, handler?: (data: unknown) => void | Promise<void>): void;
     log: AddonLog;
     ready(): void;
 }

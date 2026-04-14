@@ -21,7 +21,7 @@ const totpAdmin = new StoredAdmin({
 });
 
 vi.stubGlobal('txEnv', {
-    txaVersion: '0.1.0',
+    txaVersion: '0.2.1-Beta',
 });
 
 vi.stubGlobal('txCore', {
