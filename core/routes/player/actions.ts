@@ -110,14 +110,16 @@ async function handleWarning(ctx: AuthedCtx, player: PlayerClass): Promise<Gener
     ctx.admin.logAction(`Warned player "${player.displayName}": ${reason}`);
 
     // Dispatch `txAdmin:events:playerWarned`
-    const eventSent = txCore.fxRunner.sendEvent('playerWarned', {
+    const warnEventData = {
         author: ctx.admin.name,
         reason,
         actionId,
         targetNetId: player instanceof ServerPlayer && player.isConnected ? player.netid : null,
         targetIds: allIds,
         targetName: player.displayName,
-    });
+    };
+    const eventSent = txCore.fxRunner.sendEvent('playerWarned', warnEventData);
+    txCore.addonManager?.broadcastEvent('playerWarned', warnEventData);
 
     if (eventSent) {
         return { success: true };
@@ -195,7 +197,7 @@ async function handleBan(ctx: AuthedCtx, player: PlayerClass): Promise<GenericAp
     }
 
     // Dispatch `txAdmin:events:playerBanned`
-    const eventSent = txCore.fxRunner.sendEvent('playerBanned', {
+    const banEventData = {
         author: ctx.admin.name,
         reason,
         actionId,
@@ -207,7 +209,9 @@ async function handleBan(ctx: AuthedCtx, player: PlayerClass): Promise<GenericAp
         targetHwids: player.hwids,
         targetName: player.displayName,
         kickMessage,
-    });
+    };
+    const eventSent = txCore.fxRunner.sendEvent('playerBanned', banEventData);
+    txCore.addonManager?.broadcastEvent('playerBanned', banEventData);
 
     if (eventSent) {
         return { success: true };
@@ -363,12 +367,14 @@ async function handleKick(ctx: AuthedCtx, player: PlayerClass): Promise<GenericA
         const dropMessage = txCore.translator.t('kick_messages.player', { reason: kickReason });
 
         // Dispatch `txAdmin:events:playerKicked`
-        txCore.fxRunner.sendEvent('playerKicked', {
+        const kickEventData = {
             target: player.netid,
             author: ctx.admin.name,
             reason: kickReason,
             dropMessage,
-        });
+        };
+        txCore.fxRunner.sendEvent('playerKicked', kickEventData);
+        txCore.addonManager?.broadcastEvent('playerKicked', kickEventData);
 
         return { success: true };
     } catch (error) {

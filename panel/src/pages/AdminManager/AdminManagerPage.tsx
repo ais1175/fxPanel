@@ -1,6 +1,6 @@
 import { useAdminPerms } from '@/hooks/auth';
 import { useBackendApi } from '@/hooks/fetch';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { Loader2Icon, PlusIcon, ShieldIcon, UsersIcon, CheckSquareIcon } from 'lucide-react';
 import {
@@ -27,7 +27,7 @@ import { PermissionPreset } from '@shared/permissions';
 import { useOpenConfirmDialog } from '@/hooks/dialogs';
 import { Button } from '@/components/ui/button';
 import { txToast } from '@/components/txToaster';
-import AdminEditDialog from './AdminEditDialog';
+import AdminEditDialog, { type AdminAutofillData } from './AdminEditDialog';
 import AdminListCard from './AdminListCard';
 import PresetsTab from './PresetsTab';
 import PermissionsEditor from './PermissionsEditor';
@@ -39,6 +39,7 @@ export default function AdminManagerPage() {
 
     const [activeTab, setActiveTab] = useState('admins');
     const [editTarget, setEditTarget] = useState<AdminListItem | 'new' | null>(null);
+    const [autofillData, setAutofillData] = useState<AdminAutofillData | undefined>();
     const [resetPasswordResult, setResetPasswordResult] = useState<{ name: string; password: string } | null>(null);
     const [selectMode, setSelectMode] = useState(false);
     const [selectedAdmins, setSelectedAdmins] = useState<Set<string>>(new Set());
@@ -46,6 +47,24 @@ export default function AdminManagerPage() {
     const [showBulkPermDialog, setShowBulkPermDialog] = useState(false);
     const [bulkPermissions, setBulkPermissions] = useState<string[]>([]);
     const openConfirmDialog = useOpenConfirmDialog();
+
+    // Auto-open add dialog when navigated with autofill params (from "Give Admin" button)
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('autofill') === 'true') {
+            const data: AdminAutofillData = {
+                name: params.get('name') ?? '',
+                citizenfxId: params.get('citizenfx') ?? '',
+                discordId: (params.get('discord') ?? '').replace('discord:', ''),
+            };
+            setAutofillData(data);
+            setEditTarget('new');
+            // Clean up URL params
+            const url = new URL(window.location.href);
+            url.search = '';
+            window.history.replaceState({}, '', url.toString());
+        }
+    }, []);
 
     // ── Admin list ──
     const listApi = useBackendApi<ApiGetAdminListResp>({
@@ -325,9 +344,14 @@ export default function AdminManagerPage() {
                 <AdminEditDialog
                     target={editTarget}
                     allPresets={allPresets}
-                    onClose={() => setEditTarget(null)}
+                    initialData={editTarget === 'new' ? autofillData : undefined}
+                    onClose={() => {
+                        setEditTarget(null);
+                        setAutofillData(undefined);
+                    }}
                     onSaved={() => {
                         setEditTarget(null);
+                        setAutofillData(undefined);
                         adminsSwr.mutate();
                     }}
                 />

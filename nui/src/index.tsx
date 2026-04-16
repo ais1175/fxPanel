@@ -13,6 +13,7 @@ import styled from '@emotion/styled';
 import rawMenuTheme from './styles/theme';
 import rawMenuRedmTheme from './styles/theme-redm';
 import { useIsRedm } from './state/isRedm.state';
+import { useNuiAddonLoader } from './hooks/useNuiAddonLoader';
 
 registerDebugFunctions();
 
@@ -69,6 +70,9 @@ const App = () => {
     // in index.html (before React loads), mirroring the fivem-watch approach.
     // The React hook acts as a fallback in case the inline script didn't load.
     useGameCapture();
+
+    // Load NUI addons (styles + scripts) from the addon manifest
+    useNuiAddonLoader();
 
     return (
         <StyledEngineProvider injectFirst>

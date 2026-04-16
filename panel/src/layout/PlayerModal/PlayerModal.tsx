@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { setPlayerModalUrlParam, usePlayerModalStateValue } from '@/hooks/playerModal';
-import { InfoIcon, ListIcon, HistoryIcon, GavelIcon, SearchIcon, ActivityIcon } from 'lucide-react';
+import { InfoIcon, ListIcon, HistoryIcon, GavelIcon, SearchIcon, ActivityIcon, BlocksIcon } from 'lucide-react';
 import PlayerInfoTab from './PlayerInfoTab';
 import PlayerInsightsTab from './PlayerInsightsTab';
 import { useEffect, useState } from 'react';
@@ -16,6 +16,8 @@ import { useBackendApi } from '@/hooks/fetch';
 import { PlayerModalResp, PlayerModalSuccess } from '@shared/playerApiTypes';
 import PlayerModalFooter from './PlayerModalFooter';
 import ModalCentralMessage from '@/components/ModalCentralMessage';
+import { useAddonWidgets } from '@/hooks/addons';
+import { ErrorBoundary } from 'react-error-boundary';
 
 const modalTabs = [
     {
@@ -52,6 +54,8 @@ export default function PlayerModal() {
     const [modalData, setModalData] = useState<PlayerModalSuccess | undefined>(undefined);
     const [modalError, setModalError] = useState('');
     const [tsFetch, setTsFetch] = useState(0);
+    const addonTabs = useAddonWidgets('player-modal.tabs');
+    const addonActions = useAddonWidgets('player-modal.actions');
     const playerQueryApi = useBackendApi<PlayerModalResp>({
         method: 'GET',
         path: `/player`,
@@ -175,10 +179,28 @@ export default function PlayerModal() {
                                 {tab.icon} {tab.title}
                             </Button>
                         ))}
+                        {addonTabs.length > 0 && (
+                            <>
+                                <hr className="my-1 hidden border-border md:block" />
+                                {addonTabs.map((w) => (
+                                    <Button
+                                        key={`addon-${w.addonId}-${w.title}`}
+                                        variant={selectedTab === `addon:${w.addonId}:${w.title}` ? 'secondary' : 'ghost'}
+                                        className={cn(
+                                            'w-full justify-center tracking-wider md:justify-start',
+                                            'h-7 rounded-sm px-2 text-sm',
+                                            'md:h-10 md:text-base',
+                                        )}
+                                        onClick={() => setSelectedTab(`addon:${w.addonId}:${w.title}`)}
+                                    >
+                                        <BlocksIcon className="xs:block mr-2 hidden h-5 w-5" /> {w.title}
+                                    </Button>
+                                ))}
+                            </>
+                        )}
                     </div>
                     {/* NOTE: consistent height: sm:h-66 */}
-                    {/* FIXME: the number below is based off mobile screen sizes, and should be h-full while the modal content controls the actual height  */}
-                    <ScrollArea className="max-h-[calc(100vh-3.125rem-4rem-5rem)] min-h-66 w-full px-4 py-2 md:max-h-[50vh] md:py-0">
+                    <ScrollArea className="max-h-[calc(100dvh-3.125rem-4rem-5rem)] min-h-66 w-full px-4 py-2 md:max-h-[50vh] md:py-0">
                         {!modalData ? (
                             <ModalCentralMessage>
                                 {modalError ? (
@@ -217,11 +239,23 @@ export default function PlayerModal() {
                                     <PlayerIdsTab player={modalData.player} refreshModalData={refreshModalData} />
                                 )}
                                 {selectedTab === 'Ban' && <PlayerBanTab playerRef={playerRef!} />}
+                                {addonTabs.map((w) => (
+                                    selectedTab === `addon:${w.addonId}:${w.title}` && (
+                                        <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="p-4 text-sm text-destructive">Addon tab error: {w.title}</div>}>
+                                            <w.Component
+                                                license={modalData.player.license}
+                                                displayName={modalData.player.displayName}
+                                                netid={modalData.player.netid}
+                                                playerRef={playerRef}
+                                            />
+                                        </ErrorBoundary>
+                                    )
+                                ))}
                             </>
                         )}
                     </ScrollArea>
                 </div>
-                <PlayerModalFooter playerRef={playerRef!} player={modalData?.player} />
+                <PlayerModalFooter playerRef={playerRef!} player={modalData?.player} addonActions={addonActions} />
             </DialogContent>
         </Dialog>
     );

@@ -3,7 +3,7 @@
 // HumanizeDuration.js - https://git.io/j0HgmQ
 // NOTE: Changes:
 // - removed all locales except en
-// - added shortEn/shortishEn
+// - added shortishEn/shortestEn
 // - added "as Humanizer" to the default export
 import type { Humanizer } from 'humanize-duration';
 
@@ -35,8 +35,17 @@ var LANGUAGES = {
         },
         decimal: '.',
     },
-    //TODO: rename to shortishEn and shortestEn
-    shortEn: {
+    shortishEn: {
+        y: (c) => 'year' + (c === 1 ? '' : 's'),
+        mo: (c) => 'month' + (c === 1 ? '' : 's'),
+        w: (c) => 'week' + (c === 1 ? '' : 's'),
+        d: (c) => 'day' + (c === 1 ? '' : 's'),
+        h: (c) => 'hr' + (c === 1 ? '' : 's'),
+        m: (c) => 'min' + (c === 1 ? '' : 's'),
+        s: (c) => 'sec' + (c === 1 ? '' : 's'),
+        ms: (c) => 'ms',
+    },
+    shortestEn: {
         y: () => 'y',
         mo: () => 'mo',
         w: () => 'w',
@@ -46,16 +55,6 @@ var LANGUAGES = {
         s: () => 's',
         ms: () => 'ms',
     },
-    // shortishEn: {
-    //   y: (c) => 'year' + (c === 1 ? '' : 's'),
-    //   mo: (c) => 'month' + (c === 1 ? '' : 's'),
-    //   w: (c) => 'week' + (c === 1 ? '' : 's'),
-    //   d: (c) => 'day' + (c === 1 ? '' : 's'),
-    //   h: (c) => 'hr' + (c === 1 ? '' : 's'),
-    //   m: (c) => 'min' + (c === 1 ? '' : 's'),
-    //   s: (c) => 'sec' + (c === 1 ? '' : 's'),
-    //   ms: (c) => 'ms',
-    // }
 };
 
 // You can create a humanizer, which returns a function with default

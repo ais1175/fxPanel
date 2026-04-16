@@ -19,6 +19,7 @@ import Database from '@modules/Database';
 import CacheStore from '@modules/CacheStore';
 import UpdateChecker from '@modules/UpdateChecker';
 import FxUpdater from '@modules/FxUpdater';
+import AddonManager from '@modules/AddonManager';
 const console = consoleFactory();
 
 export type TxCoreType = {
@@ -38,6 +39,7 @@ export type TxCoreType = {
     fxScheduler: FxScheduler;
 
     //Other
+    addonManager: AddonManager;
     discordBot: DiscordBot;
     fxUpdater: FxUpdater;
     translator: Translator;
@@ -106,6 +108,9 @@ export default function bootTxAdmin() {
     _txCore.fxResources = startModule(FxResources);
     _txCore.fxPlayerlist = startModule(FxPlayerlist);
     _txCore.cacheStore = startModule(CacheStore);
+
+    //Addon System
+    _txCore.addonManager = startModule(AddonManager);
 
     //Very Low Priority
     _txCore.updateChecker = startModule(UpdateChecker);

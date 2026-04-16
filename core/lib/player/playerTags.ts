@@ -8,7 +8,7 @@ import type { ServerPlayer, BasePlayer } from './playerClasses';
 export const getTagDefinitions = (): TagDefinition[] => {
     const customMap = new Map<string, TagDefinition>();
     for (const t of txConfig.gameFeatures.customTags ?? []) {
-        customMap.set(t.id, { id: t.id, label: t.label, color: t.color, priority: t.priority });
+        customMap.set(t.id, { id: t.id, label: t.label, color: t.color, priority: t.priority, enabled: t.enabled ?? true });
     }
     const merged: TagDefinition[] = [];
     for (const auto of AUTO_TAG_DEFINITIONS) {
@@ -19,6 +19,20 @@ export const getTagDefinitions = (): TagDefinition[] => {
         merged.push(custom);
     }
     return merged.sort((a, b) => a.priority - b.priority);
+};
+
+/**
+ * Returns the set of enabled auto-tag IDs from the current config.
+ * Auto-tags are enabled by default unless explicitly disabled via customTags config.
+ */
+export const getDisabledAutoTagIds = (): Set<string> => {
+    const disabled = new Set<string>();
+    for (const t of txConfig.gameFeatures.customTags ?? []) {
+        if (AUTO_TAG_DEFINITIONS.some((a) => a.id === t.id) && t.enabled === false) {
+            disabled.add(t.id);
+        }
+    }
+    return disabled;
 };
 
 /**
@@ -34,13 +48,14 @@ export const getValidCustomTagIds = (): Set<string> => {
  */
 export const computePlayerTags = (player: ServerPlayer): PlayerTag[] => {
     const tags: PlayerTag[] = [];
+    const disabledAutoTags = getDisabledAutoTagIds();
     const adminsIdentifiers = txCore.adminStore.getAdminsIdentifiers();
-    if (player.ids.some((id) => adminsIdentifiers.includes(id))) {
+    if (!disabledAutoTags.has('staff') && player.ids.some((id) => adminsIdentifiers.includes(id))) {
         tags.push('staff');
     }
 
     const dbData = player.getDbData();
-    if (dbData) {
+    if (!disabledAutoTags.has('newplayer') && dbData) {
         const threshold = txConfig.gameFeatures.newplayerThreshold;
         if (threshold > 0 && dbData.playTime < threshold) {
             tags.push('newplayer');
@@ -49,7 +64,7 @@ export const computePlayerTags = (player: ServerPlayer): PlayerTag[] => {
 
     const history = player.getHistory();
     const hasActiveSanction = history.some((a) => (a.type === 'ban' || a.type === 'warn') && !a.revocation);
-    if (hasActiveSanction) {
+    if (!disabledAutoTags.has('problematic') && hasActiveSanction) {
         tags.push('problematic');
     }
 
@@ -71,14 +86,15 @@ export const computePlayerTags = (player: ServerPlayer): PlayerTag[] => {
  */
 export const computePlayerTagsGeneric = (player: BasePlayer): PlayerTag[] => {
     const tags: PlayerTag[] = [];
+    const disabledAutoTags = getDisabledAutoTagIds();
     const adminsIdentifiers = txCore.adminStore.getAdminsIdentifiers();
     const allIds = player.getAllIdentifiers();
-    if (allIds.some((id) => adminsIdentifiers.includes(id))) {
+    if (!disabledAutoTags.has('staff') && allIds.some((id) => adminsIdentifiers.includes(id))) {
         tags.push('staff');
     }
 
     const dbData = player.getDbData();
-    if (dbData) {
+    if (!disabledAutoTags.has('newplayer') && dbData) {
         const threshold = txConfig.gameFeatures.newplayerThreshold;
         if (threshold > 0 && dbData.playTime < threshold) {
             tags.push('newplayer');
@@ -87,7 +103,7 @@ export const computePlayerTagsGeneric = (player: BasePlayer): PlayerTag[] => {
 
     const history = player.getHistory();
     const hasActiveSanction = history.some((a) => (a.type === 'ban' || a.type === 'warn') && !a.revocation);
-    if (hasActiveSanction) {
+    if (!disabledAutoTags.has('problematic') && hasActiveSanction) {
         tags.push('problematic');
     }
 

@@ -40,6 +40,7 @@ server_scripts({
     'resource/menu/server/sv_player_modal.lua',
     'resource/menu/server/sv_spectate.lua',
     'resource/menu/server/sv_player_mode.lua',
+    'addons/live-map/resource/sv_positions.lua',
 })
 
 client_scripts({
@@ -75,6 +76,10 @@ files {
     'locale/*.json',
     'nui/*',
     'nui/**/*',
+
+    -- Addon NUI/static assets:
+    'addons/*',
+    'addons/**/*',
 
     -- WebPipe optimization:
     'panel/*',

@@ -152,7 +152,7 @@ export default function ServerControls() {
                 </TooltipTrigger>
                 <TooltipContent className={cn(!hasControlPerms && 'text-destructive-inline text-center')}>
                     {hasControlPerms ? (
-                        <p>{fxRunnerState.isIdle ? 'Start the server! 🚀' : 'Stop the server'}</p>
+                        <p>{fxRunnerState.isIdle ? 'Start the server!' : 'Stop the server'}</p>
                     ) : (
                         <p>
                             You do not have permission <br />

@@ -10,7 +10,7 @@
         "license:report": "npx license-report > ../.reports/license/shared.html"
     },
     "keywords": [],
-    "author": "André Tabarra",
+    "author": "SomeAussieGamer",
     "license": "MIT",
     "dependencies": {
         "zod": "^3.23.8"

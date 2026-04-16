@@ -13,7 +13,7 @@ local tostring = tostring
 local floor = math.floor
 
 -- Variables & Consts
-LOCAL_PLAYERLIST = {} -- available globally in tx
+TX_LOCAL_PLAYERLIST = {} -- available globally in tx
 local requirePlayerNames = false
 local vTypeMap = {
     ['0'] = 'walking',
@@ -31,7 +31,7 @@ local vTypeMap = {
 -- The playerlist is converted to an object array to save refactor time
 function SendReactPlayerlist()
     local upload = {}
-    for pids, playerData in pairs(LOCAL_PLAYERLIST) do
+    for pids, playerData in pairs(TX_LOCAL_PLAYERLIST) do
         upload[#upload + 1] = {
             id = tonumber(pids),
             name = playerData.name or 'unknown',
@@ -54,10 +54,10 @@ RegisterNetEvent('txcl:plist:setInitial', function(payload)
     -- print("========== EVENT setInitialPlayerlist")
     -- print(json.encode(payload)) -- [[id, name]]
     -- print("------------------------------------")
-    LOCAL_PLAYERLIST = {}
+    TX_LOCAL_PLAYERLIST = {}
     for _, playerData in pairs(payload) do
         local pids = tostring(playerData[1])
-        LOCAL_PLAYERLIST[pids] = {
+        TX_LOCAL_PLAYERLIST[pids] = {
             name = playerData[2],
             health = 0,
             dist = -1,
@@ -67,7 +67,7 @@ RegisterNetEvent('txcl:plist:setInitial', function(payload)
         }
     end
     -- print("------------------------------------")
-    -- print(json.encode(LOCAL_PLAYERLIST, {indent = true}))
+    -- print(json.encode(TX_LOCAL_PLAYERLIST, {indent = true}))
     -- print("------------------------------------")
     SendReactPlayerlist()
 end)
@@ -86,12 +86,12 @@ RegisterNetEvent('txcl:plist:setDetailed', function(players, admins, playerTags)
     for _, playerData in pairs(players) do
         local pid = playerData[1]
         local pidStr = tostring(playerData[1])
-        local localPlayer = LOCAL_PLAYERLIST[pidStr]
+        local localPlayer = TX_LOCAL_PLAYERLIST[pidStr]
         -- Set inbound data
         if localPlayer == nil then
             DebugPrint('Playerlist: received detailed info for player ' .. pidStr .. ' not present in local playerlist')
             requirePlayerNames = true
-            LOCAL_PLAYERLIST[pidStr] = {
+            TX_LOCAL_PLAYERLIST[pidStr] = {
                 name = 'unknown',
                 health = playerData[2],
                 vType = vTypeMap[tostring(playerData[3])] or 'unknown',
@@ -99,77 +99,77 @@ RegisterNetEvent('txcl:plist:setDetailed', function(players, admins, playerTags)
                 tags = {},
             }
         else
-            LOCAL_PLAYERLIST[pidStr].health = playerData[2]
-            LOCAL_PLAYERLIST[pidStr].vType = vTypeMap[tostring(playerData[3])] or 'unknown'
+            TX_LOCAL_PLAYERLIST[pidStr].health = playerData[2]
+            TX_LOCAL_PLAYERLIST[pidStr].vType = vTypeMap[tostring(playerData[3])] or 'unknown'
             -- Set the player name if available - used when the playerJoining (txcl:plist:updatePlayer) was missed
             if playerData[6] then
-                LOCAL_PLAYERLIST[pidStr].name = playerData[6]
+                TX_LOCAL_PLAYERLIST[pidStr].name = playerData[6]
             end
         end
 
         --Mark as updated
-        LOCAL_PLAYERLIST[pidStr].inLastUpdate = true
+        TX_LOCAL_PLAYERLIST[pidStr].inLastUpdate = true
 
         -- Getting distance + health for RedM
         -- NOTE: RedM doesn't save ped health data on server, so need to get locally
         if pid == myID then
-            LOCAL_PLAYERLIST[pidStr].dist = 0
+            TX_LOCAL_PLAYERLIST[pidStr].dist = 0
             if IS_REDM then
-                LOCAL_PLAYERLIST[pidStr].health = GetPedHealthPercent(myPed)
+                TX_LOCAL_PLAYERLIST[pidStr].health = GetPedHealthPercent(myPed)
             end
         else
             --calc distance (onesync only, 2d only)
             if playerData[4] == nil or playerData[5] == nil then
-                LOCAL_PLAYERLIST[pidStr].dist = -1
+                TX_LOCAL_PLAYERLIST[pidStr].dist = -1
             else
                 local remoteCoords = vector3(playerData[4], playerData[5], myCoords.z)
-                LOCAL_PLAYERLIST[pidStr].dist = floor(#(myCoords - remoteCoords))
+                TX_LOCAL_PLAYERLIST[pidStr].dist = floor(#(myCoords - remoteCoords))
             end
 
             --get health locally
             if IS_REDM then
                 local remotePlayer = GetPlayerFromServerId(pid)
                 if remotePlayer == -1 then
-                    LOCAL_PLAYERLIST[pidStr].health = -1
+                    TX_LOCAL_PLAYERLIST[pidStr].health = -1
                 else
                     local remotePed = GetPlayerPed(remotePlayer)
-                    LOCAL_PLAYERLIST[pidStr].health = GetPedHealthPercent(remotePed)
+                    TX_LOCAL_PLAYERLIST[pidStr].health = GetPedHealthPercent(remotePed)
                 end
             end
         end
     end
 
     --Check if player disconnected and the playerDropped (txcl:plist:updatePlayer) was missed
-    for playerID, playerData in pairs(LOCAL_PLAYERLIST) do
+    for playerID, playerData in pairs(TX_LOCAL_PLAYERLIST) do
         if playerData.inLastUpdate == true then
             playerData.inLastUpdate = false
         else
             DebugPrint(
                 'Playerlist: did not receive detailed info for player ' .. playerID .. ' present in local playerlist'
             )
-            LOCAL_PLAYERLIST[playerID] = nil
+            TX_LOCAL_PLAYERLIST[playerID] = nil
         end
     end
 
     -- Mark admins
     for _, adminID in pairs(admins) do
         local id = tostring(adminID)
-        if LOCAL_PLAYERLIST[id] ~= nil then
-            LOCAL_PLAYERLIST[id].admin = true
+        if TX_LOCAL_PLAYERLIST[id] ~= nil then
+            TX_LOCAL_PLAYERLIST[id].admin = true
         end
     end
 
     -- Apply tags
     if playerTags then
         for playerID, tags in pairs(playerTags) do
-            if LOCAL_PLAYERLIST[playerID] ~= nil then
-                LOCAL_PLAYERLIST[playerID].tags = tags
+            if TX_LOCAL_PLAYERLIST[playerID] ~= nil then
+                TX_LOCAL_PLAYERLIST[playerID].tags = tags
             end
         end
     end
 
     -- print("------------------------------------")
-    -- print(json.encode(LOCAL_PLAYERLIST, {indent = true}))
+    -- print(json.encode(TX_LOCAL_PLAYERLIST, {indent = true}))
     -- print("------------------------------------")
     SendReactPlayerlist()
 end)
@@ -180,10 +180,10 @@ RegisterNetEvent('txcl:plist:updatePlayer', function(id, data)
     local pids = tostring(id)
     if data == false then
         DebugPrint('^2txcl:plist:updatePlayer: ^3' .. id .. '^2 disconnected')
-        LOCAL_PLAYERLIST[pids] = nil
+        TX_LOCAL_PLAYERLIST[pids] = nil
     else
         DebugPrint('^2txcl:plist:updatePlayer: ^3' .. id .. '^2 connected')
-        LOCAL_PLAYERLIST[pids] = {
+        TX_LOCAL_PLAYERLIST[pids] = {
             name = data,
             health = 0,
             dist = -1,
@@ -208,6 +208,6 @@ end)
 -- end)
 -- RegisterCommand('tprint', function()
 --     print("------------------------------------")
---     print(json.encode(LOCAL_PLAYERLIST, {indent = true}))
+--     print(json.encode(TX_LOCAL_PLAYERLIST, {indent = true}))
 --     print("------------------------------------")
 -- end)

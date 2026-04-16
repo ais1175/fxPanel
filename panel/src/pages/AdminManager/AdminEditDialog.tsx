@@ -21,19 +21,26 @@ import { txToast } from '@/components/txToaster';
 import PermissionsEditor from './PermissionsEditor';
 import { emsg } from '@shared/emsg';
 
+export type AdminAutofillData = {
+    name: string;
+    citizenfxId: string;
+    discordId: string;
+};
+
 type AdminEditDialogProps = {
     target: AdminListItem | 'new';
     allPresets: PermissionPreset[];
     onClose: () => void;
     onSaved: () => void;
+    initialData?: AdminAutofillData;
 };
 
-export default function AdminEditDialog({ target, allPresets, onClose, onSaved }: AdminEditDialogProps) {
+export default function AdminEditDialog({ target, allPresets, onClose, onSaved, initialData }: AdminEditDialogProps) {
     const isNew = target === 'new';
 
-    const [name, setName] = useState(isNew ? '' : target.name);
-    const [citizenfxId, setCitizenfxId] = useState('');
-    const [discordId, setDiscordId] = useState('');
+    const [name, setName] = useState(isNew ? (initialData?.name ?? '') : target.name);
+    const [citizenfxId, setCitizenfxId] = useState(initialData?.citizenfxId ?? '');
+    const [discordId, setDiscordId] = useState(initialData?.discordId ?? '');
     const [permissions, setPermissions] = useState<string[]>(isNew ? [] : target.permissions);
     const [isSaving, setIsSaving] = useState(false);
     const [tempPassword, setTempPassword] = useState<string | null>(null);

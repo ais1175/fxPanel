@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { styled } from '@mui/material/styles';
 import { Box, Button, DialogContent, Tooltip, TooltipProps, Typography } from '@mui/material';
 import { useAssociatedPlayerValue, usePlayerDetailsValue } from '../../../state/playerDetails.state';
@@ -13,6 +13,7 @@ import { usePermissionsValue } from '../../../state/permissions.state';
 import { DialogLoadError } from './DialogLoadError';
 import { useServerCtxValue } from '../../../state/server.state';
 import { GenericApiErrorResp, GenericApiResp } from '@shared/genericApiTypes';
+import { usePendingPlayerActionValue, useSetPendingPlayerAction } from '../../../state/playerModal.state';
 
 const PREFIX = 'DialogActionView';
 
@@ -53,6 +54,28 @@ const DialogActionView: React.FC = () => {
     const serverCtx = useServerCtxValue();
     const playerPerms = usePermissionsValue();
     const { closeMenu, showNoPerms } = usePlayerModalContext();
+    const pendingAction = usePendingPlayerActionValue();
+    const setPendingAction = useSetPendingPlayerAction();
+
+    const handleKickRef = useRef<() => void>(() => {});
+    const handleWarnRef = useRef<() => void>(() => {});
+
+    // Auto-trigger kick/warn dialog when opened via /kick or /warn command
+    useEffect(() => {
+        if (!pendingAction) return;
+        if ('error' in playerDetails) {
+            enqueueSnackbar(`Cannot ${pendingAction}: failed to load player details`, { variant: 'error' });
+            setPendingAction(null);
+            return;
+        }
+        if (pendingAction === 'kick') {
+            handleKickRef.current();
+        } else if (pendingAction === 'warn') {
+            handleWarnRef.current();
+        }
+        setPendingAction(null);
+    }, [pendingAction, setPendingAction, playerDetails, enqueueSnackbar]);
+
     if ('error' in playerDetails) return <DialogLoadError />;
 
     //Helper
@@ -93,7 +116,7 @@ const DialogActionView: React.FC = () => {
         });
     };
 
-    const handleWarn = () => {
+    const handleWarn = useCallback(() => {
         if (!userHasPerm('players.warn', playerPerms)) return showNoPerms('Warn');
 
         openDialog({
@@ -115,9 +138,10 @@ const DialogActionView: React.FC = () => {
                 }
             },
         });
-    };
+    }, [playerPerms, showNoPerms, openDialog, assocPlayer, t, enqueueSnackbar]);
+    handleWarnRef.current = handleWarn;
 
-    const handleKick = () => {
+    const handleKick = useCallback(() => {
         if (!userHasPerm('players.kick', playerPerms)) return showNoPerms('Kick');
 
         openDialog({
@@ -139,7 +163,8 @@ const DialogActionView: React.FC = () => {
                 }
             },
         });
-    };
+    }, [playerPerms, showNoPerms, openDialog, assocPlayer, t, enqueueSnackbar]);
+    handleKickRef.current = handleKick;
 
     const handleSetAdmin = () => {
         if (!userHasPerm('manage.admins', playerPerms)) {
@@ -154,10 +179,16 @@ const DialogActionView: React.FC = () => {
     const handleHeal = () => {
         if (!userHasPerm('players.heal', playerPerms)) return showNoPerms('Heal');
 
-        fetchNui('healPlayer', { id: assocPlayer.id });
-        enqueueSnackbar(t('nui_menu.player_modal.actions.interaction.notifications.heal_player'), {
-            variant: 'success',
-        });
+        fetchWebPipe<GenericApiResp>(`/player/heal?mutex=current&netid=${assocPlayer.id}`, {
+            method: 'POST',
+            data: {},
+        })
+            .then((result) => {
+                handleGenericApiResponse(result, 'interaction.notifications.heal_player');
+            })
+            .catch((error) => {
+                enqueueSnackbar((error as Error).message, { variant: 'error' });
+            });
     };
 
     const handleGoTo = () => {

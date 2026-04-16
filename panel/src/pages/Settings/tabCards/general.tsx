@@ -1,4 +1,5 @@
 import { Input } from '@/components/ui/input';
+import SwitchText from '@/components/SwitchText';
 import { SettingItem, SettingItemDesc } from '../settingsItems';
 import { useEffect, useRef, useMemo, useReducer } from 'react';
 import {
@@ -14,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import InlineCode from '@/components/InlineCode';
 import TxAnchor from '@/components/TxAnchor';
 import { txToast } from '@/components/txToaster';
+import { useAdminPerms } from '@/hooks/auth';
 
 const detectBrowserLanguage = () => {
     const txTopLocale = Array.isArray(window.txBrowserLocale) ? window.txBrowserLocale[0] : window.txBrowserLocale;
@@ -31,9 +33,11 @@ const detectBrowserLanguage = () => {
 export const pageConfigs = {
     serverName: getPageConfig('general', 'serverName'),
     language: getPageConfig('general', 'language'),
+    allowSelfIdentifierEdit: getPageConfig('general', 'allowSelfIdentifierEdit', undefined, false),
 } as const;
 
 export default function ConfigCardGeneral({ cardCtx, pageCtx }: SettingsCardProps) {
+    const { isMaster } = useAdminPerms();
     const [states, dispatch] = useReducer(configsReducer<typeof pageConfigs>, null, () =>
         getConfigEmptyState(pageConfigs),
     );
@@ -152,6 +156,22 @@ export default function ConfigCardGeneral({ cardCtx, pageCtx }: SettingsCardProp
                     .
                 </SettingItemDesc>
             </SettingItem>
+            {isMaster && (
+                <SettingItem label="Allow Self Identifier Edit" htmlFor={cfg.allowSelfIdentifierEdit.eid}>
+                    <SwitchText
+                        id={cfg.allowSelfIdentifierEdit.eid}
+                        checked={states.allowSelfIdentifierEdit}
+                        onCheckedChange={cfg.allowSelfIdentifierEdit.state.set}
+                        disabled={pageCtx.isReadOnly}
+                    />
+                    <SettingItemDesc>
+                        When enabled, all admins can change their own identifiers (FiveM &amp; Discord) from the
+                        Account dialog. <br />
+                        When disabled, only admins with the <strong>Manage Admins</strong> permission can edit
+                        identifiers.
+                    </SettingItemDesc>
+                </SettingItem>
+            )}
         </SettingsCardShell>
     );
 }

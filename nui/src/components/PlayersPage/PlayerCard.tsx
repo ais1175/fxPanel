@@ -52,7 +52,10 @@ const buildPlayerTagDisplay = (tags: PlayerTag[], definitions: TagDefinition[], 
         lookup[definition.id] = definition;
     }
 
-    const resolvedTags = tags.length ? tags : isAdmin ? ['staff'] : [];
+    // Only fall back to adding 'staff' if the staff tag is not disabled
+    const staffDef = definitions.find((d) => d.id === 'staff');
+    const staffEnabled = staffDef ? staffDef.enabled !== false : true;
+    const resolvedTags = tags.length ? tags : (isAdmin && staffEnabled) ? ['staff'] : [];
 
     return [...resolvedTags]
         .map((tagId) => lookup[tagId] ?? { id: tagId, label: tagId, color: '#9ea4bd', priority: 999 })

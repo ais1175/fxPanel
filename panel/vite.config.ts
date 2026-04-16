@@ -36,7 +36,7 @@ const baseConfig = {
                 // Manual chunks for better code splitting
                 manualChunks(id) {
                     if (id.includes('@monaco-editor/react')) return 'monaco-editor';
-                    if (id.includes('@nivo/bar') || id.includes('@nivo/line') || id.includes('@nivo/pie')) return 'nivo-charts';
+                    if (id.includes('@nivo/')) return 'nivo-charts';
                     if (id.includes('d3-scale-chromatic') || id.includes('d3-color') || id.includes('node_modules/d3/')) return 'd3-vendor';
                     if (id.includes('@xterm/xterm') || id.includes('@xterm/addon-fit') || id.includes('@xterm/addon-search') || id.includes('@xterm/addon-web-links') || id.includes('@xterm/addon-webgl')) return 'xterm-vendor';
                 },

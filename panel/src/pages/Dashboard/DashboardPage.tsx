@@ -11,9 +11,13 @@ import { useLocation } from 'wouter';
 import { TxConfigState } from '@shared/enums';
 import ModalCentralMessage from '@/components/ModalCentralMessage';
 import GenericSpinner from '@/components/GenericSpinner';
+import { useAddonWidgets } from '@/hooks/addons';
+import { ErrorBoundary } from 'react-error-boundary';
 
 function DashboardPageInner() {
     const setDashboardData = useSetDashboardData();
+    const dashboardWidgets = useAddonWidgets('dashboard.main');
+    const sidebarWidgets = useAddonWidgets('dashboard.sidebar');
 
     //Runing on mount only
     useEffect(() => {
@@ -46,6 +50,26 @@ function DashboardPageInner() {
                 </div>
             </div>
             <FullPerfCard />
+            {dashboardWidgets.length > 0 && (
+                <div className="flex w-full flex-col gap-4 lg:flex-row lg:flex-wrap">
+                    {dashboardWidgets.map((w) => (
+                        <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Addon widget error: {w.title}</div>}>
+                            <div className={w.defaultSize === 'full' ? 'w-full' : w.defaultSize === 'quarter' ? 'min-w-0 flex-1' : 'min-w-0 flex-1 lg:flex-[2]'}>
+                                <w.Component />
+                            </div>
+                        </ErrorBoundary>
+                    ))}
+                </div>
+            )}
+            {sidebarWidgets.length > 0 && (
+                <div className="flex w-full flex-col gap-4 lg:flex-row lg:flex-wrap">
+                    {sidebarWidgets.map((w) => (
+                        <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Addon widget error: {w.title}</div>}>
+                            <w.Component />
+                        </ErrorBoundary>
+                    ))}
+                </div>
+            )}
 
             {/* TODO: maybe convert in top server warning */}
             {/* <div className="mx-auto max-w-4xl w-full sm:w-auto sm:min-w-md relative overflow-hidden z-40 p-3 pr-10 flex items-center justify-between space-x-4 rounded-xl border shadow-lg transition-all text-black/75 dark:text-white/90 border-warning/70 bg-warning-hint animate-toastbar-enter opacity-50 hover:opacity-100">

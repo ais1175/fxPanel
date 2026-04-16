@@ -58,6 +58,8 @@ local function useInitData(data)
     -- without needing a server round-trip.
     if data.pendingWarn ~= nil then
         local authorName = hideAdmin and svName or data.pendingWarn.author or 'anonym'
+        -- Register in the pending warnings table so the ack handler can find it
+        TX_PENDING_WARNINGS[tostring(data.netId)] = data.pendingWarn.actionId
         TriggerClientEvent('txcl:setPendingWarn', data.netId, {
             author = authorName,
             reason = data.pendingWarn.reason,

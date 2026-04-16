@@ -149,7 +149,7 @@ export default function PlayerDropCard() {
     const getDashDataAge = useGetDashDataAge();
 
     const chartData = useMemo(() => {
-        if (!playerDropData?.summaryLast6h) return null;
+        if (!playerDropData?.summaryLast6h || !Array.isArray(playerDropData.summaryLast6h)) return null;
         const dataAge = getDashDataAge();
         if (dataAge.isExpired) return null;
         if (!playerDropData.summaryLast6h.length) return 'not_enough_data';
@@ -166,7 +166,7 @@ export default function PlayerDropCard() {
     }, [playerDropData?.summaryLast6h]);
 
     const displayLegends = useMemo(() => {
-        if (!playerDropData?.summaryLast6h) return null;
+        if (!playerDropData?.summaryLast6h || !Array.isArray(playerDropData.summaryLast6h)) return null;
         const dataAge = getDashDataAge();
         if (dataAge.isExpired) return null;
         if (!playerDropData.summaryLast6h.length) return null;

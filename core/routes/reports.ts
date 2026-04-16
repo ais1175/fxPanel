@@ -53,6 +53,9 @@ const pullLogContext = (reporterNetid: number, targetNetids: number[], tsReport:
  * GET /reports/list — Returns all reports (for web panel)
  */
 export const reportsList = async (ctx: AuthedCtx) => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return ctx.send<ApiGetReportsListResp>({ error: 'Reports are disabled.' });
+    }
     if (!ctx.admin.testPermission('players.reports', modulename)) {
         return ctx.send<ApiGetReportsListResp>({ error: 'Unauthorized' });
     }
@@ -84,6 +87,9 @@ export const reportsList = async (ctx: AuthedCtx) => {
  * GET /reports/detail?id=xxx — Returns full report detail
  */
 export const reportsDetail = async (ctx: AuthedCtx) => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return ctx.send<ApiGetReportDetailResp>({ error: 'Reports are disabled.' });
+    }
     if (!ctx.admin.testPermission('players.reports', modulename)) {
         return ctx.send<ApiGetReportDetailResp>({ error: 'Unauthorized' });
     }
@@ -109,6 +115,9 @@ export const reportsDetail = async (ctx: AuthedCtx) => {
  * POST /reports/message — Admin adds a message to a report
  */
 export const reportsMessage = async (ctx: AuthedCtx) => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return ctx.send<ApiReportMessageResp>({ error: 'Reports are disabled.' });
+    }
     if (!ctx.admin.testPermission('players.reports', modulename)) {
         return ctx.send<ApiReportMessageResp>({ error: 'Unauthorized' });
     }
@@ -151,6 +160,9 @@ export const reportsMessage = async (ctx: AuthedCtx) => {
  * POST /reports/status — Admin changes report status
  */
 export const reportsStatus = async (ctx: AuthedCtx) => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return ctx.send<ApiReportStatusResp>({ error: 'Reports are disabled.' });
+    }
     if (!ctx.admin.testPermission('players.reports', modulename)) {
         return ctx.send<ApiReportStatusResp>({ error: 'Unauthorized' });
     }
@@ -194,6 +206,10 @@ export const reportsStatus = async (ctx: AuthedCtx) => {
  * POST /intercom report handler — Called from the Lua resource when a player files a report
  */
 export const reportsCreate = (reqBody: ApiCreateReportReq): ApiCreateReportResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
+
     const { type, reporter, targets, reason } = reqBody;
 
     // Validate type
@@ -243,6 +259,9 @@ export const reportsCreate = (reqBody: ApiCreateReportReq): ApiCreateReportResp 
  * GET /intercom playerReports handler — Returns player's own reports
  */
 export const reportsPlayerList = (playerLicense: string): ApiGetPlayerReportsResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
     if (typeof playerLicense !== 'string' || !playerLicense.length) {
         return { error: 'Invalid license.' };
     }
@@ -276,6 +295,9 @@ export const reportsPlayerMessage = (
     playerLicense: string,
     content: string,
 ): ApiReportMessageResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
     if (typeof reportId !== 'string' || typeof content !== 'string' || !content.trim().length) {
         return { error: 'Invalid request.' };
     }
@@ -306,5 +328,138 @@ export const reportsPlayerMessage = (
     } catch (error) {
         console.error(`Failed to add player message: ${emsg(error)}`);
         return { error: 'Failed to add message.' };
+    }
+};
+
+// =============================================
+// Admin intercom-callable functions (for NUI)
+// =============================================
+
+/**
+ * Returns all reports (admin list) — called from intercom
+ */
+export const reportsAdminList = (): ApiGetReportsListResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
+    try {
+        const allReports = txCore.database.reports.findAll();
+        const reports: ReportListItem[] = allReports.map((r) => ({
+            id: r.id,
+            type: r.type,
+            status: r.status,
+            reporter: r.reporter,
+            targets: r.targets,
+            reason: r.reason,
+            messageCount: r.messages.length,
+            tsCreated: r.tsCreated,
+            tsResolved: r.tsResolved,
+            resolvedBy: r.resolvedBy,
+        }));
+        reports.sort((a, b) => b.tsCreated - a.tsCreated);
+        return { reports };
+    } catch (error) {
+        console.error(`Failed to list reports (admin intercom): ${emsg(error)}`);
+        return { error: 'Failed to list reports.' };
+    }
+};
+
+/**
+ * Returns full report detail — called from intercom
+ */
+export const reportsAdminDetail = (reportId: string): ApiGetReportDetailResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
+    if (typeof reportId !== 'string' || !reportId.length) {
+        return { error: 'Invalid report ID.' };
+    }
+    try {
+        const report = txCore.database.reports.findOne(reportId);
+        if (!report) {
+            return { error: 'Report not found.' };
+        }
+        return { report };
+    } catch (error) {
+        console.error(`Failed to get report detail (admin intercom): ${emsg(error)}`);
+        return { error: 'Failed to get report.' };
+    }
+};
+
+/**
+ * Admin sends a message to a report — called from intercom
+ */
+export const reportsAdminMessage = (
+    reportId: string,
+    adminName: string,
+    content: string,
+): ApiReportMessageResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
+    if (typeof reportId !== 'string' || typeof content !== 'string' || !content.trim().length) {
+        return { error: 'Invalid request.' };
+    }
+    try {
+        const report = txCore.database.reports.findOne(reportId);
+        if (!report) {
+            return { error: 'Report not found.' };
+        }
+        const success = txCore.database.reports.addMessage(reportId, {
+            author: adminName,
+            authorType: 'admin',
+            content: content.trim(),
+            ts: now(),
+        });
+        if (!success) {
+            return { error: 'Failed to add message.' };
+        }
+        if (report.status === 'open') {
+            txCore.database.reports.updateStatus(reportId, 'inReview');
+        }
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to add admin message (intercom): ${emsg(error)}`);
+        return { error: 'Failed to add message.' };
+    }
+};
+
+/**
+ * Admin changes report status — called from intercom
+ */
+export const reportsAdminStatus = (
+    reportId: string,
+    status: string,
+    adminName: string,
+): ApiReportStatusResp => {
+    if (!txConfig.gameFeatures.reportsEnabled) {
+        return { error: 'Reports are disabled.' };
+    }
+    const validStatuses: ReportStatus[] = ['open', 'inReview', 'resolved'];
+    if (typeof reportId !== 'string' || !reportId.length || !validStatuses.includes(status as ReportStatus)) {
+        return { error: 'Invalid request.' };
+    }    try {
+        const success = txCore.database.reports.updateStatus(
+            reportId,
+            status as ReportStatus,
+            status === 'resolved' ? adminName : undefined,
+        );
+        if (!success) {
+            return { error: 'Report not found.' };
+        }
+        if (status === 'resolved') {
+            const report = txCore.database.reports.findOne(reportId);
+            if (report) {
+                txCore.discordBot.sendAnnouncement({
+                    type: 'success',
+                    title: `Report ${reportId} Resolved`,
+                    description: `**${report.reporter.name}**'s ${report.type === 'playerReport' ? 'player report' : report.type === 'bugReport' ? 'bug report' : 'question'} was resolved by **${adminName}**.`,
+                });
+            }
+        }
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to update report status (intercom): ${emsg(error)}`);
+        return { error: 'Failed to update status.' };
     }
 };

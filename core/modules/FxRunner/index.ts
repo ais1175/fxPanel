@@ -306,7 +306,7 @@ export default class FxRunner {
      * Kills the FXServer child process.
      * NOTE: isRestarting might be true even if not called by this.restartServer().
      */
-    public async killServer(reason: string, author: string | typeof SYM_SYSTEM_AUTHOR, isRestarting = false) {
+    public async killServer(reason: string, author: string | typeof SYM_SYSTEM_AUTHOR, isRestarting = false, skipNoticeDelay = false) {
         if (!this.proc) return null; //nothing to kill
 
         //Prepare vars
@@ -329,13 +329,15 @@ export default class FxRunner {
             //If the process is alive, send warnings event and await the delay
             if (this.proc.isAlive) {
                 this.sendEvent('serverShuttingDown', {
-                    delay: txConfig.server.shutdownNoticeDelayMs,
+                    delay: skipNoticeDelay ? 0 : txConfig.server.shutdownNoticeDelayMs,
                     author: typeof author === 'string' ? author : 'fxPanel',
                     message: txCore.translator.t(`server_actions.${messageType}`, tOptions),
                 });
-                this.isAwaitingShutdownNoticeDelay = true;
-                await sleep(shutdownDelay);
-                this.isAwaitingShutdownNoticeDelay = false;
+                if (!skipNoticeDelay) {
+                    this.isAwaitingShutdownNoticeDelay = true;
+                    await sleep(shutdownDelay);
+                    this.isAwaitingShutdownNoticeDelay = false;
+                }
             }
 
             //Stopping server

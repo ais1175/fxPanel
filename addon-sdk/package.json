@@ -1,0 +1,19 @@
+{
+    "name": "@fxpanel/addon-sdk",
+    "version": "0.2.0",
+    "description": "SDK for building fxPanel addons",
+    "main": "src/index.js",
+    "types": "src/index.d.ts",
+    "type": "module",
+    "exports": {
+        ".": {
+            "import": "./src/index.js",
+            "types": "./src/index.d.ts"
+        },
+        "./ui": {
+            "import": "./src/ui.js",
+            "types": "./src/ui.d.ts"
+        }
+    },
+    "license": "MIT"
+}

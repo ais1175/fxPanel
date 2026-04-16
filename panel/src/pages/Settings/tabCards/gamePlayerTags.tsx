@@ -11,14 +11,16 @@ import {
     getConfigDiff,
 } from '../utils';
 import SettingsCardShell from '../SettingsCardShell';
-import { LockIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { PlusIcon, TrashIcon } from 'lucide-react';
 import { AUTO_TAG_DEFINITIONS } from '@shared/socketioTypes';
+import { Switch } from '@/components/ui/switch';
 
 type CustomTagEntry = {
     id: string;
     label: string;
     color: string;
     priority: number;
+    enabled?: boolean;
 };
 
 const AUTO_TAG_IDS = new Set(AUTO_TAG_DEFINITIONS.map((t) => t.id));
@@ -43,7 +45,8 @@ const buildMergedTags = (stored: CustomTagEntry[]): CustomTagEntry[] => {
     const storedMap = new Map(stored.map((t) => [t.id, t]));
     const merged: CustomTagEntry[] = [];
     for (const auto of AUTO_TAG_DEFINITIONS) {
-        merged.push(storedMap.get(auto.id) ?? { ...auto });
+        const storedOverride = storedMap.get(auto.id);
+        merged.push(storedOverride ?? { ...auto, enabled: true });
         storedMap.delete(auto.id);
     }
     for (const custom of storedMap.values()) {
@@ -61,7 +64,11 @@ const extractStoredTags = (merged: CustomTagEntry[]): CustomTagEntry[] => {
     for (const tag of merged) {
         const autoDef = AUTO_TAG_DEFINITIONS.find((a) => a.id === tag.id);
         if (autoDef) {
-            if (tag.color !== autoDef.color || tag.priority !== autoDef.priority || tag.label !== autoDef.label) {
+            const isChanged = tag.color !== autoDef.color
+                || tag.priority !== autoDef.priority
+                || tag.label !== autoDef.label
+                || tag.enabled === false;
+            if (isChanged) {
                 result.push(tag);
             }
         } else {
@@ -111,7 +118,7 @@ export default function ConfigCardGamePlayerTags({ cardCtx, pageCtx }: SettingsC
     };
 
     // Update a tag in the merged view and sync back to stored config
-    const updateMergedTag = (index: number, field: keyof CustomTagEntry, value: string | number) => {
+    const updateMergedTag = (index: number, field: keyof CustomTagEntry, value: string | number | boolean) => {
         const updated = [...mergedTags];
         updated[index] = { ...updated[index], [field]: value };
         cfg.customTags.state.set(extractStoredTags(updated));
@@ -156,10 +163,11 @@ export default function ConfigCardGamePlayerTags({ cardCtx, pageCtx }: SettingsC
                 <div className="space-y-3">
                     {mergedTags.map((tag, i) => {
                         const isAutoTag = AUTO_TAG_IDS.has(tag.id);
+                        const isDisabled = isAutoTag && tag.enabled === false;
                         return (
                             <div
                                 key={isAutoTag ? tag.id : `custom-${i}`}
-                                className="flex flex-wrap items-end gap-2 rounded-md border p-3"
+                                className={`flex flex-wrap items-end gap-2 rounded-md border p-3 ${isDisabled ? 'opacity-50' : ''}`}
                                 style={{ borderColor: tag.color ? `${tag.color}40` : undefined }}
                             >
                                 <div className="w-32 space-y-1">
@@ -184,7 +192,7 @@ export default function ConfigCardGamePlayerTags({ cardCtx, pageCtx }: SettingsC
                                         value={tag.label}
                                         onChange={(e) => updateMergedTag(i, 'label', e.target.value)}
                                         placeholder="Streamer"
-                                        disabled={pageCtx.isReadOnly || isAutoTag}
+                                        disabled={pageCtx.isReadOnly}
                                         maxLength={24}
                                     />
                                 </div>
@@ -215,11 +223,17 @@ export default function ConfigCardGamePlayerTags({ cardCtx, pageCtx }: SettingsC
                                     />
                                 </div>
                                 {isAutoTag ? (
-                                    <div
-                                        className="text-muted-foreground flex h-9 w-9 shrink-0 items-center justify-center"
-                                        title="Built-in tag"
-                                    >
-                                        <LockIcon className="h-4 w-4" />
+                                    <div className="flex h-9 shrink-0 items-center gap-2">
+                                        <Switch
+                                            checked={tag.enabled !== false}
+                                            onCheckedChange={(checked) =>
+                                                updateMergedTag(i, 'enabled', checked)
+                                            }
+                                            disabled={pageCtx.isReadOnly}
+                                        />
+                                        <span className="text-muted-foreground text-xs">
+                                            {tag.enabled !== false ? 'Enabled' : 'Disabled'}
+                                        </span>
                                     </div>
                                 ) : (
                                     <Button
@@ -251,8 +265,8 @@ export default function ConfigCardGamePlayerTags({ cardCtx, pageCtx }: SettingsC
                     </Button>
                 </div>
                 <SettingItemDesc>
-                    Built-in tags (Staff, Problematic, Newcomer) are always present — you can change their color and
-                    priority. Define up to 20 additional custom tags for identifying players (e.g. Streamer, VIP). Tags
+                    Built-in tags (Staff, Problematic, Newcomer) can be enabled/disabled and customized (label, color,
+                    priority) but cannot be deleted. Define up to 20 additional custom tags for identifying players (e.g. Streamer, VIP). Tags
                     are assigned via resource exports: <strong>exports.txadmin:addPlayerTag(serverId, tagId)</strong>{' '}
                     and <strong>exports.txadmin:removePlayerTag(serverId, tagId)</strong>. Lower priority number =
                     higher importance (1 is highest priority, 100 is lowest).

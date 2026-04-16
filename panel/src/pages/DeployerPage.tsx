@@ -202,12 +202,13 @@ function StepInput({
                 <p className="text-muted-foreground text-xs">
                     Get one at{' '}
                     <a
-                        href="https://keymaster.fivem.net/"
+                        href="https://portal.cfx.re/servers/registration-keys"
                         target="_blank"
                         rel="noreferrer"
                         className="text-primary underline"
                     >
-                        keymaster.fivem.net
+                        portal.cfx.re
+
                     </a>
                 </p>
             </div>

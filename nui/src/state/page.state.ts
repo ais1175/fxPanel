@@ -3,6 +3,7 @@ import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
 export enum txAdminMenuPage {
     Main,
     Players,
+    Reports,
     PlayerModalOnly,
 }
 

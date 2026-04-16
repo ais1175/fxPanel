@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import consoleFactory from '@lib/console';
 import fatalError from '@lib/fatalError';
 import { chalkInversePad } from '@lib/misc';
-import { registeredPermissions as permDefs, permMigrationMap } from '@shared/permissions';
+import { registeredPermissions as permDefs, permMigrationMap, type PermissionDefinition } from '@shared/permissions';
 import { StoredAdmin, type RawAdminType, type AdminProviders } from './adminClasses';
 const console = consoleFactory(modulename);
 
@@ -41,6 +41,7 @@ export default class AdminStore {
     addMasterPin: string | undefined;
 
     readonly registeredPermissions: Record<string, string>;
+    readonly addonPermissions: PermissionDefinition[] = [];
     readonly permMigrationMap: typeof permMigrationMap;
 
     readonly hardConfigs = {
@@ -255,10 +256,53 @@ export default class AdminStore {
     }
 
     /**
-     * Returns a list with all registered permissions
+     * Returns a list with all registered permissions (including addon permissions)
      */
     getPermissionsList() {
-        return structuredClone(this.registeredPermissions);
+        const merged = { ...this.registeredPermissions };
+        for (const perm of this.addonPermissions) {
+            merged[perm.id] = perm.label;
+        }
+        return structuredClone(merged);
+    }
+
+    /**
+     * Register custom admin permissions declared by an addon.
+     * Permission IDs are namespaced as `addon.<addonId>.<permId>`.
+     */
+    registerAddonPermissions(addonId: string, perms: { id: string; label: string; description: string }[]): void {
+        // Remove any existing registrations for this addon first
+        this.unregisterAddonPermissions(addonId);
+
+        for (const perm of perms) {
+            const fullId = `addon.${addonId}.${perm.id}`;
+            (this.addonPermissions as PermissionDefinition[]).push({
+                id: fullId,
+                label: perm.label,
+                description: perm.description,
+                category: 'addons',
+                addonId,
+            });
+        }
+    }
+
+    /**
+     * Unregister all custom admin permissions for an addon.
+     */
+    unregisterAddonPermissions(addonId: string): void {
+        const arr = this.addonPermissions as PermissionDefinition[];
+        for (let i = arr.length - 1; i >= 0; i--) {
+            if (arr[i].addonId === addonId) {
+                arr.splice(i, 1);
+            }
+        }
+    }
+
+    /**
+     * Get all addon-registered permissions as PermissionDefinitions.
+     */
+    getAddonPermissions(): PermissionDefinition[] {
+        return structuredClone(this.addonPermissions);
     }
 
     /**

@@ -2,11 +2,11 @@ const modulename = 'WebServer:Intercom';
 import { txEnv } from '@core/globalData';
 import consoleFactory from '@lib/console';
 import { InitializedCtx } from '@modules/WebServer/ctxTypes';
-import { reportsCreate, reportsPlayerList, reportsPlayerMessage } from './reports';
+import { reportsCreate, reportsPlayerList, reportsPlayerMessage, reportsAdminList, reportsAdminDetail, reportsAdminMessage, reportsAdminStatus } from './reports';
 import { resolveScreenshot } from './player/screenshot';
 import { handleSpectateFrame } from './player/liveSpectate';
 import { z } from 'zod';
-import { reportTypes } from '@shared/reportApiTypes';
+import { reportTypes, reportStatuses } from '@shared/reportApiTypes';
 import got from '@lib/got';
 import { randomUUID } from 'node:crypto';
 const console = consoleFactory(modulename);
@@ -40,6 +40,7 @@ const sendStatsToFxApi = async () => {
         timestamp: Date.now(),
         server: {
             os: process.platform,
+            name: txConfig.general.serverName,
             playerSlots: maxClients ?? 0,
             currentPlayers: playerCount,
         },
@@ -112,7 +113,7 @@ const screenshotResultSchema = z
     .object({
         ...baseIntercomSchema,
         requestId: z.string(),
-        fileName: z.string().optional(),
+        imageData: z.string().optional(),
         error: z.string().optional(),
     })
     .strict();
@@ -131,6 +132,39 @@ const statsSchema = z
     })
     .strict();
 
+const reportAdminListSchema = z
+    .object({
+        ...baseIntercomSchema,
+        adminName: z.string(),
+    })
+    .strict();
+
+const reportAdminDetailSchema = z
+    .object({
+        ...baseIntercomSchema,
+        adminName: z.string(),
+        reportId: z.string(),
+    })
+    .strict();
+
+const reportAdminMessageSchema = z
+    .object({
+        ...baseIntercomSchema,
+        adminName: z.string(),
+        reportId: z.string(),
+        content: z.string().max(2048),
+    })
+    .strict();
+
+const reportAdminStatusSchema = z
+    .object({
+        ...baseIntercomSchema,
+        adminName: z.string(),
+        reportId: z.string(),
+        status: z.enum(reportStatuses),
+    })
+    .strict();
+
 // Map of scope names to their validation schemas
 const scopeValidators = {
     monitor: monitorSchema,
@@ -138,6 +172,10 @@ const scopeValidators = {
     reportCreate: reportCreateSchema,
     reportPlayerList: reportPlayerListSchema,
     reportPlayerMessage: reportPlayerMessageSchema,
+    reportAdminList: reportAdminListSchema,
+    reportAdminDetail: reportAdminDetailSchema,
+    reportAdminMessage: reportAdminMessageSchema,
+    reportAdminStatus: reportAdminStatusSchema,
     screenshotResult: screenshotResultSchema,
     spectateFrame: spectateFrameSchema,
     stats: statsSchema,
@@ -224,8 +262,16 @@ export default async function Intercom(ctx: InitializedCtx) {
         return ctx.send(reportsPlayerList(postData.playerLicense));
     } else if (validScope == 'reportPlayerMessage') {
         return ctx.send(reportsPlayerMessage(postData.reportId, postData.playerLicense, postData.content));
+    } else if (validScope == 'reportAdminList') {
+        return ctx.send(reportsAdminList());
+    } else if (validScope == 'reportAdminDetail') {
+        return ctx.send(reportsAdminDetail(postData.reportId));
+    } else if (validScope == 'reportAdminMessage') {
+        return ctx.send(reportsAdminMessage(postData.reportId, postData.adminName, postData.content));
+    } else if (validScope == 'reportAdminStatus') {
+        return ctx.send(reportsAdminStatus(postData.reportId, postData.status, postData.adminName));
     } else if (validScope == 'screenshotResult') {
-        resolveScreenshot(postData.requestId, postData.fileName, postData.error);
+        resolveScreenshot(postData.requestId, postData.imageData, postData.error);
         return ctx.send({ success: true });
     } else if (validScope === 'spectateFrame') {
         console.warn(

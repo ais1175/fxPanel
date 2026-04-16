@@ -70,12 +70,14 @@ export default async function FXServerCommands(ctx: AuthedCtx) {
         const dropMessage = txCore.translator.t('kick_messages.everyone', { reason: kickReason });
         ctx.admin.logAction(`Kicking all players: ${kickReason}`);
         // Dispatch `txAdmin:events:playerKicked`
-        txCore.fxRunner.sendEvent('playerKicked', {
+        const kickAllData = {
             target: -1,
             author: ctx.admin.name,
             reason: kickReason,
             dropMessage,
-        });
+        };
+        txCore.fxRunner.sendEvent('playerKicked', kickAllData);
+        txCore.addonManager?.broadcastEvent('playerKicked', kickAllData);
         return ctx.send<ApiToastResp>({
             type: 'success',
             msg: 'Kick All command sent.',

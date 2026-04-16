@@ -74,6 +74,16 @@ export const filterTermLine = (selection: string, opts: LiveConsoleOptions) => {
 };
 
 /**
+ * Returns the platform-appropriate line ending.
+ */
+function getEOL(): string {
+    const isWindows =
+        (navigator as any).userAgentData?.platform === 'Windows' ||
+        navigator.platform?.startsWith('Win');
+    return isWindows ? '\r\n' : '\n';
+}
+
+/**
  * Copies a string to the clipboard
  */
 export const copyTermLine = async (
@@ -82,11 +92,12 @@ export const copyTermLine = async (
     opts: LiveConsoleOptions,
     returnFocusTo: HTMLElement | null = null,
 ) => {
+    const eol = getEOL();
     const strToCopy = selection
         .split(/\r?\n/)
         .map((line) => filterTermLine(line, opts))
-        .join('\r\n') //assuming the user is on windows
-        .replace(/(\r?\n)+$/, '\r\n'); //single one at the end, if any
+        .join(eol)
+        .replace(/(\r?\n)+$/, eol); //single one at the end, if any
     return copyToClipboard(strToCopy, divRef, returnFocusTo);
 };
 

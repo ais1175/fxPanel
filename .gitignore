@@ -1,7 +1,8 @@
 ## Custom:
 db/*
 cache/*
-monitor/*   
+addons/*
+monitor/*
 monitor.zip
 .reports/*
 license_report/*

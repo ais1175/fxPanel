@@ -20,7 +20,7 @@ export default async function DeployerStatus(ctx: AuthedCtx) {
     //Prepare data
     const outData: Record<string, unknown> = {
         progress: txManager.deployer.progress,
-        log: txManager.deployer.getDeployerLog(),
+        log: txManager.deployer.logLines,
     };
     if (txManager.deployer.step == 'configure') {
         outData.status = 'done';

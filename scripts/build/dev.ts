@@ -35,6 +35,8 @@ console.log(`[BUILDER] Starting fxPanel Dev Builder for ${fxsPaths.root}`);
 //Sync target path and start chokidar
 //We don't really care about the path, just remove everything and copy again
 copyStaticFiles(fxsPaths.monitor, txVersion, 'init');
+//Copy addon-sdk into node_modules so ESM resolution finds it
+fs.cpSync('./addon-sdk', path.join(fxsPaths.monitor, 'node_modules/addon-sdk'), { recursive: true, force: true });
 const debouncedCopier = debounce((eventName) => {
     try {
         copyStaticFiles(fxsPaths.monitor, txVersion, eventName);

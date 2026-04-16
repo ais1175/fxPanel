@@ -54,11 +54,11 @@ if (isNewProfile && txEnv.profileName !== 'default') {
     console.log(`Profile path: ${txEnv.profilePath}`);
 }
 
-//Start txAdmin (have fun 😀)
+//Start fxPanel (have fun 😀)
 try {
     bootTxAdmin();
 } catch (error) {
-    fatalError.Boot(3, 'Failed to start txAdmin.', error);
+    fatalError.Boot(3, 'Failed to start fxPanel.', error);
 }
 
 //Freeze detector - starts after 10 seconds due to the initial bootup lag
@@ -70,7 +70,7 @@ setTimeout(() => {
     setInterval(() => {
         const now = Date.now();
         if (now - hdTimer > loopElapsedLimit) {
-            console.majorMultilineError(['Major VPS freeze/lag detected!', 'THIS IS NOT AN ERROR CAUSED BY TXADMIN!']);
+            console.majorMultilineError(['Major VPS freeze/lag detected!', 'THIS IS NOT AN ERROR CAUSED BY FXPANEL!']);
         }
         hdTimer = now;
     }, loopInterval);

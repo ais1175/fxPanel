@@ -192,7 +192,7 @@ export default function ThreadPerfCard() {
         if (!svRuntimeData || getDashDataAge().isExpired) return null;
 
         //Data completeness check
-        if (!svRuntimeData.perfBoundaries || !svRuntimeData.perfBucketCounts) {
+        if (!Array.isArray(svRuntimeData.perfBoundaries) || !svRuntimeData.perfBucketCounts) {
             return 'incomplete';
         }
 
@@ -221,6 +221,7 @@ export default function ThreadPerfCard() {
         }
 
         const threadBucketCounts = perfBucketCounts[threadName];
+        if (!Array.isArray(threadBucketCounts)) return 'incomplete';
         let threadHistogram: number[];
         if (perfCursorData) {
             threadHistogram = perfCursorData.snap.weightedPerf;
@@ -266,7 +267,7 @@ export default function ThreadPerfCard() {
         if (!svRuntimeData || dataAge.isExpired) return null;
 
         //Data completeness check
-        if (!svRuntimeData.perfBoundaries || !svRuntimeData.perfBucketCounts) {
+        if (!Array.isArray(svRuntimeData.perfBoundaries) || !svRuntimeData.perfBucketCounts) {
             return null;
         }
 

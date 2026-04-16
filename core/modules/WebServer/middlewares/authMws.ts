@@ -4,9 +4,12 @@ import { checkRequestAuth } from '../authLogic';
 import { ApiAuthErrorResp, ApiToastResp, GenericApiErrorResp } from '@shared/genericApiTypes';
 import { InitializedCtx } from '../ctxTypes';
 import { txHostConfig } from '@core/globalData';
+import { isIpAddressLocal } from '@lib/host/isIpAddressLocal';
 const console = consoleFactory(modulename);
 
-const webLogoutPage = `<style>
+const webLogoutPage = (nonce?: string) => {
+    const nonceAttr = nonce ? ` nonce="${nonce}"` : '';
+    return `<style${nonceAttr}>
 body {
     margin: 0;
 }
@@ -28,7 +31,7 @@ body {
         User logged out. <br>
         Redirecting to <a href="/login#expired" target="_parent">login page</a>...
     </p>
-<script>
+<script${nonceAttr}>
     // Notify parent window that auth failed
     window.parent.postMessage({ type: 'logoutNotice' });
     // If parent redirect didn't work, redirect here
@@ -36,6 +39,7 @@ body {
         window.parent.location.href = '/login#expired';
     }, 2000);
 </script>`;
+};
 
 /**
  * For the hosting provider routes
@@ -95,9 +99,13 @@ export const hostAuthMw = async (ctx: InitializedCtx, next: Function) => {
 /**
  * Intercom auth middleware
  * This does not set ctx.admin and does not use session/cookies whatsoever.
- * FIXME: add isLocalAddress check?
+ * Validates both the token and that the request originates from a local/allowed IP.
  */
 export const intercomAuthMw = async (ctx: InitializedCtx, next: Function) => {
+    if (!isIpAddressLocal(ctx.ip)) {
+        console.warn(`Intercom request from non-local IP blocked: ${ctx.ip}`);
+        return ctx.send({ error: 'invalid request origin' });
+    }
     if (
         typeof ctx.request.body?.txAdminToken !== 'string' ||
         ctx.request.body.txAdminToken !== txCore.webServer.luaComToken
@@ -119,7 +127,7 @@ export const webAuthMw = async (ctx: InitializedCtx, next: Function) => {
         if (authResult.rejectReason) {
             console.verbose.warn(`Invalid session auth: ${authResult.rejectReason}`);
         }
-        return ctx.send(webLogoutPage);
+        return ctx.send(webLogoutPage(ctx.state.cspNonce));
     }
 
     //Adding the admin to the context

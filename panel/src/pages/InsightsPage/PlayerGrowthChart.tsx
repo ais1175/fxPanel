@@ -21,7 +21,7 @@ type Props = {
 function PlayerGrowthChart({ data }: Props) {
     const isDarkMode = useIsDarkMode();
 
-    if (!data.length) {
+    if (!Array.isArray(data) || !data.length) {
         return (
             <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
                 No data available

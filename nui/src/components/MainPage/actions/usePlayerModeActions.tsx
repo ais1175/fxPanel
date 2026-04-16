@@ -27,7 +27,6 @@ export function usePlayerModeActions() {
         playerMode,
         menuItem: {
             title: t('nui_menu.page_main.player_mode.title'),
-            requiredPermission: 'players.playermode',
             isMultiAction: true,
             initialValue: playerMode,
             actions: [
@@ -36,6 +35,7 @@ export function usePlayerModeActions() {
                     label: t('nui_menu.page_main.player_mode.noclip.label'),
                     value: PlayerMode.NOCLIP,
                     icon: <ControlCamera />,
+                    requiredPermission: 'players.noclip',
                     onSelect: () => {
                         handlePlayermodeToggle(PlayerMode.NOCLIP);
                     },
@@ -45,6 +45,7 @@ export function usePlayerModeActions() {
                     label: t('nui_menu.page_main.player_mode.godmode.label'),
                     value: PlayerMode.GOD_MODE,
                     icon: <Security />,
+                    requiredPermission: 'players.godmode',
                     onSelect: () => {
                         handlePlayermodeToggle(PlayerMode.GOD_MODE);
                     },
@@ -54,6 +55,7 @@ export function usePlayerModeActions() {
                     label: t('nui_menu.page_main.player_mode.superjump.label'),
                     value: PlayerMode.SUPER_JUMP,
                     icon: <AirlineStops />,
+                    requiredPermission: 'players.superjump',
                     onSelect: () => {
                         handlePlayermodeToggle(PlayerMode.SUPER_JUMP);
                     },

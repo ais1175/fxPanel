@@ -1,4 +1,4 @@
-import { anyUndefined } from '@lib/misc';
+import { anyUndefined, calcExpirationFromDuration } from '@lib/misc';
 import { ServerPlayer } from '@lib/player/playerClasses';
 import consoleFactory from '@lib/console';
 const console = consoleFactory('FXProc:FD3');
@@ -85,6 +85,120 @@ const handleBridgedCommands = (payload: any) => {
             });
         } catch (error) {
             console.verbose.warn(`handleBridgedCommands handler error:`);
+            console.verbose.dir(error);
+        }
+    } else if (payload.command === 'kick') {
+        try {
+            if (typeof payload.author !== 'string') throw new Error(`invalid author`);
+            if (typeof payload.targetNetId !== 'number') throw new Error(`invalid targetNetId`);
+            const reason = (typeof payload.reason === 'string' ? payload.reason : '').trim() || 'no reason provided';
+
+            const player = txCore.fxPlayerlist.getPlayerById(payload.targetNetId);
+            if (!(player instanceof ServerPlayer) || !player.isConnected) {
+                throw new Error(`player netid ${payload.targetNetId} not found or not connected`);
+            }
+
+            const allIds = player.getAllIdentifiers();
+            if (!allIds.length) throw new Error(`no identifiers found for player netid ${payload.targetNetId}`);
+            txCore.database.actions.registerKick(allIds, payload.author, reason, player.displayName);
+            txCore.logger.system.write(payload.author, `Kicked "${player.displayName}": ${reason}`, 'action');
+
+            const dropMessage = txCore.translator.t('kick_messages.player', { reason });
+            txCore.fxRunner.sendEvent('playerKicked', {
+                target: player.netid,
+                author: payload.author,
+                reason,
+                dropMessage,
+            });
+        } catch (error) {
+            console.verbose.warn(`handleBridgedCommands kick error:`);
+            console.verbose.dir(error);
+        }
+    } else if (payload.command === 'ban') {
+        try {
+            if (typeof payload.author !== 'string') throw new Error(`invalid author`);
+            if (typeof payload.targetNetId !== 'number') throw new Error(`invalid targetNetId`);
+            const reason = (typeof payload.reason === 'string' ? payload.reason : '').trim() || 'no reason provided';
+            const durationInput = (typeof payload.duration === 'string' ? payload.duration : '').trim() || 'permanent';
+
+            const player = txCore.fxPlayerlist.getPlayerById(payload.targetNetId);
+            if (!(player instanceof ServerPlayer)) {
+                throw new Error(`player netid ${payload.targetNetId} not found`);
+            }
+
+            const { expiration, duration } = calcExpirationFromDuration(durationInput);
+
+            const allIds = player.getAllIdentifiers();
+            const allHwids = player.getAllHardwareIdentifiers();
+            if (!allIds.length) throw new Error(`player has no identifiers`);
+
+            const actionId = txCore.database.actions.registerBan(
+                allIds,
+                payload.author,
+                reason,
+                expiration,
+                player.displayName,
+                allHwids,
+            );
+            txCore.logger.system.write(payload.author, `Banned "${player.displayName}": ${reason}`, 'action');
+
+            //Prepare kick message
+            let kickMessage;
+            let durationTranslated: string | null = null;
+            const publicAuthor = txCore.adminStore.getAdminPublicName(payload.author, 'punishment');
+            const tOptions: any = { author: publicAuthor, reason };
+            if (expiration !== false && duration) {
+                durationTranslated = txCore.translator.tDuration(duration * 1000, { units: ['d', 'h'] as any });
+                tOptions.expiration = durationTranslated;
+                kickMessage = txCore.translator.t('ban_messages.kick_temporary', tOptions);
+            } else {
+                kickMessage = txCore.translator.t('ban_messages.kick_permanent', tOptions);
+            }
+
+            txCore.fxRunner.sendEvent('playerBanned', {
+                author: payload.author,
+                reason,
+                actionId,
+                expiration,
+                durationInput,
+                durationTranslated,
+                targetNetId: player.netid,
+                targetIds: allIds,
+                targetHwids: allHwids,
+                targetName: player.displayName,
+                kickMessage,
+            });
+        } catch (error) {
+            console.verbose.warn(`handleBridgedCommands ban error:`);
+            console.verbose.dir(error);
+        }
+    } else if (payload.command === 'warn') {
+        try {
+            if (typeof payload.author !== 'string') throw new Error(`invalid author`);
+            if (typeof payload.targetNetId !== 'number') throw new Error(`invalid targetNetId`);
+            const reason = (typeof payload.reason === 'string' ? payload.reason : '').trim() || 'no reason provided';
+
+            const player = txCore.fxPlayerlist.getPlayerById(payload.targetNetId);
+            if (!(player instanceof ServerPlayer)) {
+                throw new Error(`player netid ${payload.targetNetId} not found`);
+            }
+
+            const allIds = player.getAllIdentifiers();
+            if (!allIds.length) throw new Error(`player has no identifiers`);
+
+            const actionId = txCore.database.actions.registerWarn(allIds, payload.author, reason, player.displayName);
+            txCore.logger.system.write(payload.author, `Warned "${player.displayName}": ${reason}`, 'action');
+
+            txCore.fxRunner.sendEvent('playerWarned', {
+                author: payload.author,
+                reason,
+                actionId,
+                targetNetId: player.isConnected ? player.netid : null,
+                targetIds: allIds,
+                targetName: player.displayName,
+            });
+        } catch (error) {
+            console.verbose.warn(`handleBridgedCommands warn error:`);
             console.verbose.dir(error);
         }
     } else {

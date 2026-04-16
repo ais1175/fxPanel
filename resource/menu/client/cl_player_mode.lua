@@ -158,7 +158,7 @@ local function toggleFreecam(enabled)
     end
 
     local function enableNoClip()
-        lastTpCoords = GetEntityCoords(ped)
+        TX_LAST_TP_COORDS = GetEntityCoords(ped)
 
         SetFreecamActive(true)
         StartFreecamThread()
@@ -242,10 +242,10 @@ end
 
 -- NoClip toggle keybind
 RegisterCommand('txAdmin:menu:noClipToggle', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'players.noclip') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'players.noclip') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     askChangePlayerMode(noClipEnabled and 'none' or 'noclip')

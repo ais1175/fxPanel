@@ -1,4 +1,5 @@
 const modulename = 'WebServer:SecurityHeadersMw';
+import crypto from 'node:crypto';
 import consoleFactory from '@lib/console';
 const console = consoleFactory(modulename);
 import { Next } from 'koa';
@@ -6,13 +7,17 @@ import { RawKoaCtx } from '../ctxTypes';
 import { txDevEnv } from '@core/globalData';
 
 /**
- * Builds the Content-Security-Policy header string
- * In development, allows Vite dev server connections
+ * Builds the Content-Security-Policy header string.
+ * In production, uses a per-request nonce instead of 'unsafe-inline' for scripts.
+ * 'unsafe-eval' is kept only for Monaco Editor which requires it.
+ * In development, allows Vite dev server connections with unsafe-inline/eval.
  */
-const buildCSP = (isDev: boolean): string => {
+const buildCSP = (isDev: boolean, nonce?: string): string => {
     const cspDirectives: Record<string, string[]> = {
         'default-src': ["'self'"],
-        'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        'script-src': isDev
+            ? ["'self'", "'unsafe-inline'", "'unsafe-eval'"]
+            : ["'self'", `'nonce-${nonce}'`, "'unsafe-eval'"],
         'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", 'data:', 'blob:'],
         'font-src': ["'self'"],
@@ -41,7 +46,8 @@ const buildCSP = (isDev: boolean): string => {
     const trustedCDNs = ['https://cdnjs.cloudflare.com', 'https://unpkg.com', 'https://cdn.jsdelivr.net'];
     cspDirectives['script-src'].push(...trustedCDNs);
     cspDirectives['style-src'].push(...trustedCDNs);
-    cspDirectives['connect-src'].push(...trustedCDNs);
+    // Allow GitHub Raw for fetching txAdmin recipe index and custom recipe URLs
+    cspDirectives['connect-src'].push(...trustedCDNs, 'https://raw.githubusercontent.com');
     // Allow fonts from trusted CDNs (e.g. Monaco editor codicon from jsdelivr)
     cspDirectives['font-src'].push(...trustedCDNs);
     if (!isDev) {
@@ -76,8 +82,13 @@ const securityHeadersMw = async (ctx: RawKoaCtx, next: Next) => {
     );
 
     //Set Content Security Policy to prevent XSS and data injection
-    //In development, allow Vite dev server connections
-    ctx.set('Content-Security-Policy', buildCSP(isDevMode));
+    //In production, generate a unique nonce per request for inline scripts/styles
+    let nonce: string | undefined;
+    if (!isDevMode) {
+        nonce = crypto.randomBytes(16).toString('base64');
+        ctx.state.cspNonce = nonce;
+    }
+    ctx.set('Content-Security-Policy', buildCSP(isDevMode, nonce));
 
     //Indicate that the site should only be accessed using HTTPS
     //Note: This is only set in production to prevent issues during development

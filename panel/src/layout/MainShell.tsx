@@ -6,6 +6,7 @@ import { ServerSidebar } from './ServerSidebar/ServerSidebar';
 import { PlayerlistSidebar } from './PlayerlistSidebar/PlayerlistSidebar';
 import MainSheets from './mainSheets';
 import WarningBar from './WarningBar';
+import AddonWarningBar from './AddonWarningBar';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import PromptDialog from '@/components/PromptDialog';
 import TxToaster from '@/components/txToaster';
@@ -31,6 +32,10 @@ export default function MainShell() {
     const openActionModal = useOpenActionModal();
     const toggleTheme = useToggleTheme();
     const { hasScaledViewportMismatch } = useShellBreakpoints();
+
+    // Expose modal openers so addons can call them directly
+    (window as any).txAddonApi = (window as any).txAddonApi || {};
+    (window as any).txAddonApi.openPlayerModal = openPlayerModal;
 
     //Listener for messages from child iframes (legacy routes) or other sources
     useEventListener('message', (e: TxMessageEvent) => {
@@ -100,6 +105,7 @@ export default function MainShell() {
 
                 <MainSheets />
                 <WarningBar />
+                <AddonWarningBar />
                 <ConfirmDialog />
                 <PromptDialog />
                 <TxToaster />

@@ -30,13 +30,16 @@ import { useContentRefresh } from '@/hooks/pages';
 import { useCloseAllSheets } from '@/hooks/sheets';
 import ScreenshotDialog from './ScreenshotDialog';
 import LiveSpectateDialog from './LiveSpectateDialog';
+import type { AddonWidgetEntry } from '@/hooks/addons';
+import { ErrorBoundary } from 'react-error-boundary';
 
 type PlayerModalFooterProps = {
     playerRef: PlayerModalRefType;
     player?: PlayerModalPlayerData;
+    addonActions?: AddonWidgetEntry[];
 };
 
-export default function PlayerModalFooter({ playerRef, player }: PlayerModalFooterProps) {
+export default function PlayerModalFooter({ playerRef, player, addonActions }: PlayerModalFooterProps) {
     const { hasPerm } = useAdminPerms();
     const openPromptDialog = useOpenPromptDialog();
     const openConfirmDialog = useOpenConfirmDialog();
@@ -355,6 +358,16 @@ export default function PlayerModalFooter({ playerRef, player }: PlayerModalFoot
                         >
                             <Trash2Icon className="mr-2 h-4 w-4" /> Delete Player
                         </DropdownMenuItem>
+                        {addonActions && addonActions.length > 0 && (
+                            <>
+                                <DropdownMenuSeparator />
+                                {addonActions.map((w) => (
+                                    <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={null}>
+                                        <w.Component />
+                                    </ErrorBoundary>
+                                ))}
+                            </>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </DialogFooter>

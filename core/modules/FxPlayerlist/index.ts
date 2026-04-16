@@ -217,6 +217,12 @@ export default class FxPlayerlist {
                     license: svPlayer.license,
                     tags: computePlayerTags(svPlayer),
                 });
+                txCore.addonManager?.broadcastEvent('playerJoining', {
+                    netid: svPlayer.netid,
+                    displayName: svPlayer.displayName,
+                    license: svPlayer.license,
+                    ids: svPlayer.ids,
+                });
             } catch (error) {
                 console.verbose.warn(`playerJoining event error: ${emsg(error)}`);
             }
@@ -250,6 +256,10 @@ export default class FxPlayerlist {
                     type: 'playerDropped',
                     netid: this.#playerlist[payload.id]!.netid,
                     reasonCategory: reasonCategory ? reasonCategory : undefined,
+                });
+                txCore.addonManager?.broadcastEvent('playerDropped', {
+                    netid: this.#playerlist[payload.id]!.netid,
+                    reason: payload.reason,
                 });
             } catch (error) {
                 console.verbose.warn(`playerDropped event error: ${emsg(error)}`);

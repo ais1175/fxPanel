@@ -9,7 +9,7 @@ import { chain as createChain } from 'lodash-es';
 import Fuse from 'fuse.js';
 import { parseLaxIdsArrayInput } from '@lib/player/idUtils';
 import { TimeCounter } from '@modules/Metrics/statsUtils';
-import { getValidCustomTagIds } from '@lib/player/playerTags';
+import { getValidCustomTagIds, getDisabledAutoTagIds } from '@lib/player/playerTags';
 const console = consoleFactory(modulename);
 
 //Helpers
@@ -206,10 +206,12 @@ export default async function PlayerSearch(ctx: AuthedCtx) {
     const processedPlayers: PlayersTablePlayerType[] = players.slice(0, DEFAULT_LIMIT).map((p) => {
         const isAdmin = p.ids.some((id) => adminsIdentifiers.includes(id));
         const actionInfo = getPlayerActionInfo(p);
+        const disabledAutoTags = getDisabledAutoTagIds();
         const tags: string[] = [];
-        if (isAdmin) tags.push('staff');
+        if (!disabledAutoTags.has('staff') && isAdmin) tags.push('staff');
         const threshold = txConfig.gameFeatures.newplayerThreshold;
-        if (threshold > 0 && p.playTime < threshold) tags.push('newplayer');
+        if (!disabledAutoTags.has('newplayer') && threshold > 0 && p.playTime < threshold) tags.push('newplayer');
+        if (!disabledAutoTags.has('problematic') && (actionInfo.banCount > 0 || actionInfo.warnCount > 0)) tags.push('problematic');
         if (p.customTags?.length) {
             const validIds = getValidCustomTagIds();
             for (const ct of p.customTags) {

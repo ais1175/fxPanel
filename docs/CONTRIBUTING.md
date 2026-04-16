@@ -169,7 +169,7 @@ console.log('debug output'); // !NC
 
 ## Pull Request Process
 
-1. **Branch from `develop`** — all PRs target the `develop` branch, including translations
+1. **Branch from `dev`** — all PRs target the `dev` branch, including translations
 2. **Keep PRs focused** — one feature or fix per PR
 3. **Run checks locally** before pushing:
     ```sh

@@ -2,6 +2,7 @@ import { Route, Switch } from 'wouter';
 import Login from '../pages/auth/Login';
 import TotpVerify from '../pages/auth/TotpVerify';
 import DiscourseCallback from '../pages/auth/DiscourseCallback';
+import DiscordCallback from '../pages/auth/DiscordCallback';
 import AddMasterPin from '../pages/auth/AddMasterPin';
 import AddMasterCallback from '../pages/auth/AddMasterCallback';
 import { Card } from '../components/ui/card';
@@ -40,6 +41,11 @@ export default function AuthShell() {
                         <Route path="/login/discourse/callback">
                             <AuthContentWrapper>
                                 <DiscourseCallback />
+                            </AuthContentWrapper>
+                        </Route>
+                        <Route path="/login/discord/callback">
+                            <AuthContentWrapper>
+                                <DiscordCallback />
                             </AuthContentWrapper>
                         </Route>
                         <Route path="/addMaster/pin">

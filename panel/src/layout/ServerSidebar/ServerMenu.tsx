@@ -1,12 +1,15 @@
 import { MenuNavLink } from '@/components/mainPageLink';
 import TxAnchor from '@/components/TxAnchor';
 import { useAdminPerms } from '@/hooks/auth';
+import { useAddonLoader } from '@/hooks/addons';
 import { serverNameAtom, txConfigStateAtom } from '@/hooks/status';
+import { useContentRefresh } from '@/hooks/pages';
 import { cn } from '@/lib/utils';
 import { TxConfigState } from '@shared/enums';
 import { GlobalStatusType } from '@shared/socketioTypes';
 import { useAtomValue } from 'jotai';
 import {
+    BlocksIcon,
     BoxIcon,
     ChevronRightSquareIcon,
     DnaIcon,
@@ -31,6 +34,7 @@ function PendingServerConfigure({ txConfigState }: PendingServerConfigureProps) 
     const [currLocation] = useLocation();
     const [linkHref, setLinkHref] = useState('');
     const linkText = useRef('');
+    const refreshContent = useContentRefresh();
 
     //This effect is done to prevent the link from popping up in the delay between ui change
     // and the pendingStep state atom being updated from the socket.io event
@@ -64,9 +68,11 @@ function PendingServerConfigure({ txConfigState }: PendingServerConfigureProps) 
                 You need to configure your server to be able to start it.
             </p>
             {linkHref ? (
-                <TxAnchor href={linkHref} className="animate-toastbar-enter">
-                    {linkText.current}
-                </TxAnchor>
+                <span onClick={() => refreshContent()}>
+                    <TxAnchor href={linkHref} className="animate-toastbar-enter">
+                        {linkText.current}
+                    </TxAnchor>
+                </span>
             ) : (
                 <TxAnchor href="#" className="animate-toastbar-leave pointer-events-none">
                     {linkText.current || <>&nbsp;</>}
@@ -79,6 +85,8 @@ function PendingServerConfigure({ txConfigState }: PendingServerConfigureProps) 
 export default function ServerMenu() {
     const txConfigState = useAtomValue(txConfigStateAtom);
     const { hasPerm } = useAdminPerms();
+    const { pages: addonPages } = useAddonLoader();
+    const sidebarAddonPages = addonPages.filter(p => p.sidebar === true);
 
     const isConfigPending = txConfigState !== TxConfigState.Ready;
     return (
@@ -114,6 +122,21 @@ export default function ServerMenu() {
                             <DnaIcon className="mr-2 h-4 w-4" />
                             Advanced
                         </MenuNavLink>
+                    )}
+                    {sidebarAddonPages.length > 0 && (
+                        <>
+                            <hr className="my-1.5 border-border" />
+                            {sidebarAddonPages.map((page) => (
+                                <MenuNavLink
+                                    key={page.path}
+                                    href={page.path}
+                                    disabled={page.permission ? !hasPerm(page.permission) : false}
+                                >
+                                    <BlocksIcon className="mr-2 h-4 w-4" />
+                                    {page.title}
+                                </MenuNavLink>
+                            ))}
+                        </>
                     )}
                     {import.meta.env.DEV && (
                         <MenuNavLink href="/test" className="text-accent">

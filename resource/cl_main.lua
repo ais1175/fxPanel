@@ -1,19 +1,19 @@
 -- =============================================
---  ServerCtx Synchronization
+--  TX_SERVER_CTX Synchronization
 -- =============================================
-ServerCtx = false
+TX_SERVER_CTX = false
 
---- Updates ServerCtx based on GlobalState and will send it to NUI
---- NOTE: for now the ServerCtx is only being set when the menu tries to load (enabled or not)
+--- Updates TX_SERVER_CTX based on GlobalState and will send it to NUI
+--- NOTE: for now the TX_SERVER_CTX is only being set when the menu tries to load (enabled or not)
 function UpdateServerCtx()
-    StateBagServerCtx = GlobalState.txAdminServerCtx
-    if StateBagServerCtx == nil then
+    TX_STATEBAG_SERVER_CTX = GlobalState.txAdminServerCtx
+    if TX_STATEBAG_SERVER_CTX == nil then
         DebugPrint('^3ServerCtx fallback support activated.')
-        TriggerServerEvent('txsv:req:serverCtx')
+        TriggerServerEvent('txsv:req:TX_SERVER_CTX')
     else
-        ServerCtx = StateBagServerCtx
+        TX_SERVER_CTX = TX_STATEBAG_SERVER_CTX
         DebugPrint('^2ServerCtx updated from global state.')
-        SendMenuMessage('setServerCtx', ServerCtx)
+        SendMenuMessage('setServerCtx', TX_SERVER_CTX)
     end
 end
 
@@ -21,9 +21,9 @@ RegisterNetEvent('txcl:setServerCtx', function(ctx)
     if type(ctx) ~= 'table' then
         return
     end
-    ServerCtx = ctx
+    TX_SERVER_CTX = ctx
     DebugPrint('^2ServerCtx updated from server event.')
-    SendMenuMessage('setServerCtx', ServerCtx)
+    SendMenuMessage('setServerCtx', TX_SERVER_CTX)
 end)
 
 -- =============================================
@@ -43,7 +43,6 @@ RegisterNetEvent('txcl:showDirectMessage', function(message, author)
     })
 end)
 
--- TODO: remove [SPACE] holding requirement?
 local dismissKey, dismissKeyGroup
 if IS_FIVEM then
     dismissKey = 22
@@ -53,13 +52,22 @@ else
     dismissKeyGroup = 1
 end
 
+local warnActive = false
+
 RegisterNetEvent('txcl:showWarning', function(author, reason, actionId, isWarningNew)
+    -- Cancel any previous active warning
+    if warnActive then
+        SendMenuMessage('closeWarning')
+    end
+    warnActive = true
+
     toggleMenuVisibility(false)
     SendMenuMessage('setWarnOpen', {
         reason = reason,
         warnedBy = author,
         isWarningNew = isWarningNew,
     })
+    local currentActionId = actionId
     CreateThread(function()
         local countLimit = 100 --10 seconds
         local count = 0
@@ -68,6 +76,7 @@ RegisterNetEvent('txcl:showWarning', function(author, reason, actionId, isWarnin
             if IsControlPressed(dismissKeyGroup, dismissKey) then
                 count = count + 1
                 if count >= countLimit then
+                    warnActive = false
                     SendMenuMessage('closeWarning')
                     TriggerServerEvent('txsv:ackWarning', actionId)
                     return
@@ -221,7 +230,7 @@ function IsNuiRequestOriginValid(headers)
     end
 
     -- warn admin of possible csrf attempt
-    if menuIsAccessible and SendPersistentAlert then
+    if TX_MENU_ACCESSIBLE and SendPersistentAlert then
         local msg = ('ATTENTION! txAdmin received a NUI message from the origin "%s" which is not approved. This likely means that that resource is vulnerable to XSS which has been exploited to inject txAdmin commands. It is recommended that you fix the vulnerability or remove that resource completely. For more information: https://discord.gg/6FcqBYwxH5.'):format(
             headers['Origin']
         )

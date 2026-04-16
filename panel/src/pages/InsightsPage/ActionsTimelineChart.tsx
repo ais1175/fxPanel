@@ -21,7 +21,7 @@ type Props = {
 function ActionsTimelineChart({ daily }: Props) {
     const isDarkMode = useIsDarkMode();
 
-    if (!daily.length) {
+    if (!Array.isArray(daily) || !daily.length) {
         return (
             <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
                 No data available

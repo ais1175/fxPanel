@@ -32,6 +32,7 @@ import CfgEditorPage from '@/pages/CfgEditorPage';
 import SetupPage from '@/pages/SetupPage';
 import DeployerPage from '@/pages/DeployerPage';
 import { useAdminPerms } from '@/hooks/auth';
+import { useAddonLoader, type AddonPageRoute } from '@/hooks/addons';
 import UnauthorizedPage from '@/pages/UnauthorizedPage';
 
 type RouteType = {
@@ -65,7 +66,7 @@ const allRoutes: RouteType[] = [
         Page: <InsightsPage />,
     },
     {
-        path: '/insights/player-drops',
+        path: '/server/player-drops',
         title: 'Player Drops',
         Page: <PlayerDropsPage />,
     },
@@ -148,13 +149,13 @@ const allRoutes: RouteType[] = [
     {
         path: '/server/setup',
         title: 'Server Setup',
-        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        permission: 'master',
         Page: <SetupPage />,
     },
     {
         path: '/server/deployer',
         title: 'Server Deployer',
-        permission: 'master', //FIXME: either change to all_permissions or create a new Setup/Deploy permission
+        permission: 'master',
         Page: <DeployerPage />,
     },
     {
@@ -204,12 +205,39 @@ function Route(route: RouteType) {
     return <WouterRoute path={route.path}>{nodeToRender}</WouterRoute>;
 }
 
+function AddonRoute({ route }: { route: AddonPageRoute }) {
+    const { hasPerm } = useAdminPerms();
+    const setPageTitle = useSetPageTitle();
+    setPageTitle(route.title);
+    const nodeToRender =
+        route.permission && !hasPerm(route.permission) ? (
+            <UnauthorizedPage pageName={route.title} permission={route.permission} />
+        ) : (
+            <route.Component />
+        );
+    return <WouterRoute path={route.path}>{nodeToRender}</WouterRoute>;
+}
+
 export function MainRouterInner() {
+    const { pages: addonPages, loading: addonsLoading } = useAddonLoader();
+
     return (
         <Switch>
             {allRoutes.map((route) => (
                 <Route key={route.path} {...route} />
             ))}
+
+            {/* Addon Routes */}
+            {addonPages.map((route) => (
+                <AddonRoute key={route.path} route={route} />
+            ))}
+
+            {/* While addons are loading, don't show NotFound for addon paths */}
+            {addonsLoading && (
+                <WouterRoute path="/addon/:rest*">
+                    {null}
+                </WouterRoute>
+            )}
 
             {/* Other Routes - they need to set the title manuually */}
             {import.meta.env.DEV && (

@@ -222,6 +222,186 @@ exports('removePlayerTag', function(serverId, tagId)
     }))
 end)
 
+-- =============================================
+-- MARK: Resource API Exports
+-- Permission checking & admin info for external scripts
+-- =============================================
+
+--- Local helper: check if an admin entry has a specific permission
+--- @param admin table The admin entry from TX_ADMINS
+--- @param permission string The permission to check
+--- @return boolean
+local function adminHasPerm(admin, permission)
+    if not admin or not admin.perms then return false end
+    for _, perm in pairs(admin.perms) do
+        if perm == 'all_permissions' or perm == permission then
+            return true
+        end
+    end
+    return false
+end
+
+--- Export: check if a player has a specific fxPanel permission
+--- @param serverId number The player's server ID
+--- @param permission string The permission to check (e.g. 'players.ban', 'players.kick')
+--- @return boolean
+exports('hasPermission', function(serverId, permission)
+    if type(serverId) ~= 'number' or type(permission) ~= 'string' then
+        TxPrintError('[hasPermission] invalid arguments: serverId must be number, permission must be string')
+        return false
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if not admin or not admin.perms then
+        return false
+    end
+    return adminHasPerm(admin, permission)
+end)
+
+--- Export: check if a player is an fxPanel admin
+--- @param serverId number The player's server ID
+--- @return boolean
+exports('isPlayerAdmin', function(serverId)
+    if type(serverId) ~= 'number' then
+        TxPrintError('[isPlayerAdmin] invalid arguments: serverId must be number')
+        return false
+    end
+    return TX_ADMINS[tostring(serverId)] ~= nil
+end)
+
+--- Export: get an admin's username
+--- @param serverId number The player's server ID
+--- @return string|nil username or nil if not an admin
+exports('getAdminUsername', function(serverId)
+    if type(serverId) ~= 'number' then
+        TxPrintError('[getAdminUsername] invalid arguments: serverId must be number')
+        return nil
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if admin then
+        return admin.username
+    end
+    return nil
+end)
+
+--- Export: get an admin's permissions list
+--- @param serverId number The player's server ID
+--- @return table|nil Array of permission strings or nil if not an admin
+exports('getAdminPermissions', function(serverId)
+    if type(serverId) ~= 'number' then
+        TxPrintError('[getAdminPermissions] invalid arguments: serverId must be number')
+        return nil
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if admin and admin.perms then
+        local copy = {}
+        for i, v in ipairs(admin.perms) do
+            copy[i] = v
+        end
+        return copy
+    end
+    return nil
+end)
+
+--- Export: kick a player through fxPanel (logs to action history)
+--- @param serverId number The admin's server ID (must have players.kick permission)
+--- @param targetId number The target player's server ID
+--- @param reason string|nil The kick reason
+exports('kickPlayer', function(serverId, targetId, reason)
+    if type(serverId) ~= 'number' or type(targetId) ~= 'number' then
+        return TxPrintError('[kickPlayer] invalid arguments: serverId and targetId must be numbers')
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if not admin then
+        return TxPrintError('[kickPlayer] source player is not an admin')
+    end
+    if not adminHasPerm(admin, 'players.kick') then
+        return TxPrintError('[kickPlayer] admin does not have players.kick permission')
+    end
+    PrintStructuredTrace(json.encode({
+        type = 'txAdminCommandBridge',
+        command = 'kick',
+        author = admin.username,
+        targetNetId = targetId,
+        reason = type(reason) == 'string' and reason or 'no reason provided',
+    }))
+    return true
+end)
+
+--- Export: ban a player through fxPanel (logs to action history)
+--- @param serverId number The admin's server ID (must have players.ban permission)
+--- @param targetId number The target player's server ID
+--- @param reason string|nil The ban reason
+--- @param duration string|nil The ban duration (e.g. '2 hours', '1 week', 'permanent'). Defaults to 'permanent'.
+exports('banPlayer', function(serverId, targetId, reason, duration)
+    if type(serverId) ~= 'number' or type(targetId) ~= 'number' then
+        return TxPrintError('[banPlayer] invalid arguments: serverId and targetId must be numbers')
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if not admin then
+        return TxPrintError('[banPlayer] source player is not an admin')
+    end
+    if not adminHasPerm(admin, 'players.ban') then
+        return TxPrintError('[banPlayer] admin does not have players.ban permission')
+    end
+    PrintStructuredTrace(json.encode({
+        type = 'txAdminCommandBridge',
+        command = 'ban',
+        author = admin.username,
+        targetNetId = targetId,
+        reason = type(reason) == 'string' and reason or 'no reason provided',
+        duration = type(duration) == 'string' and duration or 'permanent',
+    }))
+    return true
+end)
+
+--- Export: warn a player through fxPanel (logs to action history)
+--- @param serverId number The admin's server ID (must have players.warn permission)
+--- @param targetId number The target player's server ID
+--- @param reason string|nil The warn reason
+exports('warnPlayer', function(serverId, targetId, reason)
+    if type(serverId) ~= 'number' or type(targetId) ~= 'number' then
+        return TxPrintError('[warnPlayer] invalid arguments: serverId and targetId must be numbers')
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if not admin then
+        return TxPrintError('[warnPlayer] source player is not an admin')
+    end
+    if not adminHasPerm(admin, 'players.warn') then
+        return TxPrintError('[warnPlayer] admin does not have players.warn permission')
+    end
+    PrintStructuredTrace(json.encode({
+        type = 'txAdminCommandBridge',
+        command = 'warn',
+        author = admin.username,
+        targetNetId = targetId,
+        reason = type(reason) == 'string' and reason or 'no reason provided',
+    }))
+    return true
+end)
+
+--- Export: send a server-wide announcement through fxPanel
+--- @param serverId number The admin's server ID (must have announcement permission)
+--- @param message string The announcement message
+exports('sendAnnouncement', function(serverId, message)
+    if type(serverId) ~= 'number' or type(message) ~= 'string' then
+        return TxPrintError('[sendAnnouncement] invalid arguments: serverId must be number, message must be string')
+    end
+    local admin = TX_ADMINS[tostring(serverId)]
+    if not admin then
+        return TxPrintError('[sendAnnouncement] source player is not an admin')
+    end
+    if not adminHasPerm(admin, 'announcement') then
+        return TxPrintError('[sendAnnouncement] admin does not have announcement permission')
+    end
+    PrintStructuredTrace(json.encode({
+        type = 'txAdminCommandBridge',
+        command = 'announcement',
+        author = admin.username,
+        message = message,
+    }))
+    return true
+end)
+
 --- Handler for announcement events
 --- Broadcast admin message to all players
 TX_EVENT_HANDLERS.announcement = function(eventData)
@@ -278,7 +458,7 @@ end
 
 --- Handler for player warned event
 --- Warn specific player via server ID
-local pendingWarnings = {}
+TX_PENDING_WARNINGS = {}
 TX_EVENT_HANDLERS.playerWarned = function(eventData, isWarningNew)
     if isWarningNew == nil then
         isWarningNew = true
@@ -301,7 +481,7 @@ TX_EVENT_HANDLERS.playerWarned = function(eventData, isWarningNew)
         return
     end
 
-    pendingWarnings[tostring(eventData.targetNetId)] = eventData.actionId
+    TX_PENDING_WARNINGS[tostring(eventData.targetNetId)] = eventData.actionId
     local authorName = cvHideAdminInPunishments and txServerName or eventData.author or 'anonym'
     TriggerClientEvent(
         'txcl:showWarning',
@@ -318,21 +498,21 @@ end
 
 -- Event so the client can ack the warning
 RegisterNetEvent('txsv:ackWarning', function(actionId)
-    if pendingWarnings[tostring(source)] == actionId then
+    if TX_PENDING_WARNINGS[tostring(source)] == actionId then
         PrintStructuredTrace(json.encode({
             type = 'txAdminAckWarning',
             actionId = actionId,
         }))
-        pendingWarnings[tostring(source)] = nil
+        TX_PENDING_WARNINGS[tostring(source)] = nil
     end
 end)
 
 -- Remove any pending warnings when a player leaves
 AddEventHandler('playerDropped', function()
     local srcStr = tostring(source)
-    local pendingActionId = pendingWarnings[srcStr]
+    local pendingActionId = TX_PENDING_WARNINGS[srcStr]
     if pendingActionId ~= nil then
-        pendingWarnings[srcStr] = nil
+        TX_PENDING_WARNINGS[srcStr] = nil
         TxPrint(string.format('Player #%s left without accepting the warning [%s]', srcStr, pendingActionId))
     end
 end)
@@ -512,11 +692,8 @@ RegisterNetEvent('txsv:screenshot:result', function(requestId, data, errorMsg)
         return sendScreenshotResult(requestId, { error = 'No screenshot data received.' })
     end
 
-    -- Save to file to avoid intercom body size limits
-    local filename = 'screenshot_' .. requestId .. '.jpg'
-    SaveResourceFile(GetCurrentResourceName(), filename, data, #data)
-    TxPrint('[screenshot] Screenshot saved as ' .. filename)
-    sendScreenshotResult(requestId, { fileName = filename })
+    -- Send the data URL directly to the core via intercom
+    sendScreenshotResult(requestId, { imageData = data })
 end)
 
 

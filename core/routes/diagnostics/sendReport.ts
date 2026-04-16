@@ -1,4 +1,5 @@
 const modulename = 'WebServer:SendDiagnosticsReport';
+import { gzipSync } from 'node:zlib';
 import got from '@lib/got';
 import { txEnv, txHostConfig } from '@core/globalData';
 import { GenericApiErrorResp } from '@shared/genericApiTypes';
@@ -155,11 +156,16 @@ export default async function SendDiagnosticsReport(ctx: AuthedCtx) {
     };
 
     // //Preparing request
+    const jsonBody = JSON.stringify(reportData);
+    const gzippedBody = gzipSync(jsonBody);
     const requestOptions = {
-        url: `https://txapi.cfx-services.net/public/submit`,
-        // url: `http://127.0.0.1:8121/public/submit`,
+        url: `https://fxapi.fxpanel.org/api/diagnostics`,
         retry: { limit: 1 },
-        json: reportData,
+        body: gzippedBody,
+        headers: {
+            'content-type': 'application/json',
+            'content-encoding': 'gzip',
+        },
     };
 
     //Making HTTP Request

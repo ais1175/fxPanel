@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth } from '@/hooks/auth';
+import { useAuth, useAdminPerms } from '@/hooks/auth';
 import { memo, useEffect, useState } from 'react';
 import { TabsTrigger, TabsList, TabsContent, Tabs } from '@/components/ui/tabs';
 import {
@@ -626,6 +626,7 @@ function TwoFactorTab() {
  */
 export default function AccountDialog() {
     const { authData } = useAuth();
+    const { hasPerm } = useAdminPerms();
     const { isAccountModalOpen, setAccountModalOpen, accountModalTab, setAccountModalTab } = useAccountModal();
 
     useEffect(() => {
@@ -646,6 +647,7 @@ export default function AccountDialog() {
     };
 
     if (!authData) return;
+    const canEditIdentifiers = window.txConsts.allowSelfIdentifierEdit || hasPerm('manage.admins');
     return (
         <Dialog open={isAccountModalOpen} onOpenChange={dialogSetIsClose}>
             <DialogContent className="sm:max-w-lg" tabIndex={undefined}>
@@ -655,17 +657,19 @@ export default function AccountDialog() {
                     </DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="password" value={accountModalTab} onValueChange={setAccountModalTab}>
-                    <TabsList className="mb-4 grid w-full grid-cols-3">
+                    <TabsList className={`mb-4 grid w-full ${canEditIdentifiers ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <TabsTrigger value="password">Password</TabsTrigger>
-                        <TabsTrigger value="identifiers" disabled={authData.isTempPassword}>
-                            Identifiers
-                        </TabsTrigger>
+                        {canEditIdentifiers && (
+                            <TabsTrigger value="identifiers" disabled={authData.isTempPassword}>
+                                Identifiers
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="security" disabled={authData.isTempPassword}>
                             Security
                         </TabsTrigger>
                     </TabsList>
                     <ChangePasswordTab />
-                    <ChangeIdentifiersTab />
+                    {canEditIdentifiers && <ChangeIdentifiersTab />}
                     <TwoFactorTab />
                 </Tabs>
             </DialogContent>

@@ -102,7 +102,7 @@ async function handleBandIds(ctx: AuthedCtx): Promise<GenericApiOkResp> {
             durationTranslated = null;
             kickMessage = txCore.translator.t('ban_messages.kick_permanent', tOptions);
         }
-        txCore.fxRunner.sendEvent('playerBanned', {
+        const historyBanData = {
             author: ctx.admin.name,
             reason,
             actionId,
@@ -114,7 +114,9 @@ async function handleBandIds(ctx: AuthedCtx): Promise<GenericApiOkResp> {
             targetHwids: [],
             targetName: 'identifiers',
             kickMessage,
-        });
+        };
+        txCore.fxRunner.sendEvent('playerBanned', historyBanData);
+        txCore.addonManager?.broadcastEvent('playerBanned', historyBanData);
     } catch (error) {
         /* fxserver event notification is best-effort */
     }

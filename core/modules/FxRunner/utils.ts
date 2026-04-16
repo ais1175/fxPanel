@@ -30,6 +30,7 @@ export const getMutableConvars = (isCmdLine = false) => {
         ['setr', 'locale', txConfig.general.language ?? 'en'],
         ['set', 'serverName', txConfig.general.serverName ?? 'fxPanel'],
         ['set', 'checkPlayerJoin', checkPlayerJoin],
+        ['setr', 'reportsEnabled', txConfig.gameFeatures.reportsEnabled],
         ['set', 'menuAlignRight', txConfig.gameFeatures.menuAlignRight],
         ['set', 'menuPageKey', txConfig.gameFeatures.menuPageKey],
         ['set', 'playerModePtfx', txConfig.gameFeatures.playerModePtfx],

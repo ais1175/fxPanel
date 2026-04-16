@@ -9,6 +9,8 @@ fs.writeFileSync('.github/.cienv', `TX_IS_PRERELEASE=${isPreRelease}\n`);
 //Copy static files
 console.log('Starting fxPanel Prod Builder');
 copyStaticFiles('./monitor/', txVersion, 'publish');
+//Copy addon-sdk into node_modules so ESM resolution finds it
+fs.cpSync('./addon-sdk', './monitor/node_modules/addon-sdk', { recursive: true, force: true });
 //yarn.installed Needs to be older than the package.json
 fs.writeFileSync('./monitor/.yarn.installed', '');
 fs.writeFileSync('./monitor/package.json', '{"type":"commonjs"}');

@@ -82,6 +82,8 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
             } else {
                 htmlFile = rawHtmlFile.replaceAll(/.+data-dev-only.+\r?\n/gm, '');
             }
+            //Always remove dev-only safety script
+            htmlFile = htmlFile.replaceAll(/.+data-always-remove[\s\S]*?<\/script>\r?\n/gm, '');
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code == 'ENOENT') {
                 return `<h1>⚠ index.html not found:</h1><pre>You probably deleted the 'citizen/system_resources/monitor/panel/index.html' file, or the folders above it.</pre>`;
@@ -124,6 +126,11 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
             icon: txCore.cacheStore.getTyped('fxsRuntime:iconFilename', isString),
         },
         hideFxsUpdateNotification: txConfig.general.hideFxsUpdateNotification,
+        allowSelfIdentifierEdit: txConfig.general.allowSelfIdentifierEdit,
+        discordOAuthEnabled: !!(txConfig.discordBot.oauthClientId && txConfig.discordBot.oauthClientSecret),
+
+        //addon permissions
+        addonPermissions: txCore.adminStore.getAddonPermissions(),
 
         //auth
         preAuth: authedAdmin && authedAdmin.getAuthData(),
@@ -134,8 +141,24 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
     replacers.basePath = `<base href="${basePath}">`;
     replacers.ogTitle = `fxPanel - ${txConfig.general.serverName}`;
     replacers.ogDescripttion = `Manage & Monitor your FiveM/RedM Server with fxPanel v${txEnv.txaVersion} atop FXServer ${txEnv.fxsVersion}`;
-    replacers.txConstsInjection = `<script>window.txConsts = ${JSON.stringify(injectedConsts)};</script>`;
+    const nonce = ctx.state.cspNonce ? ` nonce="${ctx.state.cspNonce}"` : '';
+    replacers.txConstsInjection = `<script${nonce}>window.txConsts = ${JSON.stringify(injectedConsts)};</script>`;
     replacers.devModules = txDevEnv.ENABLED ? devModulesScript : '';
+
+    //Prepare addon head tags (CSS for approved/running addons)
+    //Only CSS is injected here — JS requires React globals set up by the panel app
+    const addonTags: string[] = [];
+    try {
+        const panelManifest = txCore.addonManager.getPanelManifest();
+        for (const addon of panelManifest) {
+            if (addon.stylesUrl) {
+                addonTags.push(`<link rel="stylesheet" href="${addon.stylesUrl}" data-addon-id="${addon.id}">`);
+            }
+        }
+    } catch (error) {
+        console.verbose.warn(`Failed to generate addon head tags: ${emsg(error)}`);
+    }
+    replacers.addonHeadTags = addonTags.join('\n        ');
 
     //Prepare custom themes style tag
     if (tmpCustomThemes.length) {
@@ -147,7 +170,7 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
             }
             cssThemes.push(`.theme-${theme.name} { ${cssVars.join(' ')} }`);
         }
-        replacers.customThemesStyle = `<style>${cssThemes.join('\n')}</style>`;
+        replacers.customThemesStyle = `<style${nonce}>${cssThemes.join('\n')}</style>`;
     } else {
         replacers.customThemesStyle = '';
     }

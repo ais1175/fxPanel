@@ -258,6 +258,18 @@ export default class WebSocket {
                 socket.leave(`spectate:${sessionId}`);
             });
 
+            //Addon room switching (dynamic rooms prefixed with addon:)
+            socket.on('joinAddonRoom', (addonId: string) => {
+                if (typeof addonId !== 'string') return;
+                if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(addonId)) return;
+                if (!txCore.addonManager.isRunning(addonId)) return;
+                socket.join(`addon:${addonId}`);
+            });
+            socket.on('leaveAddonRoom', (addonId: string) => {
+                if (typeof addonId !== 'string') return;
+                socket.leave(`addon:${addonId}`);
+            });
+
             //General events
             socket.on('disconnect', (reason) => {
                 // console.verbose.debug('SocketIO', `Client disconnected with reason: ${reason}`);
@@ -357,5 +369,12 @@ export default class WebSocket {
             sessionId,
             frame: frameData,
         });
+    }
+
+    /**
+     * Push an event to a named room (used by addon system for addon-scoped rooms).
+     */
+    public pushToRoom(roomName: string, eventName: string, data: unknown) {
+        this.#io.to(roomName).emit(eventName, data);
     }
 }

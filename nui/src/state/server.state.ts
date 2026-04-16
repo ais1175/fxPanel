@@ -19,6 +19,7 @@ export interface ServerCtx {
     txAdminVersion: string;
     alignRight: boolean;
     tagDefinitions: TagDefinition[];
+    reportsEnabled: boolean;
 }
 
 const serverCtx = atom<ServerCtx>(config.serverCtx);

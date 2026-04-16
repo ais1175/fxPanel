@@ -49,11 +49,16 @@ const TAG_CONFIG: Record<PlayerTag, { label: string; color: string; priority: nu
 
 /**
  * Builds a lookup map from tag definitions array, with auto-tag fallbacks.
+ * Disabled tags are excluded.
  */
 const buildTagLookup = (defs: TagDefinition[]): Record<string, { label: string; color: string; priority: number }> => {
     const lookup: Record<string, { label: string; color: string; priority: number }> = { ...TAG_CONFIG };
     for (const d of defs) {
-        lookup[d.id] = { label: d.label, color: d.color, priority: d.priority };
+        if (d.enabled === false) {
+            delete lookup[d.id];
+        } else {
+            lookup[d.id] = { label: d.label, color: d.color, priority: d.priority };
+        }
     }
     return lookup;
 };

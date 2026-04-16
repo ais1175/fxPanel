@@ -1,7 +1,7 @@
 const modulename = 'WebServer:SessionMws';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import type { CfxreSessAuthType, PassSessAuthType, Pending2faSessAuthType } from '../authLogic';
+import type { CfxreSessAuthType, DiscordSessAuthType, PassSessAuthType, Pending2faSessAuthType } from '../authLogic';
 import { LRUCacheWithDelete } from 'mnemonist';
 import { RawKoaCtx } from '../ctxTypes';
 import { Next } from 'koa';
@@ -19,10 +19,11 @@ export type AddMasterUserInfoType = {
     identifier: string;
 };
 export type ValidSessionType = {
-    auth?: PassSessAuthType | CfxreSessAuthType | Pending2faSessAuthType;
+    auth?: PassSessAuthType | CfxreSessAuthType | DiscordSessAuthType | Pending2faSessAuthType;
     tmpAddMasterUserInfo?: AddMasterUserInfoType;
     tmpDiscourseNonce?: string; //uuid v4
     tmpDiscoursePrivateKey?: string; //PEM-encoded RSA private key
+    tmpDiscordOAuthState?: string; //uuid v4
     tmpTotpSecret?: string; //pending TOTP secret during 2FA setup
 };
 export type SessToolsType = {

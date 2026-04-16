@@ -19,17 +19,22 @@ import type { GetConfigsResp, PartialTxConfigs, SaveConfigsReq, SaveConfigsResp 
 
 import SettingsTab from './SettingsTab';
 import ConfigCardBans from './tabCards/bans';
-import ConfigCardDiscord from './tabCards/discord';
+import ConfigCardDiscordBot from './tabCards/discord';
+import ConfigCardDiscordOAuth from './tabCards/discordOAuth';
 import ConfigCardFxserver from './tabCards/fxserver';
 import ConfigCardGameMenu from './tabCards/gameMenu';
 import ConfigCardGameNotifications from './tabCards/gameNotifications';
 import ConfigCardGamePlayerTags from './tabCards/gamePlayerTags';
+import ConfigCardGameReports from './tabCards/gameReports';
 import ConfigCardGeneral from './tabCards/general';
 import ConfigCardWhitelist from './tabCards/whitelist';
 import SettingsCardTemplate from './tabCards/_template';
 import SettingsCardBlank from './tabCards/_blank';
 import { PageHeader, PageHeaderChangelog } from '@/components/page-header';
 import { emsg } from '@shared/emsg';
+import AddonsContent from '@/pages/AddonsPage';
+import { useAddonWidgets, useAddonWidgetsByPrefix } from '@/hooks/addons';
+import { ErrorBoundary } from 'react-error-boundary';
 
 //Tab configuration
 const settingsTabsBase = [
@@ -37,12 +42,19 @@ const settingsTabsBase = [
     { name: 'FXServer', Component: ConfigCardFxserver },
     { name: 'Bans', Component: ConfigCardBans },
     { name: 'Whitelist', Component: ConfigCardWhitelist },
-    { name: 'Discord', Component: ConfigCardDiscord },
+    {
+        name: 'Discord',
+        cards: [
+            { name: 'Bot', Component: ConfigCardDiscordBot },
+            { name: 'OAuth', Component: ConfigCardDiscordOAuth },
+        ],
+    },
     {
         name: 'Game',
         cards: [
             { name: 'Menu', Component: ConfigCardGameMenu },
             { name: 'Notifications', Component: ConfigCardGameNotifications },
+            { name: 'Reports', Component: ConfigCardGameReports },
         ],
     },
     { name: 'Player Tags', Component: ConfigCardGamePlayerTags },
@@ -105,11 +117,33 @@ export default function SettingsPage() {
     const openConfirmDialog = useOpenConfirmDialog();
     const { hasPerm } = useAdminPerms();
 
+    // Addon widgets: full custom tabs (e.g. "settings.tab") and per-tab injections (e.g. "settings.tab.discord")
+    const addonSettingsTabs = useAddonWidgets('settings.tab');
+    const addonTabInject = useAddonWidgetsByPrefix('settings.tab.');
+    const settingsSections = useAddonWidgets('settings.sections');
+
     //Check for default tab in URL hash
     const [tab, setTab] = useState(() => {
         const pageHash = window.location?.hash.slice(1);
+        if (pageHash === 'addons') return 'addons';
+        if (pageHash?.startsWith('addon-')) return pageHash;
         return settingsTabs.find((tab) => tab.ctx.tabId === pageHash)?.ctx.tabId ?? settingsTabs[0].ctx.tabId;
     });
+
+    // Listen for hash changes (e.g. from addon warning bar)
+    useEffect(() => {
+        const onHashChange = () => {
+            const hash = window.location.hash.slice(1);
+            if (hash === 'addons' || hash.startsWith('addon-')) {
+                setTab(hash);
+            } else {
+                const match = settingsTabs.find((t) => t.ctx.tabId === hash);
+                if (match) setTab(match.ctx.tabId);
+            }
+        };
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+    }, []);
 
     //Warn on navigate-away with unsaved changes
     useEffect(() => {
@@ -164,7 +198,7 @@ export default function SettingsPage() {
             const saveResp = await saveApi({
                 pathParams: { card: source.cardId },
                 data: { resetKeys, changes },
-                timeout: source.cardId === 'discord' ? ApiTimeout.REALLY_REALLY_LONG : ApiTimeout.LONG,
+                timeout: source.cardId === 'discord-bot' ? ApiTimeout.REALLY_REALLY_LONG : ApiTimeout.LONG,
                 toastId,
             });
             if (!saveResp) throw new Error('empty_response');
@@ -232,27 +266,63 @@ export default function SettingsPage() {
                         {settingsTabs.map((tab) => (
                             <TabsTrigger key={tab.ctx.tabId} value={tab.ctx.tabId} className="hover:text-primary">
                                 {tab.ctx.tabName}
-                                {/* <TriangleAlertIcon className="inline-block size-4 mt-0.5 ml-1 text-destructive self-center" /> */}
                             </TabsTrigger>
                         ))}
+                        {addonSettingsTabs.map((w) => (
+                            <TabsTrigger key={`addon-${w.addonId}-${w.title}`} value={`addon-${w.addonId}-${w.title}`} className="hover:text-primary">
+                                {w.title}
+                            </TabsTrigger>
+                        ))}
+                        {hasPerm('all_permissions') && (
+                            <TabsTrigger value="addons" className="hover:text-primary">
+                                Addons
+                            </TabsTrigger>
+                        )}
                     </TabsList>
-                    {settingsTabs.map((tab) => (
-                        <TabsContent value={tab.ctx.tabId} key={tab.ctx.tabId} className="mt-6">
-                            <SettingsTab
-                                tab={tab}
-                                pageCtx={{
-                                    apiData: swr.data,
-                                    isReadOnly: swr.isLoading || isSaving || !swr.data || !hasPerm('settings.write'),
-                                    isLoading: swr.isLoading,
-                                    isSaving,
-                                    swrError: swr.error ? swr.error.message : undefined,
-                                    cardPendingSave,
-                                    setCardPendingSave,
-                                    saveChanges,
-                                }}
-                            />
+                    {settingsTabs.map((tab) => {
+                        // Find any addon widgets injected into this specific tab
+                        const tabInjectWidgets = addonTabInject.filter(
+                            (w) => w.slot === `settings.tab.${tab.ctx.tabId}`
+                        );
+                        return (
+                            <TabsContent value={tab.ctx.tabId} key={tab.ctx.tabId} className="mt-6">
+                                <SettingsTab
+                                    tab={tab}
+                                    pageCtx={{
+                                        apiData: swr.data,
+                                        isReadOnly: swr.isLoading || isSaving || !swr.data || !hasPerm('settings.write'),
+                                        isLoading: swr.isLoading,
+                                        isSaving,
+                                        swrError: swr.error ? swr.error.message : undefined,
+                                        cardPendingSave,
+                                        setCardPendingSave,
+                                        saveChanges,
+                                    }}
+                                />
+                                {tabInjectWidgets.length > 0 && (
+                                    <div className="mt-6 flex flex-col gap-4">
+                                        {tabInjectWidgets.map((w) => (
+                                            <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Addon error: {w.title}</div>}>
+                                                <w.Component />
+                                            </ErrorBoundary>
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+                        );
+                    })}
+                    {addonSettingsTabs.map((w) => (
+                        <TabsContent key={`addon-${w.addonId}-${w.title}`} value={`addon-${w.addonId}-${w.title}`} className="mt-6">
+                            <ErrorBoundary fallback={<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Addon tab error: {w.title}</div>}>
+                                <w.Component />
+                            </ErrorBoundary>
                         </TabsContent>
                     ))}
+                    {hasPerm('all_permissions') && (
+                        <TabsContent value="addons" className="mt-6">
+                            <AddonsContent />
+                        </TabsContent>
+                    )}
                 </Tabs>
             </div>
         </div>

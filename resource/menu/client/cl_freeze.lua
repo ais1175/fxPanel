@@ -36,10 +36,12 @@ end)
 
 RegisterNetEvent('txcl:setFrozen', function(isFrozen)
     DebugPrint('Frozen: ' .. tostring(isFrozen))
-    --NOTE: removed the check for vehicle, but could be done with
-    -- IsPedInAnyVehicle for vehicles and IsPedOnMount for horses
     local playerPed = PlayerPedId()
-    TaskLeaveAnyVehicle(playerPed, 0, 16)
+    if IS_REDM and IsPedOnMount(playerPed) then
+        ClearPedTasksImmediately(playerPed)
+    else
+        TaskLeaveAnyVehicle(playerPed, 0, 16)
+    end
     FreezeEntityPosition(playerPed, isFrozen)
     sendFreezeAlert(isFrozen)
 end)

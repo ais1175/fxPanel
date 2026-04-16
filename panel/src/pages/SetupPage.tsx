@@ -184,7 +184,7 @@ function StepPopularTemplates({
     useEffect(() => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
-        fetch('https://raw.githubusercontent.com/tabarra/txAdmin-recipes/main/indexv4.json', {
+        fetch('https://raw.githubusercontent.com/citizenfx/txAdmin-recipes/main/indexv4.json', {
             signal: controller.signal,
         })
             .then((r) => {

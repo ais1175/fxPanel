@@ -26,6 +26,66 @@ export default () => {
         id: (ctx: any) => ctx.txVars.realIP,
     });
 
+    // TTL Map subclass for rate limiters — auto-evicts expired entries
+    // Must extend Map so koa-ratelimit's `db instanceof Map` assertion passes.
+    class TtlMap extends Map<string, any> {
+        private _expiry = new Map<string, number>();
+        constructor(private _ttlMs: number) {
+            super();
+            setInterval(() => {
+                const now = Date.now();
+                for (const [key, exp] of this._expiry) {
+                    if (now > exp) this.delete(key);
+                }
+            }, 60_000).unref();
+        }
+        override get(key: string) {
+            const exp = this._expiry.get(key);
+            if (exp !== undefined && Date.now() > exp) {
+                this.delete(key);
+                return undefined;
+            }
+            return super.get(key);
+        }
+        override set(key: string, value: any) {
+            this._expiry.set(key, Date.now() + this._ttlMs);
+            return super.set(key, value);
+        }
+        override has(key: string) {
+            return this.get(key) !== undefined;
+        }
+        override delete(key: string) {
+            this._expiry.delete(key);
+            return super.delete(key);
+        }
+    }
+
+    // Rate limiter for mutation endpoints (kick, ban, warn, etc.) — stricter
+    const mutationLimiter = KoaRateLimit({
+        driver: 'memory',
+        db: new TtlMap(60_000),
+        duration: 60 * 1000, // 1 minute window
+        errorMessage: JSON.stringify({
+            error: 'Too many requests. Please slow down.',
+        }),
+        max: 30,
+        disableHeader: true,
+        id: (ctx: any) => ctx.txVars.realIP,
+    });
+
+    // Rate limiter for read endpoints (search, logs, data) — moderate
+    const readLimiter = KoaRateLimit({
+        driver: 'memory',
+        db: new TtlMap(60_000),
+        duration: 60 * 1000, // 1 minute window
+        errorMessage: JSON.stringify({
+            error: 'Too many requests. Please slow down.',
+        }),
+        max: 120,
+        disableHeader: true,
+        id: (ctx: any) => ctx.txVars.realIP,
+    });
+
     //Legacy Rendered Pages (kept for backwards compatibility, some still used by other routes)
     //router.get('/legacy/adminManager', webAuthMw, routes.adminManager_page);
     //router.get('/legacy/advanced', webAuthMw, routes.advanced_page);
@@ -46,6 +106,8 @@ export default () => {
     router.post('/auth/addMaster/save', authLimiter, routes.auth_addMasterSave);
     router.get('/auth/discourse/redirect', authLimiter, wrapRoute('DiscourseRedirect', routes.auth_discourseRedirect));
     router.post('/auth/discourse/callback', authLimiter, routes.auth_discourseCallback);
+    router.get('/auth/discord/redirect', authLimiter, wrapRoute('DiscordRedirect', routes.auth_discordRedirect));
+    router.post('/auth/discord/callback', authLimiter, routes.auth_discordCallback);
     router.post('/auth/changePassword', apiAuthMw, routes.auth_changePassword);
     router.get('/auth/getIdentifiers', apiAuthMw, wrapRoute('GetIdentifiers', routes.auth_getIdentifiers));
     router.post('/auth/changeIdentifiers', apiAuthMw, routes.auth_changeIdentifiers);
@@ -76,19 +138,19 @@ export default () => {
     router.get('/deployer/status', apiAuthMw, routes.deployer_status);
     router.post('/deployer/recipe/:action', apiAuthMw, routes.deployer_actions);
     router.get('/settings/configs', apiAuthMw, wrapRoute('GetConfigs', routes.settings_getConfigs));
-    router.post('/settings/configs/:card', apiAuthMw, routes.settings_saveConfigs);
+    router.post('/settings/configs/:card', apiAuthMw, mutationLimiter, routes.settings_saveConfigs);
     router.get('/settings/banTemplates', apiAuthMw, routes.settings_getBanTemplates);
-    router.post('/settings/banTemplates', apiAuthMw, routes.settings_saveBanTemplates);
-    router.post('/settings/resetServerDataPath', apiAuthMw, routes.settings_resetServerDataPath);
+    router.post('/settings/banTemplates', apiAuthMw, mutationLimiter, routes.settings_saveBanTemplates);
+    router.post('/settings/resetServerDataPath', apiAuthMw, mutationLimiter, routes.settings_resetServerDataPath);
 
     //Master Actions
     router.get('/masterActions/backupDatabase', webAuthMw, routes.masterActions_getBackup);
-    router.post('/masterActions/:action', apiAuthMw, routes.masterActions_actions);
+    router.post('/masterActions/:action', apiAuthMw, mutationLimiter, routes.masterActions_actions);
 
     //FXServer
-    router.post('/fxserver/controls', apiAuthMw, wrapRoute('FxControls', routes.fxserver_controls));
-    router.post('/fxserver/commands', apiAuthMw, wrapRoute('FxCommands', routes.fxserver_commands));
-    router.post('/fxserver/schedule', apiAuthMw, routes.fxserver_schedule);
+    router.post('/fxserver/controls', apiAuthMw, mutationLimiter, wrapRoute('FxControls', routes.fxserver_controls));
+    router.post('/fxserver/commands', apiAuthMw, mutationLimiter, wrapRoute('FxCommands', routes.fxserver_commands));
+    router.post('/fxserver/schedule', apiAuthMw, mutationLimiter, routes.fxserver_schedule);
     router.get('/fxserver/artifacts', apiAuthMw, routes.fxserver_updateStatus);
     router.post(
         '/fxserver/artifacts/download',
@@ -115,13 +177,13 @@ export default () => {
     router.post('/advanced', apiAuthMw, routes.advanced_actions);
 
     //Log routes
-    router.get('/logs/server/partial', apiAuthMw, wrapRoute('ServerLogPartial', routes.serverLogPartial));
-    router.get('/logs/server/sessions', apiAuthMw, wrapRoute('ServerLogSessions', routes.serverLogSessions));
-    router.get('/logs/server/session', apiAuthMw, wrapRoute('ServerLogSession', routes.serverLogSessionFile));
+    router.get('/logs/server/partial', apiAuthMw, readLimiter, wrapRoute('ServerLogPartial', routes.serverLogPartial));
+    router.get('/logs/server/sessions', apiAuthMw, readLimiter, wrapRoute('ServerLogSessions', routes.serverLogSessions));
+    router.get('/logs/server/session', apiAuthMw, readLimiter, wrapRoute('ServerLogSession', routes.serverLogSessionFile));
     router.get('/logs/server/download', webAuthMw, wrapRoute('ServerLogDownload', routes.downloadServerLog));
-    router.get('/logs/system/partial', apiAuthMw, wrapRoute('SystemLogPartial', routes.systemLogPartial));
-    router.get('/logs/system/sessions', apiAuthMw, wrapRoute('SystemLogSessions', routes.systemLogSessions));
-    router.get('/logs/system/session', apiAuthMw, wrapRoute('SystemLogSession', routes.systemLogSessionFile));
+    router.get('/logs/system/partial', apiAuthMw, readLimiter, wrapRoute('SystemLogPartial', routes.systemLogPartial));
+    router.get('/logs/system/sessions', apiAuthMw, readLimiter, wrapRoute('SystemLogSessions', routes.systemLogSessions));
+    router.get('/logs/system/session', apiAuthMw, readLimiter, wrapRoute('SystemLogSession', routes.systemLogSessionFile));
     router.get('/logs/system/download', webAuthMw, wrapRoute('SystemLogDownload', routes.downloadSystemLog));
     router.get('/logs/system/:scope', apiAuthMw, wrapRoute('SystemLogScoped', routes.systemLogScoped));
     router.get('/logs/fxserver/download', webAuthMw, wrapRoute('FxLogDownload', routes.downloadFxserverLog));
@@ -142,32 +204,52 @@ export default () => {
     router.get('/insights/dailyPlayers', apiAuthMw, routes.insights_dailyPlayers);
 
     //History routes
-    router.get('/history/stats', apiAuthMw, routes.history_stats);
-    router.get('/history/search', apiAuthMw, wrapRoute('HistorySearch', routes.history_search));
-    router.get('/history/action', apiAuthMw, routes.history_actionModal);
-    router.post('/history/:action', apiAuthMw, routes.history_actions);
+    router.get('/history/stats', apiAuthMw, readLimiter, routes.history_stats);
+    router.get('/history/search', apiAuthMw, readLimiter, wrapRoute('HistorySearch', routes.history_search));
+    router.get('/history/action', apiAuthMw, readLimiter, routes.history_actionModal);
+    router.post('/history/:action', apiAuthMw, mutationLimiter, routes.history_actions);
 
     //Player routes
-    router.get('/player', apiAuthMw, routes.player_modal);
-    router.get('/player/stats', apiAuthMw, routes.player_stats);
-    router.get('/player/search', apiAuthMw, wrapRoute('PlayerSearch', routes.player_search));
+    router.get('/player', apiAuthMw, readLimiter, routes.player_modal);
+    router.get('/player/stats', apiAuthMw, readLimiter, routes.player_stats);
+    router.get('/player/search', apiAuthMw, readLimiter, wrapRoute('PlayerSearch', routes.player_search));
     router.post('/player/checkJoin', intercomAuthMw, routes.player_checkJoin);
-    router.post('/player/screenshot', apiAuthMw, routes.player_screenshot);
+    router.post('/player/screenshot', apiAuthMw, mutationLimiter, routes.player_screenshot);
     router.post(
         '/player/liveSpectate/start',
         apiAuthMw,
+        mutationLimiter,
         wrapRoute('LiveSpectateStart', routes.player_liveSpectate_start),
     );
-    router.post('/player/liveSpectate/stop', apiAuthMw, wrapRoute('LiveSpectateStop', routes.player_liveSpectate_stop));
-    router.post('/player/:action', apiAuthMw, routes.player_actions);
-    router.get('/whitelist/:table', apiAuthMw, wrapRoute('WhitelistList', routes.whitelist_list));
-    router.post('/whitelist/:table/:action', apiAuthMw, routes.whitelist_actions);
+    router.post('/player/liveSpectate/stop', apiAuthMw, mutationLimiter, wrapRoute('LiveSpectateStop', routes.player_liveSpectate_stop));
+    router.post('/player/:action', apiAuthMw, mutationLimiter, routes.player_actions);
+    router.get('/whitelist/:table', apiAuthMw, readLimiter, wrapRoute('WhitelistList', routes.whitelist_list));
+    router.post('/whitelist/:table/:action', apiAuthMw, mutationLimiter, routes.whitelist_actions);
 
     //Report routes
-    router.get('/reports/list', apiAuthMw, routes.reports_list);
-    router.get('/reports/detail', apiAuthMw, routes.reports_detail);
-    router.post('/reports/message', apiAuthMw, routes.reports_message);
-    router.post('/reports/status', apiAuthMw, routes.reports_status);
+    router.get('/reports/list', apiAuthMw, readLimiter, routes.reports_list);
+    router.get('/reports/detail', apiAuthMw, readLimiter, routes.reports_detail);
+    router.post('/reports/message', apiAuthMw, mutationLimiter, routes.reports_message);
+    router.post('/reports/status', apiAuthMw, mutationLimiter, routes.reports_status);
+
+    //Addon routes
+    router.get('/addons/list', apiAuthMw, routes.addons_list);
+    router.get('/addons/panel-manifest', apiAuthMw, routes.addons_panelManifest);
+    router.get('/addons/nui-manifest', apiAuthMw, routes.addons_nuiManifest);
+    router.post('/addons/:addonId/approve', apiAuthMw, mutationLimiter, routes.addons_approve);
+    router.post('/addons/:addonId/revoke', apiAuthMw, mutationLimiter, routes.addons_revoke);
+    router.post('/addons/:addonId/reload', apiAuthMw, mutationLimiter, routes.addons_reload);
+    router.post('/addons/:addonId/stop', apiAuthMw, mutationLimiter, routes.addons_stop);
+    router.post('/addons/:addonId/start', apiAuthMw, mutationLimiter, routes.addons_start);
+    router.post('/addons/reload-all', apiAuthMw, mutationLimiter, routes.addons_reloadAll);
+    router.get('/addons/:addonId/logs', apiAuthMw, readLimiter, routes.addons_logs);
+    router.all('/addons/:addonId/api/(.*)', apiAuthMw, readLimiter, routes.addons_proxy);
+    //Addon static file serving (panel bundles, NUI bundles & static assets)
+    router.get('/addons/:addonId/panel/(.*)', routes.addons_servePanelFile);
+    router.get('/nui/addons/:addonId/(.*)', routes.addons_serveNuiFile);
+    router.get('/addons/:addonId/static/(.*)', routes.addons_serveStaticFile);
+    //Addon public routes (unauthenticated, for addons with publicRoutes enabled)
+    router.all('/site/:addonId/(.*)', readLimiter, routes.addons_publicProxy);
 
     //Host routes
     router.get('/host/status', hostAuthMw, routes.host_status);

@@ -124,10 +124,10 @@ RegisterSecureNuiCallback('spawnVehicle', function(data, cb)
     cb({})
 end)
 RegisterCommand('txAdmin:menu:spawnVehicle', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.vehicle.spawn') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.vehicle.spawn') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     toggleMenuVisibility(true)
@@ -148,10 +148,10 @@ local function reqVehicleDelete(_, cb)
 end
 RegisterSecureNuiCallback('deleteVehicle', reqVehicleDelete)
 RegisterCommand('txAdmin:menu:deleteVehicle', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.vehicle.delete') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.vehicle.delete') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleDelete()
@@ -169,10 +169,10 @@ local function reqVehicleFix(_, cb)
 end
 RegisterSecureNuiCallback('fixVehicle', reqVehicleFix)
 RegisterCommand('txAdmin:menu:fixVehicle', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.vehicle.fix') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.vehicle.fix') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleFix()
@@ -190,10 +190,10 @@ local function reqVehicleBoost(_, cb)
 end
 RegisterSecureNuiCallback('boostVehicle', reqVehicleBoost)
 RegisterCommand('txAdmin:menu:boostVehicle', function()
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         return
     end
-    if not DoesPlayerHavePerm(menuPermissions, 'menu.vehicle.boost') then
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, 'menu.vehicle.boost') then
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleBoost()

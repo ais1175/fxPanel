@@ -3,13 +3,12 @@
 --  visibility, keybinds, focus callbacks's, threads, etc)
 -- =============================================
 
--- Global Variables
--- TODO: they should be upper case
-menuIsAccessible = false
-IsMenuVisible = false
-TsLastMenuClose = 0
-menuPermissions = {}
-lastTpCoords = false
+-- Global Variables (TX_ prefix for txAdmin-managed state)
+TX_MENU_ACCESSIBLE = false
+TX_MENU_VISIBLE = false
+TX_LAST_MENU_CLOSE = 0
+TX_MENU_PERMISSIONS = {}
+TX_LAST_TP_COORDS = false
 
 -- Locals
 local noMenuReason = 'unknown reason'
@@ -30,7 +29,7 @@ local function checkMenuAccessible()
         SendSnackbarMessage('error', 'nui_menu.misc.not_enabled', true)
         return false
     end
-    if not menuIsAccessible then
+    if not TX_MENU_ACCESSIBLE then
         displayAuthRejectedError()
         return false
     end
@@ -48,13 +47,73 @@ local function txadmin(_, args)
     toggleMenuVisibility()
 
     -- Shortcut to open a specific players profile
-    if IsMenuVisible and #args >= 1 then
+    if TX_MENU_VISIBLE and #args >= 1 then
         local targetPlayer = table.concat(args, ' ')
         SendMenuMessage('openPlayerModal', targetPlayer)
     end
 end
 RegisterCommand('txadmin', txadmin)
 RegisterCommand('tx', txadmin)
+
+-- Shortcut commands for moderation actions
+local actionPermMap = {
+    ban = 'players.ban',
+    kick = 'players.kick',
+    warn = 'players.warn',
+    dm = 'players.direct_message',
+    heal = 'players.heal',
+    teleport = 'players.teleport',
+    spectate = 'players.spectate',
+    freeze = 'players.freeze',
+    troll = 'players.troll',
+    announce = 'announcement',
+    vehicle = 'menu.vehicle',
+    clear_area = 'menu.clear_area',
+    viewids = 'menu.viewids',
+    playermode = 'players.playermode',
+    whitelist = 'players.whitelist',
+    resources = 'commands.resources',
+}
+local function makeActionCommand(action)
+    return function(_, args)
+        if not checkMenuAccessible() then
+            return
+        end
+        local requiredPerm = actionPermMap[action]
+        if requiredPerm and not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, requiredPerm) then
+            SendSnackbarMessage('error', 'You do not have permission to ' .. action .. ' players.', false)
+            return
+        end
+        if #args < 1 then
+            SendSnackbarMessage('error', 'Usage: /' .. action .. ' [playerID]', false)
+            return
+        end
+        local targetPlayer = table.concat(args, ' ')
+        toggleMenuVisibility(true)
+        SetNuiFocus(true, true)
+        SendMenuMessage('openPlayerModalAction', { target = targetPlayer, action = action })
+    end
+end
+RegisterCommand('ban', makeActionCommand('ban'))
+RegisterCommand('kick', makeActionCommand('kick'))
+RegisterCommand('warn', makeActionCommand('warn'))
+
+-- Announce command
+RegisterCommand('announce', function(_, args)
+    if not checkMenuAccessible() then
+        return
+    end
+    if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, actionPermMap['announce']) then
+        SendSnackbarMessage('error', 'You do not have permission to send announcements.', false)
+        return
+    end
+    if #args < 1 then
+        SendSnackbarMessage('error', 'Usage: /announce [message]', false)
+        return
+    end
+    local message = table.concat(args, ' ')
+    TriggerServerEvent('txsv:req:sendAnnouncement', message)
+end)
 
 RegisterCommand('txAdmin:menu:openPlayersPage', function()
     if not checkMenuAccessible() then
@@ -65,21 +124,21 @@ RegisterCommand('txAdmin:menu:openPlayersPage', function()
     SetNuiFocus(true, true)
 end)
 
--- This needs to run even when menu is disabled so the ServerCtx
+-- This needs to run even when menu is disabled so the TX_SERVER_CTX
 -- is updated for react, needed by the Warn page
 RegisterSecureNuiCallback('reactLoaded', function(_, cb)
-    DebugPrint('React loaded, requesting ServerCtx.')
+    DebugPrint('React loaded, requesting TX_SERVER_CTX.')
 
     CreateThread(function()
         UpdateServerCtx()
-        while ServerCtx == false do
+        while TX_SERVER_CTX == false do
             Wait(0)
         end
-        DebugPrint('ServerCtx loaded, sending variables.')
+        DebugPrint('TX_SERVER_CTX loaded, sending variables.')
         SendMenuMessage('setGameName', GAME_NAME)
         SendMenuMessage('setDebugMode', TX_DEBUG_MODE)
-        SendMenuMessage('setServerCtx', ServerCtx)
-        SendMenuMessage('setPermissions', menuPermissions)
+        SendMenuMessage('setServerCtx', TX_SERVER_CTX)
+        SendMenuMessage('setPermissions', TX_MENU_PERMISSIONS)
     end)
 
     cb({})
@@ -101,8 +160,8 @@ TriggerServerEvent('txsv:checkIfAdmin')
 RegisterNetEvent('txcl:setAdmin', function(username, perms, rejectReason)
     if type(perms) == 'table' then
         DebugPrint("^2[AUTH] logged in as '" .. username .. "' with perms: " .. json.encode(perms or 'nil'))
-        menuIsAccessible = true
-        menuPermissions = perms
+        TX_MENU_ACCESSIBLE = true
+        TX_MENU_PERMISSIONS = perms
         if IS_FIVEM then
             --NOTE: appending # to the desc so the sorting shows it at the top
             RegisterKeyMapping('txadmin', 'Open Main Page', 'KEYBOARD', '')
@@ -126,19 +185,19 @@ RegisterNetEvent('txcl:setAdmin', function(username, perms, rejectReason)
             displayAuthRejectedError()
             awaitingReauth = false
         end
-        menuIsAccessible = false
-        menuPermissions = {}
+        TX_MENU_ACCESSIBLE = false
+        TX_MENU_PERMISSIONS = {}
     end
-    SendMenuMessage('setPermissions', menuPermissions)
+    SendMenuMessage('setPermissions', TX_MENU_PERMISSIONS)
 end)
 
 --[[ Debug Events / Commands ]]
 -- Command/event to trigger a authentication attempt
 local function retryAuthentication()
     DebugPrint('^5[AUTH] Retrying menu authentication.')
-    menuIsAccessible = false
-    menuPermissions = {}
-    SendMenuMessage('setPermissions', menuPermissions)
+    TX_MENU_ACCESSIBLE = false
+    TX_MENU_PERMISSIONS = {}
+    SendMenuMessage('setPermissions', TX_MENU_PERMISSIONS)
     TriggerServerEvent('txsv:checkIfAdmin')
 end
 RegisterNetEvent('txcl:reAuth', retryAuthentication)
@@ -166,6 +225,30 @@ CreateThread(function()
         { { name = 'player ID', help = 'The server ID of the target player.' } }
     )
     TriggerEvent('chat:addSuggestion', '/tpm', 'Teleport to the waypoint set on the map.')
+    TriggerEvent(
+        'chat:addSuggestion',
+        '/ban',
+        'Open the ban modal for a player.',
+        { { name = 'player ID/name', help = 'The server ID or name of the target player.' } }
+    )
+    TriggerEvent(
+        'chat:addSuggestion',
+        '/kick',
+        'Open the kick dialog for a player.',
+        { { name = 'player ID/name', help = 'The server ID or name of the target player.' } }
+    )
+    TriggerEvent(
+        'chat:addSuggestion',
+        '/warn',
+        'Open the warn dialog for a player.',
+        { { name = 'player ID/name', help = 'The server ID or name of the target player.' } }
+    )
+    TriggerEvent(
+        'chat:addSuggestion',
+        '/announce',
+        'Send a server-wide announcement.',
+        { { name = 'message', help = 'The announcement message to broadcast.' } }
+    )
 end)
 
 -- Will toggle debug logging
@@ -179,7 +262,7 @@ end)
 RegisterSecureNuiCallback('focusInputs', function(shouldFocus, cb)
     DebugPrint('NUI Focus + Keep Input ' .. tostring(shouldFocus))
     -- Will prevent mouse focus on initial menu mount as the useEffect emits there
-    if not IsMenuVisible then
+    if not TX_MENU_VISIBLE then
         return
     end
     SetNuiFocus(true, shouldFocus)
@@ -189,8 +272,8 @@ end)
 
 -- When the escape key is pressed in menu
 RegisterSecureNuiCallback('closeMenu', function(_, cb)
-    IsMenuVisible = false
-    TsLastMenuClose = GetGameTimer()
+    TX_MENU_VISIBLE = false
+    TX_LAST_MENU_CLOSE = GetGameTimer()
     DebugPrint('Releasing all NUI Focus')
     SetNuiFocus(false)
     SetNuiFocusKeepInput(false)
@@ -224,10 +307,14 @@ RegisterNetEvent('txcl:heal', function()
     end
 end)
 
+CreateThread(function()
+    NetworkSetLocalPlayerSyncLookAt(true)
+end)
+
 -- Tell the user he is an admin and that /tx is available
 AddEventHandler('playerSpawned', function()
     Wait(15000)
-    if menuIsAccessible then
+    if TX_MENU_ACCESSIBLE then
         SendMenuMessage('showMenuHelpInfo', {})
     end
 end)

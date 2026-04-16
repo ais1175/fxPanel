@@ -29,7 +29,7 @@ RegisterRawNuiCallback('WebPipe', function(req, cb)
 
     --Check if the menu is accessible and visible, otherwise it might be a CSRF attempt
     --Does not trigger within a 750ms grace period after the menu is closed
-    if (not menuIsAccessible or not IsMenuVisible) and (GetGameTimer() - TsLastMenuClose) > menuCloseGracePeriod then
+    if (not TX_MENU_ACCESSIBLE or not TX_MENU_VISIBLE) and (GetGameTimer() - TX_LAST_MENU_CLOSE) > menuCloseGracePeriod then
         TxPrint('^1NUI WebPipe request received the request below while the menu is not accessible or visible:')
         TxPrint(('^3%s %s'):format(method, string.sub(path, 1, 100)))
         return cb({

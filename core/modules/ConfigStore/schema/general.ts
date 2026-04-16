@@ -32,4 +32,10 @@ export default {
         validator: z.boolean(),
         fixer: SYM_FIXER_DEFAULT,
     }),
+    allowSelfIdentifierEdit: typeDefinedConfig({
+        name: 'Allow Self Identifier Edit',
+        default: false,
+        validator: z.boolean(),
+        fixer: SYM_FIXER_DEFAULT,
+    }),
 } as const;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box } from '@mui/material';
 import { PlayersPage } from './PlayersPage/PlayersPage';
+import { ReportsTab } from './ReportsTab/ReportsTab';
 import { txAdminMenuPage, usePageValue } from '../state/page.state';
 import { useHudListenersService } from '../hooks/useHudListenersService';
 import { HelpTooltip } from './misc/HelpTooltip';
@@ -29,6 +30,9 @@ const MenuRoot: React.FC = () => {
                 </HelpTooltip>
             </Box>
             <PlayersPage visible={curPage === txAdminMenuPage.Players} />
+            {serverCtx.reportsEnabled && (
+                <ReportsTab visible={curPage === txAdminMenuPage.Reports} />
+            )}
         </>
     );
 };

@@ -5,12 +5,15 @@ import ServerControls from './ServerControls';
 import ServerStatus from './ServerStatus';
 import ServerSchedule from './ServerSchedule';
 import { useShellBreakpoints } from '@/hooks/useShellBreakpoints';
+import { useAddonWidgets } from '@/hooks/addons';
+import { ErrorBoundary } from 'react-error-boundary';
 
 type ServerSidebarProps = {
     isSheet?: boolean;
 };
 export function ServerSidebar({ isSheet }: ServerSidebarProps) {
     const { isLg } = useShellBreakpoints();
+    const statusWidgets = useAddonWidgets('server.status-cards');
 
     return (
         <aside className={cn('z-10 flex-col gap-4', isSheet ? 'flex px-4 py-6' : isLg ? 'tx-sidebar flex' : 'hidden')}>
@@ -24,13 +27,17 @@ export function ServerSidebar({ isSheet }: ServerSidebarProps) {
                     'flex flex-col gap-4',
                 )}
             >
-                {/* <h2 className="text-lg font-semibold tracking-tight overflow-hidden text-ellipsis">
-                    Controls & Status
-                </h2> */}
                 <ServerControls />
                 <ServerStatus />
                 <ServerSchedule />
             </div>
+            {statusWidgets.length > 0 && statusWidgets.map((w) => (
+                <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">Addon error: {w.title}</div>}>
+                    <div className={cn(!isSheet && 'bg-card text-card-foreground rounded-xl border p-4 shadow-xs')}>
+                        <w.Component />
+                    </div>
+                </ErrorBoundary>
+            ))}
             <hr className={isSheet ? 'block' : 'hidden'} />
 
             {window.txConsts.isWebInterface ? (

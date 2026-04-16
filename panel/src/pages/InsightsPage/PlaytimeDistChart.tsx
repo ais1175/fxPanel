@@ -21,7 +21,7 @@ type Props = {
 function PlaytimeDistChart({ buckets }: Props) {
     const isDarkMode = useIsDarkMode();
 
-    if (!buckets.length) {
+    if (!Array.isArray(buckets) || !buckets.length) {
         return (
             <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
                 No data available

@@ -10,6 +10,9 @@
 local isReportOpen = false
 
 RegisterCommand('report', function()
+    if not GetConvarBool('txAdmin-reportsEnabled') then
+        return
+    end
     if isReportOpen then
         return
     end
@@ -33,6 +36,12 @@ end)
 --- Submit new report callback
 RegisterSecureNuiCallback('reportSubmit', function(data, cb)
     TriggerServerEvent('txsv:reportCreate', data)
+    cb({})
+end)
+
+--- Reports tab opened — fetch player list + reports inline
+RegisterSecureNuiCallback('reportTabOpen', function(data, cb)
+    TriggerServerEvent('txsv:reportTabOpen')
     cb({})
 end)
 
@@ -67,6 +76,11 @@ RegisterNetEvent('txcl:reportResult', function(data)
     SendMenuMessage('reportCreateResult', data)
 end)
 
+--- Receive reports tab data (players + reports for inline tab)
+RegisterNetEvent('txcl:reportTabData', function(data)
+    SendMenuMessage('reportTabData', data)
+end)
+
 --- Receive player's report list (standalone refresh)
 RegisterNetEvent('txcl:reportMyList', function(data)
     SendMenuMessage('reportMyList', data)
@@ -80,4 +94,59 @@ end)
 --- Receive admin notification about new report
 RegisterNetEvent('txcl:reportNotification', function(data)
     SendMenuMessage('reportNotification', data)
+end)
+
+
+-- =============================================
+-- MARK: Admin report management (in-game NUI panel)
+-- =============================================
+
+--- Admin: fetch all reports
+RegisterSecureNuiCallback('reportAdminList', function(data, cb)
+    TriggerServerEvent('txsv:reportAdminList')
+    cb({})
+end)
+
+--- Admin: fetch report detail
+RegisterSecureNuiCallback('reportAdminDetail', function(data, cb)
+    TriggerServerEvent('txsv:reportAdminDetail', data.reportId)
+    cb({})
+end)
+
+--- Admin: send message to a report
+RegisterSecureNuiCallback('reportAdminMessage', function(data, cb)
+    TriggerServerEvent('txsv:reportAdminMessage', {
+        reportId = data.reportId,
+        content = data.content,
+    })
+    cb({})
+end)
+
+--- Admin: change report status
+RegisterSecureNuiCallback('reportAdminStatus', function(data, cb)
+    TriggerServerEvent('txsv:reportAdminStatus', {
+        reportId = data.reportId,
+        status = data.status,
+    })
+    cb({})
+end)
+
+--- Receive admin report list
+RegisterNetEvent('txcl:reportAdminListData', function(data)
+    SendMenuMessage('reportAdminListData', data)
+end)
+
+--- Receive admin report detail
+RegisterNetEvent('txcl:reportAdminDetailData', function(data)
+    SendMenuMessage('reportAdminDetailData', data)
+end)
+
+--- Receive admin message result
+RegisterNetEvent('txcl:reportAdminMessageResult', function(data)
+    SendMenuMessage('reportAdminMessageResult', data)
+end)
+
+--- Receive admin status change result
+RegisterNetEvent('txcl:reportAdminStatusResult', function(data)
+    SendMenuMessage('reportAdminStatusResult', data)
 end)

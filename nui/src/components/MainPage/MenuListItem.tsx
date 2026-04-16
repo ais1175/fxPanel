@@ -152,6 +152,7 @@ interface MenuListItemMultiAction {
     label: string;
     value: string | number | boolean;
     icon?: JSX.Element;
+    requiredPermission?: ResolvablePermission;
     onSelect: () => void;
 }
 
@@ -172,7 +173,23 @@ export const MenuListItemMulti: React.FC<MenuListItemMultiProps> = memo(
         const { enqueueSnackbar } = useSnackbar();
         const { setTooltipText } = useTooltip();
 
-        const isUserAllowed = requiredPermission ? userHasPerm(requiredPermission, userPerms) : true;
+        // Row-level permission: if set and user lacks it AND no per-action perms exist, grey out entire row
+        // If actions have individual permissions, the row is accessible if user has ANY action's permission
+        const hasAnyActionPerm = actions.some((action) => {
+            if (action.requiredPermission) {
+                return userHasPerm(action.requiredPermission, userPerms);
+            }
+            return true;
+        });
+        const isRowAllowed = requiredPermission
+            ? userHasPerm(requiredPermission, userPerms) || hasAnyActionPerm
+            : hasAnyActionPerm;
+
+        // Per-action permission check for the currently selected action
+        const currentAction = actions[curState];
+        const isCurrentActionAllowed = currentAction?.requiredPermission
+            ? userHasPerm(currentAction.requiredPermission, userPerms)
+            : isRowAllowed;
 
         const compMounted = useRef(false);
 
@@ -237,7 +254,7 @@ export const MenuListItemMulti: React.FC<MenuListItemMultiProps> = memo(
 
         const handleEnter = () => {
             if (!selected) return;
-            if (!isUserAllowed) return showNotAllowedAlert();
+            if (!isCurrentActionAllowed) return showNotAllowedAlert();
 
             fetchNui('playSound', 'enter').catch();
             actions[curState].onSelect();
@@ -253,7 +270,7 @@ export const MenuListItemMulti: React.FC<MenuListItemMultiProps> = memo(
         return (
             <Root ref={divRef}>
                 <ListItemButton
-                    className={isUserAllowed ? classes.root : classes.rootDisabled}
+                    className={isRowAllowed ? classes.root : classes.rootDisabled}
                     dense
                     selected={selected}
                     sx={selectedItemSx}
@@ -266,9 +283,13 @@ export const MenuListItemMulti: React.FC<MenuListItemMultiProps> = memo(
                                 <Typography
                                     component="span"
                                     color={selected ? 'text.primary' : 'text.secondary'}
-                                    sx={{ fontWeight: selected ? 600 : 400 }}
+                                    sx={{
+                                        fontWeight: selected ? 600 : 400,
+                                        opacity: isCurrentActionAllowed ? 1 : 0.4,
+                                    }}
                                 >
                                     {actions[curState]?.name ?? '???'}
+                                    {!isCurrentActionAllowed}
                                 </Typography>
                             </>
                         }

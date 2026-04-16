@@ -59,7 +59,7 @@ end
 local function createPauseMenuCheckerThread()
     DebugPrint('Starting pause menu checker thread')
     CreateThread(function()
-        while IsMenuVisible do
+        while TX_MENU_VISIBLE do
             if IsPauseMenuActive() then
                 toggleMenuVisibility(false)
             end
@@ -70,16 +70,16 @@ end
 
 --- Toggle visibility of the txAdmin NUI menu
 function toggleMenuVisibility(visible)
-    if (visible == true and IsMenuVisible) or (visible == false and not IsMenuVisible) then
+    if (visible == true and TX_MENU_VISIBLE) or (visible == false and not TX_MENU_VISIBLE) then
         return
     end
     if visible == nil then
-        if not IsMenuVisible and IsPauseMenuActive() then
+        if not TX_MENU_VISIBLE and IsPauseMenuActive() then
             return
         end
     end
 
-    local nextVisibility = visible ~= nil and visible or not IsMenuVisible
+    local nextVisibility = visible ~= nil and visible or not TX_MENU_VISIBLE
 
     -- Grab NUI focus before sending visibility updates so /tx immediately
     -- hands input to the menu instead of waiting for the React callback chain.
@@ -90,18 +90,18 @@ function toggleMenuVisibility(visible)
 
     SendReactPlayerlist()
     if visible ~= nil then
-        IsMenuVisible = visible
+        TX_MENU_VISIBLE = visible
         SendMenuMessage('setVisible', visible)
     else
-        IsMenuVisible = not IsMenuVisible
-        SendMenuMessage('setVisible', IsMenuVisible)
+        TX_MENU_VISIBLE = not TX_MENU_VISIBLE
+        SendMenuMessage('setVisible', TX_MENU_VISIBLE)
     end
     createPauseMenuCheckerThread()
 
-    if not IsMenuVisible then
+    if not TX_MENU_VISIBLE then
         SetNuiFocus(false, false)
         SetNuiFocusKeepInput(false)
-        TsLastMenuClose = GetGameTimer()
+        TX_LAST_MENU_CLOSE = GetGameTimer()
     end
     playLibrarySound('enter')
 end

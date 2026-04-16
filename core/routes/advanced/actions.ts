@@ -140,7 +140,7 @@ export default async function AdvancedActions(ctx: AuthedCtx) {
     } else if (action === 'safeEnsureMonitor') {
         const setCmdResult = txCore.fxRunner.sendCommand(
             'set',
-            ['fxPanel-luaComToken', txCore.webServer.luaComToken],
+            ['txAdmin-luaComToken', txCore.webServer.luaComToken],
             SYM_SYSTEM_AUTHOR,
         );
         if (!setCmdResult) {

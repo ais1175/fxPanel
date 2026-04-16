@@ -1,5 +1,7 @@
 import type { ReactAuthDataType } from './authApiTypes';
 
+import type { PermissionDefinition } from './permissions';
+
 //Config stuff
 export type { TxConfigs, PartialTxConfigs } from '@core/modules/ConfigStore/schema';
 export type { ConfigChangelogEntry } from '@core/modules/ConfigStore/changelog';
@@ -90,6 +92,11 @@ export type InjectedTxConsts = {
         icon: string | undefined;
     };
     hideFxsUpdateNotification: boolean;
+    allowSelfIdentifierEdit: boolean;
+    discordOAuthEnabled: boolean;
+
+    //Addon permissions (dynamic, registered by running addons)
+    addonPermissions: PermissionDefinition[];
 
     //Auth
     preAuth: ReactAuthDataType | false;

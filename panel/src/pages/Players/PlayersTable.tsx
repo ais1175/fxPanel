@@ -29,7 +29,11 @@ const FALLBACK_TAG_LOOKUP: Record<string, { label: string; color: string; priori
 const buildTagLookup = (defs: TagDefinition[]) => {
     const lookup: Record<string, { label: string; color: string; priority: number }> = { ...FALLBACK_TAG_LOOKUP };
     for (const d of defs) {
-        lookup[d.id] = { label: d.label, color: d.color, priority: d.priority };
+        if (d.enabled === false) {
+            delete lookup[d.id];
+        } else {
+            lookup[d.id] = { label: d.label, color: d.color, priority: d.priority };
+        }
     }
     return lookup;
 };

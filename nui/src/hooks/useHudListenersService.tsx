@@ -11,6 +11,7 @@ import { useSetAssociatedPlayer } from '../state/playerDetails.state';
 import { txAdminMenuPage, useSetPage } from '../state/page.state';
 import { useAnnounceNotiPosValue } from '../state/server.state';
 import { useSetPlayerModalVisibility } from '@nui/src/state/playerModal.state';
+import { PlayerModalTabs, useSetPlayerModalTab, useSetPendingPlayerAction } from '@nui/src/state/playerModal.state';
 import cleanPlayerName from '@shared/cleanPlayerName';
 import { usePlayerModalContext } from '../provider/PlayerModalProvider';
 import { fetchNui } from '../utils/fetchNui';
@@ -72,6 +73,8 @@ export const useHudListenersService = () => {
     const setPage = useSetPage();
     const notiPos = useAnnounceNotiPosValue();
     const { closeMenu } = usePlayerModalContext();
+    const setPlayerModalTab = useSetPlayerModalTab();
+    const setPendingPlayerAction = useSetPendingPlayerAction();
 
     const snackFormat = (m: string) => <span style={{ whiteSpace: 'pre-wrap' }}>{m}</span>;
 
@@ -103,7 +106,7 @@ export const useHudListenersService = () => {
             persist: true,
             anchorOrigin: {
                 horizontal: 'center',
-                vertical: 'top',
+                vertical: 'bottom',
             },
         });
         alertMap.set(key, snackbarItem);
@@ -145,6 +148,41 @@ export const useHudListenersService = () => {
             setPage(txAdminMenuPage.PlayerModalOnly);
             setAssocPlayer(targetPlayer);
             setModalOpen(true);
+        } else {
+            closeMenu();
+            setModalOpen(false);
+            enqueueSnackbar(t('nui_menu.player_modal.misc.target_not_found', { target }), { variant: 'error' });
+        }
+    });
+
+    // Handler for opening the player modal with a specific action (ban/kick/warn)
+    useNuiEvent<{ target: string; action: string }>('openPlayerModalAction', ({ target, action }) => {
+        let targetPlayer;
+
+        const targetId = parseInt(target);
+        if (!isNaN(targetId)) {
+            targetPlayer = onlinePlayers.find((playerData) => playerData.id === targetId);
+        }
+
+        if (!targetPlayer && typeof target === 'string') {
+            const searchInput = cleanPlayerName(target).pureName;
+            const foundPlayers = onlinePlayers.filter((playerData) => playerData.pureName?.includes(searchInput));
+            if (foundPlayers.length === 1) {
+                targetPlayer = foundPlayers[0];
+            }
+        }
+
+        if (targetPlayer) {
+            setPage(txAdminMenuPage.PlayerModalOnly);
+            setAssocPlayer(targetPlayer);
+            setModalOpen(true);
+            if (action === 'ban') {
+                setPlayerModalTab(PlayerModalTabs.BAN);
+                setPendingPlayerAction(null);
+            } else if (action === 'kick' || action === 'warn') {
+                setPlayerModalTab(PlayerModalTabs.ACTIONS);
+                setPendingPlayerAction(action);
+            }
         } else {
             closeMenu();
             setModalOpen(false);

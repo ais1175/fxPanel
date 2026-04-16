@@ -43,8 +43,12 @@ const deriveTagColors = (hex: string) => {
 const buildTagDisplay = (defs: TagDefinition[]): Record<string, { label: string; color: string; bg: string }> => {
     const lookup: Record<string, { label: string; color: string; bg: string }> = { ...FALLBACK_TAG_DISPLAY };
     for (const d of defs) {
-        const derived = deriveTagColors(d.color);
-        lookup[d.id] = { label: d.label, color: derived.color, bg: derived.bg };
+        if (d.enabled === false) {
+            delete lookup[d.id];
+        } else {
+            const derived = deriveTagColors(d.color);
+            lookup[d.id] = { label: d.label, color: derived.color, bg: derived.bg };
+        }
     }
     return lookup;
 };

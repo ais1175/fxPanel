@@ -48,7 +48,7 @@ export default function DiscourseCallback() {
     if (errorData) {
         return <AuthError error={errorData} />;
     } else if (isFetching) {
-        return <GenericSpinner msg="Logging in via Discourse..." />;
+        return <GenericSpinner msg="Logging in..." />;
     } else {
         return <GenericSpinner />;
     }

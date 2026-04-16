@@ -17,6 +17,15 @@ type ProviderDataType = { id: string; identifier: string };
  * Route to change your own identifiers
  */
 export default async function AuthChangeIdentifiers(ctx: AuthedCtx) {
+    //Check if self-edit is allowed, otherwise require manage.admins permission
+    if (!txConfig.general.allowSelfIdentifierEdit) {
+        if (!ctx.admin.testPermission('manage.admins', modulename)) {
+            return ctx.send<GenericApiResp>({
+                error: 'Self identifier editing is disabled. An admin with "Manage Admins" permission must change your identifiers.',
+            });
+        }
+    }
+
     //Sanity check
     const body = ctx.getBody(bodySchema);
     if (!body) return;

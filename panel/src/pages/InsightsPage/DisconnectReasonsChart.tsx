@@ -40,11 +40,13 @@ function DisconnectReasonsChart({ categories }: Props) {
 
     const data: BarDatum[] = useMemo(
         () =>
-            categories.map((c) => ({
-                label: categoryLabels[c.category] ?? c.category,
-                count: c.count,
-                color: categoryColors[c.category] ?? '#6b7280',
-            })),
+            Array.isArray(categories)
+                ? categories.map((c) => ({
+                      label: categoryLabels[c.category] ?? c.category,
+                      count: c.count,
+                      color: categoryColors[c.category] ?? '#6b7280',
+                  }))
+                : [],
         [categories],
     );
 

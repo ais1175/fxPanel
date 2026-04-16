@@ -23,6 +23,7 @@ import {
 import { useNuiEvent } from '../../hooks/useNuiEvent';
 import { fetchNui } from '../../utils/fetchNui';
 import { useSetListenForExit } from '../../state/keys.state';
+import { theme } from '../../styles/theme';
 
 // =============================================
 // Types
@@ -67,28 +68,30 @@ const Overlay = styled(Box)({
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    zIndex: 9999,
+    backgroundColor: 'transparent',
+    zIndex: 1200,
+    color: theme.fg,
 });
 
-const Panel = styled(Box)(({ theme }) => ({
-    width: 480,
+const Panel = styled(Box)({
+    width: '100%',
+    maxWidth: 480,
     maxHeight: '80vh',
-    background: theme.palette.background.default,
+    background: theme.bg,
     borderRadius: 12,
-    border: `1px solid ${theme.palette.divider}`,
+    border: `1px solid ${theme.border}`,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-}));
+});
 
-const Header = styled(Box)(({ theme }) => ({
+const Header = styled(Box)({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '14px 18px',
-    borderBottom: `1px solid ${theme.palette.divider}`,
-}));
+    borderBottom: `1px solid ${theme.border}`,
+});
 
 const Content = styled(Box)({
     flex: 1,
@@ -96,12 +99,12 @@ const Content = styled(Box)({
     padding: '16px 18px',
 });
 
-const Footer = styled(Box)(({ theme }) => ({
+const Footer = styled(Box)({
     padding: '12px 18px',
-    borderTop: `1px solid ${theme.palette.divider}`,
+    borderTop: `1px solid ${theme.border}`,
     display: 'flex',
     gap: 8,
-}));
+});
 
 // =============================================
 // Helpers
@@ -113,49 +116,92 @@ const TYPE_LABELS: Record<ReportType, string> = {
     question: 'Question / Help',
 };
 
+const TYPE_COLORS: Record<ReportType, string> = {
+    playerReport: theme.destructive,
+    bugReport: theme.warning,
+    question: theme.info,
+};
+
 const TYPE_ICONS: Record<ReportType, React.ReactNode> = {
     playerReport: <Person fontSize="small" />,
     bugReport: <BugReport fontSize="small" />,
     question: <HelpOutline fontSize="small" />,
 };
 
-const STATUS_COLORS: Record<ReportStatus, 'warning' | 'info' | 'success'> = {
-    open: 'warning',
-    inReview: 'info',
-    resolved: 'success',
-};
-
-const STATUS_LABELS: Record<ReportStatus, string> = {
-    open: 'Open',
-    inReview: 'In Review',
-    resolved: 'Resolved',
+const STATUS_MAP: Record<ReportStatus, { label: string; color: string }> = {
+    open: { label: 'Open', color: theme.warning },
+    inReview: { label: 'In Review', color: theme.info },
+    resolved: { label: 'Resolved', color: theme.success },
 };
 
 function timeAgo(ts: number): string {
-    const diff = Math.floor((Date.now() - ts) / 1000);
+    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     if (diff < 60) return 'just now';
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return `${Math.floor(diff / 86400)}d ago`;
 }
 
+const inputSx = {
+    '& .MuiOutlinedInput-root': {
+        color: theme.fg,
+        '& fieldset': { borderColor: theme.border },
+        '&:hover fieldset': { borderColor: theme.muted },
+        '&.Mui-focused fieldset': { borderColor: theme.info },
+    },
+    '& .MuiInputLabel-root': { color: theme.muted },
+    '& .MuiInputLabel-root.Mui-focused': { color: theme.info },
+    '& .MuiFormHelperText-root': { color: theme.muted },
+    '& .MuiSelect-icon': { color: theme.muted },
+};
+
+const menuPaperSx = {
+    bgcolor: theme.card,
+    color: theme.fg,
+    border: `1px solid ${theme.border}`,
+};
+
 // =============================================
 // Sub-components
 // =============================================
+
+const StatusChip: React.FC<{ status: ReportStatus; size?: 'small' | 'medium' }> = ({ status, size = 'small' }) => {
+    const { label, color } = STATUS_MAP[status];
+    return (
+        <Chip
+            label={label}
+            size={size}
+            variant="outlined"
+            sx={{
+                color,
+                borderColor: color,
+                fontWeight: 600,
+                '& .MuiChip-label': { color },
+            }}
+        />
+    );
+};
 
 const MenuView: React.FC<{
     onSelect: (view: View) => void;
     reportCount: number;
 }> = ({ onSelect, reportCount }) => (
     <Box display="flex" flexDirection="column" gap={1.5}>
-        <Typography variant="body2" color="textSecondary" mb={1}>
+        <Typography variant="body2" sx={{ color: theme.muted, mb: 1 }}>
             What would you like to do?
         </Typography>
         <Button
             variant="outlined"
             startIcon={<Person />}
             onClick={() => onSelect('create')}
-            sx={{ justifyContent: 'flex-start', textTransform: 'none', py: 1.2 }}
+            sx={{
+                justifyContent: 'flex-start',
+                textTransform: 'none',
+                py: 1.2,
+                color: theme.fg,
+                borderColor: theme.border,
+                '&:hover': { borderColor: theme.muted, bgcolor: 'rgba(255,255,255,0.04)' },
+            }}
         >
             File a New Report
         </Button>
@@ -163,7 +209,14 @@ const MenuView: React.FC<{
             variant="outlined"
             startIcon={<Chat />}
             onClick={() => onSelect('list')}
-            sx={{ justifyContent: 'flex-start', textTransform: 'none', py: 1.2 }}
+            sx={{
+                justifyContent: 'flex-start',
+                textTransform: 'none',
+                py: 1.2,
+                color: theme.fg,
+                borderColor: theme.border,
+                '&:hover': { borderColor: theme.muted, bgcolor: 'rgba(255,255,255,0.04)' },
+            }}
         >
             My Reports {reportCount > 0 && `(${reportCount})`}
         </Button>
@@ -186,7 +239,7 @@ const CreateView: React.FC<{
 
     return (
         <Box display="flex" flexDirection="column" gap={2}>
-            <FormControl size="small" fullWidth>
+            <FormControl size="small" fullWidth sx={inputSx}>
                 <InputLabel>Report Type</InputLabel>
                 <Select
                     value={type}
@@ -195,27 +248,28 @@ const CreateView: React.FC<{
                         setType(e.target.value as ReportType);
                         if (e.target.value !== 'playerReport') setSelectedTargets([]);
                     }}
+                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
                 >
-                    <MenuItem value="playerReport">
+                    <MenuItem value="playerReport" sx={{ color: theme.fg }}>
                         <Box display="flex" alignItems="center" gap={1}>
-                            <Person fontSize="small" /> Player Report
+                            <Person fontSize="small" sx={{ color: TYPE_COLORS.playerReport }} /> Player Report
                         </Box>
                     </MenuItem>
-                    <MenuItem value="bugReport">
+                    <MenuItem value="bugReport" sx={{ color: theme.fg }}>
                         <Box display="flex" alignItems="center" gap={1}>
-                            <BugReport fontSize="small" /> Bug Report
+                            <BugReport fontSize="small" sx={{ color: TYPE_COLORS.bugReport }} /> Bug Report
                         </Box>
                     </MenuItem>
-                    <MenuItem value="question">
+                    <MenuItem value="question" sx={{ color: theme.fg }}>
                         <Box display="flex" alignItems="center" gap={1}>
-                            <HelpOutline fontSize="small" /> Question / Help
+                            <HelpOutline fontSize="small" sx={{ color: TYPE_COLORS.question }} /> Question / Help
                         </Box>
                     </MenuItem>
                 </Select>
             </FormControl>
 
             {type === 'playerReport' && players.length > 0 && (
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" fullWidth sx={inputSx}>
                     <InputLabel>Target Player(s)</InputLabel>
                     <Select
                         multiple
@@ -224,13 +278,14 @@ const CreateView: React.FC<{
                         onChange={(e) => setSelectedTargets(e.target.value as number[])}
                         renderValue={(selected) =>
                             selected.map((id) => {
-                                const p = players.find((p) => p.id === id);
+                                const p = players.find((player) => player.id === id);
                                 return p ? p.name : `#${id}`;
                             }).join(', ')
                         }
+                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
                     >
                         {players.map((p) => (
-                            <MenuItem key={p.id} value={p.id}>
+                            <MenuItem key={p.id} value={p.id} sx={{ color: theme.fg }}>
                                 [{p.id}] {p.name}
                             </MenuItem>
                         ))}
@@ -249,13 +304,20 @@ const CreateView: React.FC<{
                 size="small"
                 fullWidth
                 helperText={`${reason.length}/512`}
+                sx={inputSx}
             />
 
             <Button
                 variant="contained"
                 onClick={handleSubmit}
                 disabled={submitting || !reason.trim()}
-                sx={{ textTransform: 'none' }}
+                sx={{
+                    textTransform: 'none',
+                    bgcolor: theme.accent,
+                    color: '#fff',
+                    '&:hover': { bgcolor: theme.accent, filter: 'brightness(1.15)' },
+                    '&.Mui-disabled': { bgcolor: theme.border, color: theme.muted },
+                }}
             >
                 {submitting ? 'Submitting...' : 'Submit Report'}
             </Button>
@@ -270,7 +332,7 @@ const ListView: React.FC<{
     if (reports.length === 0) {
         return (
             <Box textAlign="center" py={4}>
-                <Typography variant="body2" color="textSecondary">
+                <Typography variant="body2" sx={{ color: theme.muted }}>
                     You have no reports.
                 </Typography>
             </Box>
@@ -286,10 +348,10 @@ const ListView: React.FC<{
                     sx={{
                         p: 1.5,
                         borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: 'divider',
+                        border: `1px solid ${theme.border}`,
+                        bgcolor: theme.card,
                         cursor: 'pointer',
-                        '&:hover': { bgcolor: 'action.hover' },
+                        '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 0.5,
@@ -297,22 +359,17 @@ const ListView: React.FC<{
                 >
                     <Box display="flex" alignItems="center" justifyContent="space-between">
                         <Box display="flex" alignItems="center" gap={1}>
-                            {TYPE_ICONS[r.type]}
-                            <Typography variant="body2" fontWeight={600}>
+                            <Box sx={{ color: TYPE_COLORS[r.type], display: 'flex' }}>{TYPE_ICONS[r.type]}</Box>
+                            <Typography variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
                                 {TYPE_LABELS[r.type]}
                             </Typography>
                         </Box>
-                        <Chip
-                            label={STATUS_LABELS[r.status]}
-                            color={STATUS_COLORS[r.status]}
-                            size="small"
-                            variant="outlined"
-                        />
+                        <StatusChip status={r.status} />
                     </Box>
-                    <Typography variant="body2" color="textSecondary" noWrap>
+                    <Typography variant="body2" noWrap sx={{ color: theme.muted }}>
                         {r.reason}
                     </Typography>
-                    <Typography variant="caption" color="textSecondary">
+                    <Typography variant="caption" sx={{ color: theme.muted }}>
                         {timeAgo(r.tsCreated)} · {r.messages.length} message{r.messages.length !== 1 ? 's' : ''}
                     </Typography>
                 </Box>
@@ -346,18 +403,13 @@ const DetailView: React.FC<{
             {/* Report header info */}
             <Box mb={2}>
                 <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                    {TYPE_ICONS[report.type]}
-                    <Typography variant="body2" fontWeight={600}>
+                    <Box sx={{ color: TYPE_COLORS[report.type], display: 'flex' }}>{TYPE_ICONS[report.type]}</Box>
+                    <Typography variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
                         {TYPE_LABELS[report.type]}
                     </Typography>
-                    <Chip
-                        label={STATUS_LABELS[report.status]}
-                        color={STATUS_COLORS[report.status]}
-                        size="small"
-                        variant="outlined"
-                    />
+                    <StatusChip status={report.status} />
                 </Box>
-                <Typography variant="body2" color="textSecondary" sx={{ wordBreak: 'break-word' }}>
+                <Typography variant="body2" sx={{ color: theme.muted, wordBreak: 'break-word' }}>
                     {report.reason}
                 </Typography>
             </Box>
@@ -373,37 +425,44 @@ const DetailView: React.FC<{
                 sx={{ maxHeight: 300 }}
             >
                 {report.messages.length === 0 ? (
-                    <Typography variant="body2" color="textSecondary" textAlign="center" py={2}>
+                    <Typography variant="body2" sx={{ color: theme.muted, textAlign: 'center', py: 2 }}>
                         No messages yet. An admin will respond to your report.
                     </Typography>
                 ) : (
                     report.messages.map((m, i) => (
                         <Box
-                            key={i}
+                            key={`${m.ts}-${i}`}
                             sx={{
                                 p: 1,
                                 borderRadius: 1,
-                                bgcolor: m.authorType === 'admin' ? 'rgba(38, 175, 217, 0.1)' : 'action.hover',
-                                borderLeft: m.authorType === 'admin' ? '3px solid #26afd9' : '3px solid transparent',
+                                bgcolor: m.authorType === 'admin' ? 'rgba(43, 155, 197, 0.1)' : 'rgba(255,255,255,0.04)',
+                                borderLeft: m.authorType === 'admin' ? `3px solid ${theme.info}` : '3px solid transparent',
                             }}
                         >
                             <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.25}>
-                                <Typography variant="caption" fontWeight={600}>
+                                <Typography variant="caption" fontWeight={600} sx={{ color: theme.fg }}>
                                     {m.author}
                                     {m.authorType === 'admin' && (
                                         <Chip
                                             label="Staff"
                                             size="small"
-                                            color="info"
-                                            sx={{ ml: 0.5, height: 16, fontSize: '0.65rem' }}
+                                            sx={{
+                                                ml: 0.5,
+                                                height: 16,
+                                                fontSize: '0.65rem',
+                                                color: theme.info,
+                                                borderColor: theme.info,
+                                                bgcolor: 'rgba(43, 155, 197, 0.15)',
+                                                '& .MuiChip-label': { color: theme.info },
+                                            }}
                                         />
                                     )}
                                 </Typography>
-                                <Typography variant="caption" color="textSecondary">
+                                <Typography variant="caption" sx={{ color: theme.muted }}>
                                     {timeAgo(m.ts)}
                                 </Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                            <Typography variant="body2" sx={{ color: theme.fg, wordBreak: 'break-word' }}>
                                 {m.content}
                             </Typography>
                         </Box>
@@ -422,19 +481,20 @@ const DetailView: React.FC<{
                         onChange={(e) => setMsg(e.target.value.slice(0, 512))}
                         onKeyDown={handleKeyDown}
                         disabled={sending}
+                        sx={inputSx}
                     />
                     <IconButton
-                        color="primary"
                         onClick={handleSend}
                         disabled={sending || !msg.trim()}
                         size="small"
+                        sx={{ color: theme.info }}
                     >
                         <Send />
                     </IconButton>
                 </Box>
             )}
             {report.status === 'resolved' && (
-                <Typography variant="body2" color="success.main" textAlign="center">
+                <Typography variant="body2" sx={{ color: theme.success, textAlign: 'center' }}>
                     This report has been resolved.
                 </Typography>
             )}
@@ -454,12 +514,14 @@ export const ReportPage: React.FC = () => {
     const [selectedReport, setSelectedReport] = useState<PlayerReportSummary | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const setListenForExit = useSetListenForExit();
 
     const handleClose = useCallback(() => {
         setIsOpen(false);
         setView('menu');
         setSelectedReport(null);
+        setErrorMessage(null);
         setListenForExit(true);
         fetchNui('reportClose').catch(() => {});
     }, [setListenForExit]);
@@ -486,9 +548,12 @@ export const ReportPage: React.FC = () => {
     useNuiEvent<{ success?: boolean; reportId?: string; error?: string }>('reportCreateResult', (data) => {
         setSubmitting(false);
         if (data.success) {
+            setErrorMessage(null);
             // Go to list view and refresh
             fetchNui('reportFetchMine').catch(() => {});
             setView('list');
+        } else if (data.error) {
+            setErrorMessage(data.error);
         }
     });
 
@@ -496,7 +561,10 @@ export const ReportPage: React.FC = () => {
     useNuiEvent<{ success?: boolean; error?: string }>('reportMessageResult', (data) => {
         setSendingMessage(false);
         if (data.success) {
+            setErrorMessage(null);
             fetchNui('reportFetchMine').catch(() => {});
+        } else if (data.error) {
+            setErrorMessage(data.error);
         }
     });
 
@@ -521,15 +589,19 @@ export const ReportPage: React.FC = () => {
 
     const handleSubmit = (type: ReportType, reason: string, targetIds: number[]) => {
         setSubmitting(true);
-        fetchNui('reportSubmit', { type, reason, targetIds }).catch(() => {
+        setErrorMessage(null);
+        fetchNui('reportSubmit', { type, reason, targetIds }).catch((err) => {
             setSubmitting(false);
+            setErrorMessage(`Failed to submit report: ${(err as Error).message || 'Unknown error'}`);
         });
     };
 
     const handleSendMessage = (reportId: string, content: string) => {
         setSendingMessage(true);
-        fetchNui('reportSendMessage', { reportId, content }).catch(() => {
+        setErrorMessage(null);
+        fetchNui('reportSendMessage', { reportId, content }).catch((err) => {
             setSendingMessage(false);
+            setErrorMessage(`Failed to send message: ${(err as Error).message || 'Unknown error'}`);
         });
     };
 
@@ -553,6 +625,7 @@ export const ReportPage: React.FC = () => {
     };
 
     const handleBack = () => {
+        setErrorMessage(null);
         if (view === 'detail') {
             setView('list');
             setSelectedReport(null);
@@ -563,28 +636,35 @@ export const ReportPage: React.FC = () => {
 
     return isOpen ? (
         <Overlay>
-            <Panel>
+            <Panel role="dialog" aria-modal="true" aria-labelledby="report-dialog-title">
                     <Header>
                         <Box display="flex" alignItems="center" gap={1}>
                             {view !== 'menu' && (
                                 <Button
                                     size="small"
                                     onClick={handleBack}
-                                    sx={{ minWidth: 0, textTransform: 'none', mr: 0.5 }}
+                                    sx={{ minWidth: 0, textTransform: 'none', mr: 0.5, color: theme.muted }}
                                 >
                                     Back
                                 </Button>
                             )}
-                            <Typography variant="subtitle1" fontWeight={600}>
+                            <Typography id="report-dialog-title" variant="subtitle1" fontWeight={600} sx={{ color: theme.fg }}>
                                 {getTitle()}
                             </Typography>
                         </Box>
-                        <IconButton size="small" onClick={handleClose}>
+                        <IconButton size="small" onClick={handleClose} sx={{ color: theme.muted }}>
                             <Close fontSize="small" />
                         </IconButton>
                     </Header>
 
                     <Content>
+                        {errorMessage && (
+                            <Box role="alert" sx={{ px: 2, py: 1, mb: 1, bgcolor: `${theme.destructive}26`, borderRadius: 1 }}>
+                                <Typography variant="body2" sx={{ color: theme.destructive }}>
+                                    {errorMessage}
+                                </Typography>
+                            </Box>
+                        )}
                         {view === 'menu' && (
                             <MenuView
                                 onSelect={(v) => {

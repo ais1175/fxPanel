@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAtom } from 'jotai';
 import { useEventListener } from 'usehooks-ts';
 import { useContentRefresh } from '@/hooks/pages';
 import { debounce, throttle } from 'throttle-debounce';
@@ -15,7 +16,7 @@ import LiveConsoleSearchBar from './LiveConsoleSearchBar';
 import LiveConsoleSaveSheet from './LiveConsoleSaveSheet';
 
 import ScrollDownAddon from './ScrollDownAddon';
-import terminalOptions from './xtermOptions';
+import terminalOptions, { buildTheme } from './xtermOptions';
 import './xtermOverrides.css';
 import '@xterm/xterm/css/xterm.css';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '@/lib/utils';
@@ -37,6 +38,7 @@ import {
     registerTermLineMarker,
 } from './liveConsoleMarkers';
 import { emsg } from '@shared/emsg';
+import { liveConsoleOptionsAtom } from './liveConsoleHooks';
 import type { LiveConsoleInitialData } from '@shared/consoleBlock';
 
 //Options
@@ -47,41 +49,8 @@ export type LiveConsoleOptions = {
     copyTag: boolean;
 };
 
-//Loading local storage configs
-//FIXME: this is hacky, maybe use atomWithStorage
-let timestampDisabled = false;
-let timestampForceHour12: boolean | undefined = undefined;
-try {
-    const localConfig = localStorage.getItem('liveConsoleTimestamp');
-    if (localConfig === '24h') {
-        timestampForceHour12 = false;
-    } else if (localConfig === '12h') {
-        timestampForceHour12 = true;
-    } else if (localConfig === 'off') {
-        timestampDisabled = true;
-    }
-} catch (error) {}
-let copyTimestamp = false;
-let copyTag = true;
-try {
-    const localConfig = localStorage.getItem('liveConsoleCopyOpts');
-    if (typeof localConfig === 'string') {
-        const parts = localConfig.split(',');
-        copyTimestamp = parts.includes('ts');
-        copyTag = parts.includes('tag');
-    }
-} catch (error) {}
-
 //Consts
 const keyDebounceTime = 150; //ms
-
-//FIXME: move to inside the component
-const defaultTermPrefix = formatTermTimestamp(Date.now(), {
-    timestampDisabled,
-    timestampForceHour12,
-    copyTimestamp,
-    copyTag,
-}).replace(/\w/g, '-');
 
 //Main component
 export default function LiveConsolePage() {
@@ -92,25 +61,29 @@ export default function LiveConsolePage() {
     const [hasOlderBlocks, setHasOlderBlocks] = useState(false);
     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     const termInputRef = useRef<HTMLInputElement>(null);
+    const [consoleOptions, setConsoleOptions] = useAtom(liveConsoleOptionsAtom);
+    const consoleOptionsRef = useRef(consoleOptions);
+    useEffect(() => {
+        consoleOptionsRef.current = consoleOptions;
+    }, [consoleOptions]);
+    const defaultTermPrefix = useMemo(
+        () => formatTermTimestamp(Date.now(), consoleOptions).replace(/\w/g, '-'),
+        [consoleOptions],
+    );
     const termPrefixRef = useRef({
         ts: 0, //so we can clear the console
         lastEol: true,
-        //FIXME: defaultTermPrefix depends on options, deal with it when options change
-        prefix: defaultTermPrefix,
+        prefix: '',
     });
+    // Keep prefix in sync with options changes
+    useEffect(() => {
+        termPrefixRef.current.prefix = defaultTermPrefix;
+    }, [defaultTermPrefix]);
     const oldestLoadedSeqRef = useRef<number>(0);
     const serverOldestSeqRef = useRef<number>(0);
     const spawnLineNumbersRef = useRef<number[]>([]);
     const hasReceivedDataRef = useRef(false);
     const refreshPage = useContentRefresh();
-
-    //FIXME: maybe use atomWithStorage
-    const [consoleOptions, setConsoleOptions] = useState<LiveConsoleOptions>(() => ({
-        timestampDisabled,
-        timestampForceHour12,
-        copyTimestamp,
-        copyTag,
-    }));
 
     /**
      * xterm stuff
@@ -206,7 +179,7 @@ export default function LiveConsolePage() {
                 } else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) {
                     const selection = term.getSelection();
                     if (!selection) return false;
-                    copyTermLine(selection, term.element as any, consoleOptions, termInputRef.current)
+                    copyTermLine(selection, term.element as any, consoleOptionsRef.current, termInputRef.current)
                         .then((res) => {
                             //undefined if no error
                             if (res === false) {
@@ -239,6 +212,22 @@ export default function LiveConsolePage() {
                 return true;
             });
         }
+    }, [term]);
+
+    // Re-apply xterm theme when light/dark mode changes
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            // Double rAF to ensure CSS variables have been fully recalculated
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const isDark = document.documentElement.classList.contains('dark');
+                    term.options.theme = buildTheme();
+                    term.options.fontWeight = isDark ? '300' : '400';
+                });
+            });
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        return () => observer.disconnect();
     }, [term]);
 
     useEventListener('keydown', (e: KeyboardEvent) => {

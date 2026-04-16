@@ -20,6 +20,7 @@ import { useAccountModal } from '@/hooks/dialogs';
 import { LogoSquareGreen, LogoFullSquareGreen } from '@/components/logos';
 import { NavLink } from '@/components/mainPageLink';
 import { useShellBreakpoints } from '@/hooks/useShellBreakpoints';
+import { useAddonWidgets } from '@/hooks/addons';
 
 function ServerTitle() {
     const playerCount = useAtomValue(playerCountAtom);
@@ -88,6 +89,7 @@ function ButtonTogglePlayerlistSheet({ className, showCount }: NavButtonProps & 
 function AuthedHeaderFragment({ showName }: { showName: boolean }) {
     const { authData, logout } = useAuth();
     const { setAccountModalOpen } = useAccountModal();
+    const headerDropdownWidgets = useAddonWidgets('header.dropdown');
     if (!authData) return null;
     const openAccountModal = () => {
         setAccountModalOpen(true);
@@ -123,6 +125,16 @@ function AuthedHeaderFragment({ showName }: { showName: boolean }) {
                         <LogOutIcon className="mr-2 h-4 w-4" />
                         Logout
                     </DropdownMenuItem>
+                )}
+
+                {/* Addon-injected dropdown items */}
+                {headerDropdownWidgets.length > 0 && (
+                    <>
+                        <DropdownMenuSeparator />
+                        {headerDropdownWidgets.map((w) => (
+                            <w.Component key={`${w.addonId}-${w.title}`} />
+                        ))}
+                    </>
                 )}
             </DropdownMenuContent>
         </DropdownMenu>

@@ -82,7 +82,6 @@ export function useVehicleActions() {
         isRedm,
         menuItem: {
             title: t('nui_menu.page_main.vehicle.title'),
-            requiredPermission: 'menu.vehicle',
             isMultiAction: true,
             initialValue: vehicleMode,
             actions: [
@@ -91,6 +90,7 @@ export function useVehicleActions() {
                     label: t('nui_menu.page_main.vehicle.spawn.label'),
                     value: VehicleMode.SPAWN,
                     icon: <DirectionsCar />,
+                    requiredPermission: 'menu.vehicle.spawn',
                     onSelect: () => {
                         setVehicleMode(VehicleMode.SPAWN);
                         handleSpawnVehicle();
@@ -101,6 +101,7 @@ export function useVehicleActions() {
                     label: t('nui_menu.page_main.vehicle.fix.label'),
                     value: VehicleMode.FIX,
                     icon: <Build />,
+                    requiredPermission: 'menu.vehicle.fix',
                     onSelect: () => {
                         setVehicleMode(VehicleMode.FIX);
                         handleFixVehicle();
@@ -111,6 +112,7 @@ export function useVehicleActions() {
                     label: t('nui_menu.page_main.vehicle.delete.label'),
                     value: VehicleMode.DELETE,
                     icon: <DeleteForever />,
+                    requiredPermission: 'menu.vehicle.delete',
                     onSelect: () => {
                         setVehicleMode(VehicleMode.DELETE);
                         handleDeleteVehicle();
@@ -121,6 +123,7 @@ export function useVehicleActions() {
                     label: t('nui_menu.page_main.vehicle.boost.label'),
                     value: VehicleMode.BOOST,
                     icon: <RocketLaunch />,
+                    requiredPermission: 'menu.vehicle.boost',
                     onSelect: () => {
                         setVehicleMode(VehicleMode.BOOST);
                         handleBoostVehicle();

@@ -19,10 +19,13 @@ import { PlayerlistSidebar } from './PlayerlistSidebar/PlayerlistSidebar';
 import { useAdminPerms } from '@/hooks/auth';
 import { LogoFullSquareGreen } from '@/components/logos';
 import { useSwipeGestures } from '@/hooks/useSwipeGestures';
+import { useAddonLoader } from '@/hooks/addons';
+import { BlocksIcon } from 'lucide-react';
 
 export function GlobalMenuSheet() {
     const { isSheetOpen, setIsSheetOpen } = useGlobalMenuSheet();
     const { hasPerm } = useAdminPerms();
+    const { pages: addonPages } = useAddonLoader();
 
     return (
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -57,7 +60,7 @@ export function GlobalMenuSheet() {
                                     Reports
                                 </MenuNavLink>
                             )}
-                            <MenuNavLink href="/insights/player-drops">
+                            <MenuNavLink href="/server/player-drops">
                                 <DoorOpenIcon className="mr-2 h-4 w-4" />
                                 Player Drops
                             </MenuNavLink>
@@ -97,6 +100,23 @@ export function GlobalMenuSheet() {
                             </MenuNavLink>
                         </div>
                     </div>
+                    {addonPages.length > 0 && (
+                        <div className="mb-4">
+                            <h2 className="mb-1.5 text-lg font-semibold tracking-tight">Addons</h2>
+                            <div className="xs:grid flex grid-cols-2 flex-row flex-wrap gap-4">
+                                {addonPages.map((page) => (
+                                    <MenuNavLink
+                                        key={page.path}
+                                        href={page.path}
+                                        disabled={page.permission ? !hasPerm(page.permission) : false}
+                                    >
+                                        <BlocksIcon className="mr-2 h-4 w-4" />
+                                        {page.title}
+                                    </MenuNavLink>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </ScrollArea>
             </SheetContent>
         </Sheet>

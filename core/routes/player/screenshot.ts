@@ -1,7 +1,5 @@
 const modulename = 'WebServer:PlayerScreenshot';
 import { randomUUID } from 'node:crypto';
-import { readFile, unlink } from 'node:fs/promises';
-import path from 'node:path';
 import playerResolver from '@lib/player/playerResolver';
 import { GenericApiResp } from '@shared/genericApiTypes';
 import { ServerPlayer } from '@lib/player/playerClasses';
@@ -9,12 +7,11 @@ import { anyUndefined } from '@lib/misc';
 import consoleFactory from '@lib/console';
 import { AuthedCtx } from '@modules/WebServer/ctxTypes';
 import { SYM_CURRENT_MUTEX } from '@lib/symbols';
-import { txEnv } from '@core/globalData';
 const console = consoleFactory(modulename);
 
 // Pending screenshot requests (requestId → { resolve, timer })
 type PendingScreenshot = {
-    resolve: (data: { fileName?: string; error?: string }) => void;
+    resolve: (data: { imageData?: string; error?: string }) => void;
     timer: ReturnType<typeof setTimeout>;
 };
 const pendingScreenshots = new Map<string, PendingScreenshot>();
@@ -78,23 +75,18 @@ export default async function PlayerScreenshot(ctx: AuthedCtx) {
         return sendTypedResp({ error: result.error });
     }
 
-    // Read the screenshot file from disk
-    const filePath = path.join(txEnv.txaPath, result.fileName!);
-    try {
-        const imageBuffer = await readFile(filePath);
-        const imageData = imageBuffer.toString('base64');
-        // Clean up the temp file
-        unlink(filePath).catch(() => {});
-        return sendTypedResp({ imageData });
-    } catch (e) {
-        return sendTypedResp({ error: 'Failed to read screenshot file.' });
+    // Return the image data directly (already a data URL from the NUI capture)
+    if (result.imageData) {
+        return sendTypedResp({ imageData: result.imageData });
     }
+
+    return sendTypedResp({ error: 'No screenshot data received.' });
 }
 
 /**
  * Called by the intercom handler when the screenshot result arrives from the Lua server
  */
-export const resolveScreenshot = (requestId: string, fileName?: string, error?: string) => {
+export const resolveScreenshot = (requestId: string, imageData?: string, error?: string) => {
     const pending = pendingScreenshots.get(requestId);
     if (!pending) return;
     clearTimeout(pending.timer);
@@ -102,6 +94,6 @@ export const resolveScreenshot = (requestId: string, fileName?: string, error?: 
     if (error) {
         pending.resolve({ error });
     } else {
-        pending.resolve({ fileName });
+        pending.resolve({ imageData });
     }
 };

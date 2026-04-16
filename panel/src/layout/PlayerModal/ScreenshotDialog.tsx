@@ -27,7 +27,7 @@ export default function ScreenshotDialog({
         if (!imageSrc) return;
         const link = document.createElement('a');
         link.href = imageSrc;
-        link.download = `screenshot_${playerName}_${Date.now()}.jpg`;
+        link.download = `screenshot_${playerName}_${Date.now()}.webp`;
         link.click();
     };
 

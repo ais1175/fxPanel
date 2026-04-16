@@ -61,3 +61,13 @@ export const discourseRedirectQuerySchema = z.object({
 export const discourseCallbackBodySchema = z.object({
     payload: z.string().min(1),
 });
+
+// Discord OAuth
+export const discordRedirectQuerySchema = z.object({
+    origin: z.string(),
+});
+
+export const discordCallbackBodySchema = z.object({
+    code: z.string().min(1),
+    state: z.string().min(1),
+});

@@ -69,12 +69,13 @@ export type TagDefinition = {
     label: string;
     color: string;
     priority: number;
+    enabled?: boolean;
 };
 
 export const AUTO_TAG_DEFINITIONS: TagDefinition[] = [
-    { id: 'staff', label: 'Staff', color: '#EF4444', priority: 10 },
-    { id: 'problematic', label: 'Problematic', color: '#FB923C', priority: 20 },
-    { id: 'newplayer', label: 'Newcomer', color: '#A3E635', priority: 30 },
+    { id: 'staff', label: 'Staff', color: '#EF4444', priority: 10, enabled: true },
+    { id: 'problematic', label: 'Problematic', color: '#FB923C', priority: 20, enabled: true },
+    { id: 'newplayer', label: 'Newcomer', color: '#A3E635', priority: 30, enabled: true },
 ];
 
 export type PlayerTag = string;

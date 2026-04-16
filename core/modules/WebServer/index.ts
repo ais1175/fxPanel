@@ -118,9 +118,9 @@ export default class WebServer {
         this.app.use(
             KoaBodyParser({
                 // Heavy bodies can cause v8 mem exhaustion during a POST DDoS.
-                // The heaviest JSON is the /intercom/resources endpoint.
-                // Conservative estimate: 768kb/300b = 2621 resources
-                jsonLimit: '768kb',
+                // The heaviest JSON payloads are /intercom/resources and /intercom/screenshotResult.
+                // Conservative estimate: 2mb covers screenshot data URLs at higher resolutions.
+                jsonLimit: '2mb',
             }),
         );
 

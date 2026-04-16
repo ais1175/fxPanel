@@ -38,7 +38,7 @@ function PlayerCountChart({ series }: Props) {
     const isDarkMode = useIsDarkMode();
     const [showMemory, setShowMemory] = useState(true);
 
-    if (!series.length) {
+    if (!Array.isArray(series) || !series.length) {
         return (
             <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
                 No data available

@@ -14,6 +14,8 @@ export { default as auth_addMasterCallback } from './authentication/addMasterCal
 export { default as auth_addMasterSave } from './authentication/addMasterSave.js';
 export { default as auth_discourseRedirect } from './authentication/discourseRedirect';
 export { default as auth_discourseCallback } from './authentication/discourseCallback';
+export { default as auth_discordRedirect } from './authentication/discordRedirect';
+export { default as auth_discordCallback } from './authentication/discordCallback';
 export { default as auth_verifyPassword } from './authentication/verifyPassword';
 export { default as auth_changePassword } from './authentication/changePassword';
 export { default as auth_self } from './authentication/self';
@@ -107,6 +109,24 @@ export {
 } from './insights';
 
 export { get as dev_get, post as dev_post } from './devDebug.js';
+
+export {
+    addonsList as addons_list,
+    addonsPanelManifest as addons_panelManifest,
+    addonsNuiManifest as addons_nuiManifest,
+    addonsApprove as addons_approve,
+    addonsRevoke as addons_revoke,
+    addonsProxy as addons_proxy,
+    addonsServePanelFile as addons_servePanelFile,
+    addonsServeNuiFile as addons_serveNuiFile,
+    addonsServeStaticFile as addons_serveStaticFile,
+    addonsReload as addons_reload,
+    addonsReloadAll as addons_reloadAll,
+    addonsLogs as addons_logs,
+    addonsStop as addons_stop,
+    addonsStart as addons_start,
+    addonsPublicProxy as addons_publicProxy,
+} from './addons';
 
 export {
     reportsList as reports_list,

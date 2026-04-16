@@ -16,7 +16,7 @@ import { ApiTimeout } from '@/hooks/fetch';
 
 type DiagnosticsData = {
     message: string;
-    host: {
+    host?: {
         error?: string;
         static?: {
             nodeVersion: string;
@@ -33,9 +33,9 @@ type DiagnosticsData = {
         dynamic?: {
             cpuUsage: number;
             memory: {
-                usage: number;
-                used: number;
-                total: number;
+                usage: number | null;
+                used: number | null;
+                total: number | null;
             };
         };
     };
@@ -83,7 +83,7 @@ type DiagnosticsData = {
             statusServer: string;
         };
     };
-    fxserver: {
+    fxserver?: {
         error?: string | false;
         versionMismatch?: boolean;
         status?: string;
@@ -94,12 +94,12 @@ type DiagnosticsData = {
         maxClients?: number;
         txAdminVersion?: string;
     };
-    processes: Array<{
+    processes?: Array<{
         pid: number;
         name: string;
         ppid: number;
-        memory: number;
-        cpu: number;
+        memory: number | null;
+        cpu: number | null;
     }>;
 };
 
@@ -216,7 +216,9 @@ export default function DiagnosticsPage() {
                     {/* Environment */}
                     <div className="border-destructive/30 rounded-lg border p-4">
                         <h2 className="mb-3 text-lg font-bold">Environment</h2>
-                        {host.error ? (
+                        {!host ? (
+                            <p className="text-muted-foreground text-sm">Host data not available.</p>
+                        ) : host.error ? (
                             <p className="text-destructive">{host.error}</p>
                         ) : host.static ? (
                             <div className="space-y-1 text-sm">
@@ -243,8 +245,8 @@ export default function DiagnosticsPage() {
                                             <strong>CPU Usage:</strong> {host.dynamic.cpuUsage}%
                                         </p>
                                         <p>
-                                            <strong>Memory:</strong> {host.dynamic.memory.usage}% (
-                                            {host.dynamic.memory.used.toFixed(2)}/{host.dynamic.memory.total.toFixed(2)}
+                                            <strong>Memory:</strong> {host.dynamic.memory.usage ?? '--'}% (
+                                            {host.dynamic.memory.used?.toFixed(2) ?? '--'}/{host.dynamic.memory.total?.toFixed(2) ?? '--'}
                                             )
                                         </p>
                                     </>
@@ -400,6 +402,9 @@ export default function DiagnosticsPage() {
                     {/* FXServer Info */}
                     <div className="border-info/30 rounded-lg border p-4">
                         <h2 className="mb-3 text-lg font-bold">FXServer /info.json</h2>
+                        {!fxserver ? (
+                            <p className="text-muted-foreground text-sm">FXServer data not available.</p>
+                        ) : (<>
                         {fxserver.versionMismatch && (
                             <div className="bg-destructive/10 border-destructive/30 mb-3 rounded border p-3 text-center text-sm">
                                 <strong className="text-destructive">
@@ -447,12 +452,13 @@ export default function DiagnosticsPage() {
                                 </p>
                             </div>
                         )}
+                        </>)}
                     </div>
 
                     {/* Processes */}
                     <div className="border-info/30 rounded-lg border p-4">
                         <h2 className="mb-3 text-lg font-bold">Processes</h2>
-                        {!processes.length ? (
+                        {!processes?.length ? (
                             <p className="text-muted-foreground text-sm">
                                 Failed to retrieve process data. Check the terminal for more information (if verbosity
                                 is enabled).
@@ -468,10 +474,10 @@ export default function DiagnosticsPage() {
                                             <strong>Parent:</strong> {proc.ppid}
                                         </p>
                                         <p>
-                                            <strong>Memory:</strong> {proc.memory.toFixed(2)}MB
+                                            <strong>Memory:</strong> {proc.memory?.toFixed(2) ?? '--'}MB
                                         </p>
                                         <p>
-                                            <strong>CPU:</strong> {proc.cpu.toFixed(2)}%
+                                            <strong>CPU:</strong> {proc.cpu?.toFixed(2) ?? '--'}%
                                         </p>
                                     </div>
                                 ))}
