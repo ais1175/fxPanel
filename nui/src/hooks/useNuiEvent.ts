@@ -1,4 +1,4 @@
-import { MutableRefObject, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { debugLog } from '../utils/debugLog';
 
 interface NuiMessageData<T = unknown> {
@@ -21,7 +21,7 @@ type NuiHandlerSignature<T> = (data: T) => void;
  **/
 
 export const useNuiEvent = <T = any>(action: string, handler: (data: T) => void) => {
-    const savedHandler: MutableRefObject<NuiHandlerSignature<T>> = useRef();
+    const savedHandler = useRef<NuiHandlerSignature<T> | undefined>(undefined);
 
     // When handler value changes set mutable ref to handler val
     useEffect(() => {
@@ -32,12 +32,10 @@ export const useNuiEvent = <T = any>(action: string, handler: (data: T) => void)
         const eventListener = (event: MessageEvent<NuiMessageData<T>>) => {
             const { action: eventAction, data } = event.data;
 
-            if (savedHandler.current && savedHandler.current.call) {
-                if (eventAction === action) {
-                    //omg this is so annoying!!!
-                    // debugLog(action, data, "NuiMessageReceived");
-                    savedHandler.current(data);
-                }
+            if (eventAction === action && savedHandler.current) {
+                //omg this is so annoying!!!
+                // debugLog(action, data, "NuiMessageReceived");
+                savedHandler.current(data);
             }
         };
 

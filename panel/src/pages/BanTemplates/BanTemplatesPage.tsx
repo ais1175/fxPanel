@@ -52,7 +52,7 @@ function BanTemplatesPageInner() {
         throwGenericErrors: true,
     });
 
-    const swr = useSWR(
+    const swr = useSWR<BanTemplatesDataType[]>(
         '/settings/banTemplates',
         async () => {
             const data = await queryApi({});
@@ -126,7 +126,7 @@ function BanTemplatesPageInner() {
     //Handler for list actions
     const handleRemoveItem = (id: string) => {
         if (!id || !swr.data) return;
-        const toBeRemoved = swr.data.find((item) => item.id === id);
+        const toBeRemoved = swr.data.find((item: BanTemplatesDataType) => item.id === id);
         if (!toBeRemoved) return;
         openConfirmDialog({
             title: 'Remove Template',
@@ -145,7 +145,7 @@ function BanTemplatesPageInner() {
     };
     const handleEditItem = (id: string) => {
         if (!id || !swr.data) return;
-        setReasonInputDialogData(swr.data.find((item) => item.id === id));
+        setReasonInputDialogData(swr.data.find((item: BanTemplatesDataType) => item.id === id));
         setIsDialogOpen(true);
     };
     const handleAddNewItem = () => {
@@ -226,7 +226,7 @@ function BanTemplatesPageInner() {
                     {swr.data && (
                         <DndSortableGroup
                             className="xs:rounded-lg space-y-2 border p-2"
-                            ids={swr.data.map((item) => item.id)}
+                            ids={swr.data.map((item: BanTemplatesDataType) => item.id)}
                             onDragEnd={handleDragEnd}
                         >
                             {!swr.data.length ? (
@@ -234,7 +234,7 @@ function BanTemplatesPageInner() {
                                     No reasons configured yet.
                                 </div>
                             ) : (
-                                swr.data.map((item) => (
+                                swr.data.map((item: BanTemplatesDataType) => (
                                     <DndSortableItem key={item.id} id={item.id} disabled={!canEdit}>
                                         <BanTemplatesListItem
                                             onEdit={handleEditItem}

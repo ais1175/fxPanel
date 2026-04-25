@@ -1,4 +1,4 @@
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { cn, copyToClipboard } from '@/lib/utils';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { CopyIcon, ListTodoIcon, Trash2Icon, XIcon } from 'lucide-react';

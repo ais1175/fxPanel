@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import BanForm, { BanFormType } from '@/components/BanForm';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { GenericApiOkResp } from '@shared/genericApiTypes';
 
 export default function AddLegacyBanPage() {

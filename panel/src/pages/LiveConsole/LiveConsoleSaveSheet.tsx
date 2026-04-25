@@ -1,4 +1,4 @@
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useOpenPromptDialog } from '@/hooks/dialogs';
 import { useLiveConsoleBookmarks, useLiveConsoleHistory } from '@/pages/LiveConsole/liveConsoleHooks';

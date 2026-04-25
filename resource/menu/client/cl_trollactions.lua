@@ -20,7 +20,6 @@ local DRUNK_DRIVING_EFFECTS = {
 }
 
 local function getRandomDrunkCarTask()
-    math.randomseed(GetGameTimer())
     return DRUNK_DRIVING_EFFECTS[math.random(#DRUNK_DRIVING_EFFECTS)]
 end
 
@@ -35,14 +34,14 @@ local function drunkThreadFivem()
         Wait(5)
     end
 
-    SetPedMovementClipset(playerPed, DRUNK_ANIM_SET)
+    SetPedMovementClipset(playerPed, DRUNK_ANIM_SET, 0.0)
     ShakeGameplayCam('DRUNK_SHAKE', 3.0)
     SetPedIsDrunk(playerPed, true)
     SetTransitionTimecycleModifier('spectator5', 10.00)
 
     CreateThread(function()
         while isDrunk do
-            local vehPedIsIn = GetVehiclePedIsIn(playerPed)
+            local vehPedIsIn = GetVehiclePedIsIn(playerPed, false)
             local isPedInVehicleAndDriving = (vehPedIsIn ~= 0) and (GetPedInVehicleSeat(vehPedIsIn, -1) == playerPed)
 
             if isPedInVehicleAndDriving then
@@ -60,7 +59,7 @@ local function drunkThreadFivem()
     isDrunk = false
     SetTransitionTimecycleModifier('default', 10.00)
     StopGameplayCamShaking(true)
-    ResetPedMovementClipset(playerPed)
+    ResetPedMovementClipset(playerPed, 0.0)
     RemoveAnimSet(DRUNK_ANIM_SET)
 end
 
@@ -97,10 +96,14 @@ local function startWildAttack()
     -- Consts
     local playerPed = PlayerPedId()
     local animalHash = attackAnimals[math.random(#attackAnimals)]
-    local coordsBehindPlayer = GetOffsetFromEntityInWorldCoords(playerPed, 100, -15.0, 0)
+    local spawnCoords = GetOffsetFromEntityInWorldCoords(playerPed, 100, -15.0, 0)
     local playerHeading = GetEntityHeading(playerPed)
-    local belowGround, groundZ, vec3OnFloor =
-        GetGroundZAndNormalFor_3dCoord(coordsBehindPlayer.x, coordsBehindPlayer.y, coordsBehindPlayer.z)
+    local groundFound, groundZ =
+        GetGroundZAndNormalFor_3dCoord(spawnCoords.x, spawnCoords.y, spawnCoords.z)
+    if not groundFound then
+        -- Fallback: ground query failed (e.g., spawn point over water/void), use the spawn coord Z
+        groundZ = spawnCoords.z
+    end
 
     -- Requesting model
     RequestModel(animalHash)
@@ -112,19 +115,24 @@ local function startWildAttack()
     local animalPed
     if IS_FIVEM then
         animalPed =
-            CreatePed(1, animalHash, coordsBehindPlayer.x, coordsBehindPlayer.y, groundZ, playerHeading, true, false)
+            ---@diagnostic disable-next-line: param-type-mismatch
+            CreatePed(1, animalHash, spawnCoords.x, spawnCoords.y, groundZ, playerHeading, true, false)
     else
         animalPed =
-            CreatePed(animalHash, coordsBehindPlayer.x, coordsBehindPlayer.y, groundZ, playerHeading, true, false)
+            ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
+            CreatePed(animalHash, spawnCoords.x, spawnCoords.y, groundZ, playerHeading, true, false)
         Citizen.InvokeNative(0x77FF8D35EEC6BBC4, animalPed, 1, 0) --EquipMetaPedOutfitPreset
     end
 
     -- setting player as enemy
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetPedFleeAttributes(animalPed, 0, 0)
     SetPedRelationshipGroupHash(animalPed, animalGroupHash)
     TaskSetBlockingOfNonTemporaryEvents(animalPed, true)
+    ---@diagnostic disable-next-line: param-type-mismatch
     TaskCombatHatedTargetsAroundPed(animalPed, 30.0, 0)
     ClearPedTasks(animalPed)
+    ---@diagnostic disable-next-line: param-type-mismatch
     TaskPutPedDirectlyIntoMelee(animalPed, playerPed, 0.0, -1.0, 0.0, 0)
     SetRelationshipBetweenGroups(5, animalGroupHash, playerGroupHash)
     SetRelationshipBetweenGroups(5, playerGroupHash, animalGroupHash)

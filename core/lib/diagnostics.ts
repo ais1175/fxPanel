@@ -171,7 +171,7 @@ export const getFXServerData = async () => {
         return { error: 'Server Offline' };
     }
     if (!childState?.netEndpoint) {
-        return { error: 'Server is has no network endpoint' };
+        return { error: 'Server has no network endpoint' };
     }
 
     //Preparing request
@@ -329,6 +329,7 @@ export const getTxAdminData = async () => {
         },
         txEnv: {
             ...txEnv,
+            profileSubPath: undefined,
         },
         monitor: {
             hbFails: {

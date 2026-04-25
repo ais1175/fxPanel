@@ -14,7 +14,6 @@ const playerInitiatedExamples = [
     `Disconnected.`,
 ];
 const serverInitiatedExamples = [
-    `Disconnected by server: %s`,
     `Server shutting down: %s`,
     `[fxPanel] Server restarting (scheduled restart at 03:00).`, //not so sure about this
 ];
@@ -26,6 +25,7 @@ const timeoutExamples = [
     `Timed out after 60 seconds (2)`,
 ];
 const securityExamples = [
+    `Disconnected by server: %s`,
     `Unreliable network event overflow.`,
     `Reliable server command overflow.`,
     `Reliable network event overflow.`,

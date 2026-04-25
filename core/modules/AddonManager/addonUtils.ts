@@ -2,6 +2,57 @@
  * Pure utility functions for addon management.
  * Extracted for testability.
  */
+import path from 'node:path';
+import fs from 'node:fs';
+
+function normalizeForCompare(p: string): string {
+    const normalized = path.normalize(p);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/**
+ * Resolves `p` to its canonical (symlink-resolved) absolute path when it
+ * exists on disk, falling back to `path.resolve(p)` if `realpath` throws.
+ */
+function resolveReal(p: string): string {
+    try {
+        return fs.realpathSync.native(p);
+    } catch {
+        return path.resolve(p);
+    }
+}
+
+/**
+ * Returns true iff `target` resolves to a path strictly inside `base`.
+ * Uses canonical (symlink-resolved) paths when both exist, so sibling-prefix
+ * tricks like base=/foo, target=/foo2/x and symlink escapes are rejected.
+ * Equal paths (target === base) are NOT considered "inside".
+ */
+export function isPathInside(base: string, target: string): boolean {
+    const absBase = normalizeForCompare(resolveReal(base));
+    const absTarget = normalizeForCompare(resolveReal(target));
+    const rel = normalizeForCompare(path.relative(absBase, absTarget));
+    if (rel === '' || rel === '.') return false;
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+    // Extra belt-and-braces: also verify with trailing separator prefix
+    const baseWithSep = absBase.endsWith(path.sep) ? absBase : absBase + path.sep;
+    return absTarget.startsWith(baseWithSep);
+}
+
+/**
+ * Returns true iff `target` equals `base` or is strictly inside `base`,
+ * using canonical paths. Useful when the entry itself may be `base` (rare)
+ * or for directory containment checks.
+ */
+export function isPathInsideOrEqual(base: string, target: string): boolean {
+    const absBase = normalizeForCompare(resolveReal(base));
+    const absTarget = normalizeForCompare(resolveReal(target));
+    if (absBase === absTarget) return true;
+    const rel = normalizeForCompare(path.relative(absBase, absTarget));
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+    const baseWithSep = absBase.endsWith(path.sep) ? absBase : absBase + path.sep;
+    return absTarget.startsWith(baseWithSep);
+}
 
 export interface DependencyNode {
     id: string;

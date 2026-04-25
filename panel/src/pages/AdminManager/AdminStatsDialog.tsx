@@ -159,7 +159,7 @@ function ActionTypeSection({
                                         {action.isRevoked && (
                                             <Undo2Icon
                                                 className="text-muted-foreground h-3 w-3 shrink-0"
-                                                title="Revoked"
+                                                aria-label="Revoked"
                                             />
                                         )}
 

@@ -9,16 +9,10 @@ const console = consoleFactory(modulename);
 
 /**
  * Rate limiter — simple per-IP counter that resets every minute.
+ * Counters are kept per AddonPublicServer instance so each addon has an
+ * isolated rate-limit pool.
  */
 const MAX_RPM = 600;
-const ipCounters = new Map<string, number>();
-setInterval(() => ipCounters.clear(), 60_000);
-
-function checkRate(ip: string): boolean {
-    const count = ipCounters.get(ip) ?? 0;
-    ipCounters.set(ip, count + 1);
-    return count < MAX_RPM;
-}
 
 type ProcessResolver = (addonId: string) => AddonProcess | null;
 
@@ -32,10 +26,19 @@ type ProcessResolver = (addonId: string) => AddonProcess | null;
 export default class AddonPublicServer {
     private app: Koa;
     private httpServer: HttpClass.Server | null = null;
+    private ipClearTimer: ReturnType<typeof setInterval> | null = null;
+    private readonly ipCounters = new Map<string, number>();
     private readonly port: number;
     private readonly addonId: string;
     private readonly getProcess: ProcessResolver;
     public isListening = false;
+    private isStarting = false;
+
+    private checkRate(ip: string): boolean {
+        const count = this.ipCounters.get(ip) ?? 0;
+        this.ipCounters.set(ip, count + 1);
+        return count < MAX_RPM;
+    }
 
     constructor(port: number, addonId: string, getProcess: ProcessResolver) {
         this.port = port;
@@ -57,7 +60,7 @@ export default class AddonPublicServer {
         this.app.use(async (ctx) => {
             // Rate limit
             const ip = ctx.ip;
-            if (!checkRate(ip)) {
+            if (!this.checkRate(ip)) {
                 ctx.status = 429;
                 ctx.body = { error: 'Too many requests' };
                 return;
@@ -71,10 +74,18 @@ export default class AddonPublicServer {
             }
 
             try {
+                const sanitisedHeaders: Record<string, string> = {};
+                for (const [key, value] of Object.entries(ctx.headers)) {
+                    if (value === undefined) continue;
+                    const lower = key.toLowerCase();
+                    if (lower === 'cookie' || lower === 'authorization' || lower === 'x-txadmin-csrftoken' || lower === 'x-txadmin-token') continue;
+                    sanitisedHeaders[key] = Array.isArray(value) ? value.join(', ') : String(value);
+                }
+
                 const result = await addonProcess.handlePublicRequest({
                     method: ctx.method,
                     path: ctx.path || '/',
-                    headers: ctx.headers as Record<string, string>,
+                    headers: sanitisedHeaders,
                     body: ctx.request.body,
                 });
 
@@ -99,12 +110,22 @@ export default class AddonPublicServer {
      * Start listening on the configured port.
      */
     async start(): Promise<void> {
-        if (this.isListening) return;
+        if (this.isListening || this.isStarting) return;
+        this.isStarting = true;
+        if (!this.ipClearTimer) {
+            this.ipClearTimer = setInterval(() => this.ipCounters.clear(), 60_000);
+        }
 
         return new Promise((resolve, reject) => {
             this.httpServer = HttpClass.createServer(this.app.callback());
 
             this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
+                this.isStarting = false;
+                this.isListening = false;
+                if (this.ipClearTimer) {
+                    clearInterval(this.ipClearTimer);
+                    this.ipClearTimer = null;
+                }
                 if (error.code === 'EADDRINUSE') {
                     console.error(`Port ${this.port} is already in use. Public server not started.`);
                     reject(error);
@@ -115,6 +136,7 @@ export default class AddonPublicServer {
             });
 
             this.httpServer.listen(this.port, '0.0.0.0', () => {
+                this.isStarting = false;
                 this.isListening = true;
                 console.log(`Public server listening on port ${this.port}`);
                 resolve();
@@ -127,9 +149,14 @@ export default class AddonPublicServer {
      */
     async stop(): Promise<void> {
         if (!this.httpServer || !this.isListening) return;
+        if (this.ipClearTimer) {
+            clearInterval(this.ipClearTimer);
+            this.ipClearTimer = null;
+        }
 
         return new Promise((resolve) => {
             this.httpServer!.close(() => {
+                this.isStarting = false;
                 this.isListening = false;
                 this.httpServer = null;
                 console.log('Public server stopped');

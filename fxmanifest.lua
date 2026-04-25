@@ -5,7 +5,7 @@
 author('SomeAussieGamer | (Originally made by tabarra)')
 description('fxPanel - A Replacement for txAdmin built on its source code.')
 repository('https://github.com/SomeAussieGaymer/fxPanel')
-version 'REPLACE-VERSION'
+version '0.2.2-Beta'
 ui_label 'fxPanel'
 
 fx_version('cerulean')
@@ -30,7 +30,7 @@ server_scripts({
     'resource/sv_playerlist.lua',
     'resource/sv_ctx.lua',
     'resource/sv_initialData.lua',
-    'resource/sv_reports.lua',
+    'resource/sv_tickets.lua',
     'resource/menu/server/sv_webpipe.lua',
     'resource/menu/server/sv_functions.lua',
     'resource/menu/server/sv_main_page.lua',
@@ -52,7 +52,7 @@ client_scripts({
     'resource/menu/client/cl_webpipe.lua',
     'resource/menu/client/cl_base.lua',
     'resource/menu/client/cl_functions.lua',
-    'resource/cl_reports.lua',
+    'resource/cl_tickets.lua',
     'resource/menu/client/cl_instructional_ui.lua',
     'resource/menu/client/cl_main_page.lua',
     'resource/menu/client/cl_vehicle.lua',

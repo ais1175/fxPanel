@@ -43,8 +43,8 @@ export default function TmpSocket() {
             console.log('Console Socket.IO Disconnected:', message);
             setIsOffline(true);
         };
-        const errorHandler = (error: Error) => {
-            console.log('Console Socket.IO', error);
+        const errorHandler = (reason?: string) => {
+            console.log('Console Socket.IO', reason ?? 'unknown');
         };
         const dataHandler = (data: any) => {
             ingestConsoleData(data);

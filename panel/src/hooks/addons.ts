@@ -49,9 +49,269 @@ export interface AddonWidgetEntry {
     Component: React.ComponentType<any>;
 }
 
+function asComponentMap(input: unknown): Record<string, React.ComponentType<any>> {
+    if (!input || typeof input !== 'object') return {};
+    return input as Record<string, React.ComponentType<any>>;
+}
+
+function resolveNamedComponent(
+    map: Record<string, React.ComponentType<any>>,
+    name: string,
+): React.ComponentType<any> | undefined {
+    const direct = map[name];
+    if (direct) return direct;
+
+    // Legacy addons can end up with different export casing.
+    const lowerName = name.toLowerCase();
+    const matchedKey = Object.keys(map).find((k) => k.toLowerCase() === lowerName);
+    return matchedKey ? map[matchedKey] : undefined;
+}
+
+function normalizeAddonModuleExports(raw: any): AddonPanelModule {
+    const rawDefault = raw?.default;
+
+    const pages = asComponentMap(
+        raw?.pages ??
+            rawDefault?.pages ??
+            // Legacy shape: module exports page components directly
+            (rawDefault && typeof rawDefault === 'object' ? rawDefault : undefined),
+    );
+
+    const widgets = asComponentMap(raw?.widgets ?? rawDefault?.widgets);
+
+    const settings =
+        raw?.settings ??
+        rawDefault?.settings;
+
+    return {
+        pages,
+        widgets,
+        settings,
+    };
+}
+
+const SIDEBAR_COMPAT_FROM_VERSION = '0.2.2-Beta';
+
+type ParsedVersion = {
+    major: number;
+    minor: number;
+    patch: number;
+    pre: string;
+};
+
+function parseVersion(version: string): ParsedVersion {
+    const [rawCore, rawPre = ''] = String(version || '').split('-', 2);
+    const [maj = '0', min = '0', pat = '0'] = rawCore.split('.');
+    return {
+        major: Number.parseInt(maj, 10) || 0,
+        minor: Number.parseInt(min, 10) || 0,
+        patch: Number.parseInt(pat, 10) || 0,
+        pre: rawPre.toLowerCase(),
+    };
+}
+
+function preReleaseRank(pre: string): number {
+    if (!pre) return 3; // stable release
+    if (pre.startsWith('rc')) return 2;
+    if (pre.startsWith('beta')) return 1;
+    if (pre.startsWith('alpha')) return 0;
+    return 1;
+}
+
+function gteVersion(version: string, target: string): boolean {
+    const a = parseVersion(version);
+    const b = parseVersion(target);
+    if (a.major !== b.major) return a.major > b.major;
+    if (a.minor !== b.minor) return a.minor > b.minor;
+    if (a.patch !== b.patch) return a.patch > b.patch;
+    return preReleaseRank(a.pre) >= preReleaseRank(b.pre);
+}
+
+function normalizeAddonSidebarFlag(
+    _descriptor: AddonPanelDescriptor,
+    page: AddonPanelDescriptor['pages'][number],
+): boolean {
+    if (page.sidebar) return true;
+
+    const sidebarGroup = String(page.sidebarGroup || '').trim();
+    if (sidebarGroup.length > 0) return true;
+
+    // Compatibility layer:
+    // If the running panel is 0.2.2-Beta+, migrate legacy addon navbar behavior
+    // by showing addon pages in the dedicated Addons section by default.
+    // This keeps older addons working without manifest updates.
+    const supportsCompat = gteVersion(window.txConsts.txaVersion, SIDEBAR_COMPAT_FROM_VERSION);
+    if (!supportsCompat) return false;
+
+    return true;
+}
+
+function getAddonFallbackPage(addonId: string, pageTitle: string, error?: string): React.ComponentType<any> {
+    const msg = error || 'Unknown addon panel load error.';
+    return function AddonFallbackPage() {
+        return React.createElement(
+            'div',
+            { className: 'flex w-full flex-col gap-4' },
+            React.createElement(
+                'div',
+                { className: 'rounded-xl border border-destructive/30 bg-destructive/5 p-4' },
+                React.createElement(
+                    'h2',
+                    { className: 'text-destructive text-lg font-semibold' },
+                    'Addon page failed to load',
+                ),
+                React.createElement(
+                    'p',
+                    { className: 'text-muted-foreground mt-1 text-sm' },
+                    'Addon: ',
+                    React.createElement('span', { className: 'font-mono' }, addonId),
+                ),
+                React.createElement(
+                    'p',
+                    { className: 'text-muted-foreground text-sm' },
+                    'Page: ',
+                    React.createElement('span', { className: 'font-medium' }, pageTitle),
+                ),
+                React.createElement(
+                    'p',
+                    { className: 'text-muted-foreground mt-3 text-sm whitespace-pre-wrap' },
+                    msg,
+                ),
+            ),
+        );
+    };
+}
+
+function sanitizeAddonEntryUrl(entryUrl: string): string {
+    const trimmed = String(entryUrl || '').trim();
+    return trimmed.split('?')[0].split('#')[0] || trimmed;
+}
+
+async function fetchAddonModuleSource(entryUrl: string): Promise<{ contentType: string; text: string }> {
+    const response = await fetch(entryUrl, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+            Accept: 'application/javascript, text/javascript, */*;q=0.8',
+        },
+    });
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const text = await response.text();
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status} while loading addon module from ${entryUrl}`);
+    }
+
+    // Auth middleware failures can return HTML logout pages with 200.
+    if (contentType.includes('text/html') || /^\s*</.test(text)) {
+        throw new Error(
+            `Addon module request returned HTML instead of JavaScript from ${entryUrl}. ` +
+                'This usually means the request failed auth/session validation.',
+        );
+    }
+
+    return { contentType, text };
+}
+
+function executeAddonSourceFallback(source: string, sourceUrl: string): AddonPanelModule {
+    // Compatibility fallback for environments where dynamic module import fails
+    // even though the addon JS is reachable. We support the common addon export
+    // shape (`export const pages/widgets/settings = ...`) plus simple
+    // `export function` and `export class` declarations for those same names.
+    //
+    // KNOWN LIMITATIONS — this is a regex-based source rewrite, NOT a real ES
+    // module loader. The following export forms are NOT supported and will
+    // either throw at eval-time or be silently ignored:
+    //   - `export default ...`
+    //   - `export { a, b as c }` / `export { a } from './x'` (named re-exports)
+    //   - `export * from './x'`
+    //   - `export async function ...` (the `async` keyword is not stripped)
+    //   - Any export wrapped across multiple lines / unusual whitespace
+    //
+    // Addons that need any of the above must rely on the primary `import()`
+    // path. The runner below still returns whatever pages/widgets/settings
+    // bindings happen to exist after the rewrite.
+    const transformed = source
+        .replace(/\bexport\s+const\s+([A-Za-z_$][\w$]*)\s*=/g, 'const $1 =')
+        .replace(/\bexport\s+function\s+([A-Za-z_$][\w$]*)/g, 'function $1')
+        .replace(/\bexport\s+class\s+([A-Za-z_$][\w$]*)/g, 'class $1');
+
+    const runner = new Function(
+        'window',
+        `${transformed}\n//# sourceURL=${sourceUrl}\nreturn {\n` +
+            `  pages: (typeof pages !== 'undefined' ? pages : undefined),\n` +
+            `  widgets: (typeof widgets !== 'undefined' ? widgets : undefined),\n` +
+            `  settings: (typeof settings !== 'undefined' ? settings : undefined),\n` +
+            `};`,
+    ) as (win: Window) => AddonPanelModule;
+
+    console.warn(
+        `[addons] executeAddonSourceFallback: regex-based source rewrite used for "${sourceUrl}". ` +
+            'This addon is not using the native dynamic import path. ' +
+            'Report this to the addon developer if unexpected exports are missing.',
+    );
+    return runner(window);
+}
+
+async function importAddonEntry(entryUrl: string): Promise<any> {
+    const sanitized = sanitizeAddonEntryUrl(entryUrl) || entryUrl;
+
+    // Prefer fetch + eval over dynamic import().  In dev mode the panel JS is
+    // served by Vite on a different port than the backend.  Dynamic import()
+    // resolves relative URLs against the Vite module origin, which doesn't
+    // have the session cookie context — the backend returns an HTML logout page
+    // and the browser rejects it as a non-JS MIME type.  fetch() always resolves
+    // against the *document* origin (the backend), sends credentials correctly,
+    // and avoids MIME-type enforcement.
+    try {
+        const { text } = await fetchAddonModuleSource(sanitized);
+        return executeAddonSourceFallback(text, sanitized);
+    } catch (e) {
+        console.error(`[addons] fetch+eval failed for "${sanitized}", falling back to native import:`, e);
+    }
+
+    // Fallback: native dynamic import for real ES modules (e.g. future addons
+    // that use their own import graph and cannot be eval'd as a plain script).
+    return import(/* @vite-ignore */ sanitized);
+}
+
 // Singleton state so we don't re-fetch on every mount
 let cachedAddons: LoadedAddon[] | null = null;
 let loadPromise: Promise<LoadedAddon[]> | null = null;
+const loadedAddonStyleUrls = new Set<string>();
+// Module-level token updated by the hook so the txAddonApi getter always returns the live value
+let currentCsrfToken: string | null = null;
+
+function ensureAddonPanelStyleLoaded(addonId: string, stylesUrl: string | null | undefined): void {
+    const href = String(stylesUrl || '').trim();
+    if (!href || loadedAddonStyleUrls.has(href)) return;
+
+    let alreadyLinked = false;
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+        alreadyLinked = !!document.querySelector(`link[rel="stylesheet"][href="${CSS.escape(href)}"]`);
+    } else {
+        const links = document.querySelectorAll('link[rel="stylesheet"]');
+        for (const el of Array.from(links)) {
+            if (el.getAttribute('href') === href || (el as HTMLLinkElement).href === href) {
+                alreadyLinked = true;
+                break;
+            }
+        }
+    }
+    if (alreadyLinked) {
+        loadedAddonStyleUrls.add(href);
+        return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.addonId = addonId;
+    document.head.appendChild(link);
+    loadedAddonStyleUrls.add(href);
+}
 
 /**
  * Hook to get loaded panel addons.
@@ -70,6 +330,11 @@ export function useAddonLoader() {
         mountedRef.current = true;
         return () => { mountedRef.current = false; };
     }, []);
+
+    // Keep the module-level token in sync so the txAddonApi getter is never stale
+    useEffect(() => {
+        currentCsrfToken = csrfToken ?? null;
+    }, [csrfToken]);
 
     useEffect(() => {
         if (cachedAddons) {
@@ -102,10 +367,10 @@ export function useAddonLoader() {
                 (window as any).React = React;
                 (window as any).txAddonApi = {
                     ...(window as any).txAddonApi,
-                    csrfToken,
+                    get csrfToken() { return currentCsrfToken; },
                     getHeaders: () => ({
                         'Content-Type': 'application/json',
-                        'X-TxAdmin-CsrfToken': csrfToken ?? '',
+                        'X-TxAdmin-CsrfToken': currentCsrfToken ?? '',
                     }),
                     ui: {
                         DropdownMenuItem,
@@ -120,17 +385,31 @@ export function useAddonLoader() {
 
                 for (const descriptor of resp.addons) {
                     try {
-                        // Dynamically import the addon entry script
-                        // The entry URL is served by the core at /addons/:id/panel/index.js
-                        const mod = await import(/* @vite-ignore */ descriptor.entryUrl);
+                        ensureAddonPanelStyleLoaded(descriptor.id, descriptor.stylesUrl);
+
+                        const entryUrl = descriptor.entryUrl;
+                        if (!entryUrl) {
+                            throw new Error(`Addon ${descriptor.id} missing panel entryUrl in manifest payload.`);
+                        }
+
+                        // Dynamically import the addon entry script.
+                        // If transformed URLs fail (e.g. ?import path issues), retry with
+                        // a sanitized URL through native dynamic import.
+                        const mod = await importAddonEntry(entryUrl);
+                        const normalized = normalizeAddonModuleExports(mod);
 
                         loaded.push({
                             descriptor,
                             module: {
-                                pages: mod.pages ?? {},
-                                widgets: mod.widgets ?? {},
+                                pages: normalized.pages ?? {},
+                                widgets: normalized.widgets ?? {},
                                 settings: descriptor.settingsComponent
-                                    ? (mod.widgets?.[descriptor.settingsComponent] ?? mod.pages?.[descriptor.settingsComponent] ?? mod[descriptor.settingsComponent])
+                                    ? (
+                                        resolveNamedComponent(normalized.widgets ?? {}, descriptor.settingsComponent)
+                                        ?? resolveNamedComponent(normalized.pages ?? {}, descriptor.settingsComponent)
+                                        ?? normalized.settings
+                                        ?? mod?.[descriptor.settingsComponent]
+                                    )
                                     : undefined,
                             },
                         });
@@ -169,13 +448,14 @@ export function useAddonLoader() {
     for (const addon of addons) {
         if (!addon.descriptor.pages) continue;
         for (const page of addon.descriptor.pages) {
-            const Component = addon.module.pages?.[page.component];
-            if (!Component) continue;
+            const Component =
+                resolveNamedComponent(addon.module.pages ?? {}, page.component)
+                ?? getAddonFallbackPage(addon.descriptor.id, page.title, addon.error);
             pages.push({
                 addonId: addon.descriptor.id,
                 path: `/addon/${addon.descriptor.id}${page.path}`,
                 title: page.title,
-                sidebar: page.sidebar,
+                sidebar: normalizeAddonSidebarFlag(addon.descriptor, page),
                 permission: page.permission,
                 Component,
             });
@@ -187,7 +467,7 @@ export function useAddonLoader() {
     for (const addon of addons) {
         if (!addon.descriptor.widgets) continue;
         for (const widget of addon.descriptor.widgets) {
-            const Component = addon.module.widgets?.[widget.component];
+            const Component = resolveNamedComponent(addon.module.widgets ?? {}, widget.component);
             if (!Component) continue;
             widgets.push({
                 addonId: addon.descriptor.id,

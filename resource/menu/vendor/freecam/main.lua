@@ -46,8 +46,11 @@ local function UpdateCamera()
     local moveZ = GetSmartControlNormal(CONTROLS.MOVE_Z)
 
     -- Calculate new rotation.
+    ---@diagnostic disable-next-line: need-check-nil
     local rotX = rot.x + (-lookY * SETTINGS.LOOK_SENSITIVITY_X)
+    ---@diagnostic disable-next-line: need-check-nil
     local rotZ = rot.z + (-lookX * SETTINGS.LOOK_SENSITIVITY_Y)
+    ---@diagnostic disable-next-line: need-check-nil
     local rotY = rot.y
 
     -- Adjust position relative to camera rotation.
@@ -84,6 +87,7 @@ local redmInstructionGroup, redmPromptTitle
 
 function StartFreecamThread()
   if IS_REDM then
+    ---@diagnostic disable-next-line: undefined-global
     redmPromptTitle = CreateVarString(10, 'LITERAL_STRING', 'NoClip')
     redmInstructionGroup = makeRedmInstructionalGroup(keysTable)
   end
@@ -131,8 +135,10 @@ function StartFreecamThread()
     local fivemScaleform = IS_FIVEM and makeFivemInstructionalScaleform(keysTable)
     while IsFreecamActive() do
       if IS_FIVEM then
+        ---@diagnostic disable-next-line: param-type-mismatch
         DrawScaleformMovieFullscreen(fivemScaleform, 255, 255, 255, 255, 0)
       else
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetActiveGroupThisFrame(redmInstructionGroup.groupId, redmPromptTitle, 1, 0, 0, 0)
       end
       Wait(0)
@@ -140,7 +146,8 @@ function StartFreecamThread()
 
     --cleanup of the scaleform movie
     if IS_FIVEM then
-      SetScaleformMovieAsNoLongerNeeded()
+      ---@diagnostic disable-next-line: param-type-mismatch
+      SetScaleformMovieAsNoLongerNeeded(fivemScaleform)
     end
   end)
 end
@@ -149,7 +156,7 @@ end
 
 -- When the resource is stopped, make sure to return the camera to the player.
 AddEventHandler('onResourceStop', function (resourceName)
-  if resourceName == "monitor" then
+  if resourceName == GetCurrentResourceName() then
     SetFreecamActive(false)
   end
 end)

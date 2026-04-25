@@ -1,6 +1,6 @@
 import { ErrorBoundary } from 'react-error-boundary';
 import { Route as WouterRoute, Switch } from 'wouter';
-import { PageErrorFallback } from '@/components/errorFallback';
+import { PageErrorFallback } from '@/components/ErrorFallback';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { contentRefreshKeyAtom, pageErrorStatusAtom, useSetPageTitle } from '@/hooks/pages';
 import { navigate as setLocation } from 'wouter/use-browser-location';
@@ -19,8 +19,10 @@ import AddLegacyBanPage from '@/pages/AddLegacyBanPage';
 import DashboardPage from '@/pages/Dashboard/DashboardPage';
 import InsightsPage from '@/pages/InsightsPage/InsightsPage';
 import ReportsPage from '@/pages/Reports/ReportsPage';
+import AnalyticsPage from '@/pages/Reports/AnalyticsPage';
 import PlayerDropsPage from '@/pages/PlayerDropsPage/PlayerDropsPage';
 import SettingsPage from '@/pages/Settings/SettingsPage';
+import AddonsManagerPage from '@/pages/AddonsManagerPage';
 import EmbedEditorPage from '@/pages/Settings/EmbedEditorPage';
 import FxUpdaterPage from '@/pages/FxUpdater/FxUpdaterPage';
 import WhitelistPage from '@/pages/Whitelist/WhitelistPage';
@@ -61,6 +63,12 @@ const allRoutes: RouteType[] = [
         Page: <ReportsPage />,
     },
     {
+        path: '/reports/analytics',
+        title: 'Ticket Analytics',
+        permission: 'players.reports',
+        Page: <AnalyticsPage />,
+    },
+    {
         path: '/insights',
         title: 'Insights',
         Page: <InsightsPage />,
@@ -86,6 +94,12 @@ const allRoutes: RouteType[] = [
         title: 'Settings',
         permission: 'settings.view',
         Page: <SettingsPage />,
+    },
+    {
+        path: '/addons',
+        title: 'Addon Manager',
+        permission: 'all_permissions',
+        Page: <AddonsManagerPage />,
     },
     {
         path: '/system/master-actions',
@@ -205,17 +219,20 @@ function Route(route: RouteType) {
     return <WouterRoute path={route.path}>{nodeToRender}</WouterRoute>;
 }
 
-function AddonRoute({ route }: { route: AddonPageRoute }) {
+function AddonRouteContent({ route }: { route: AddonPageRoute }) {
     const { hasPerm } = useAdminPerms();
     const setPageTitle = useSetPageTitle();
     setPageTitle(route.title);
-    const nodeToRender =
-        route.permission && !hasPerm(route.permission) ? (
-            <UnauthorizedPage pageName={route.title} permission={route.permission} />
-        ) : (
-            <route.Component />
-        );
-    return <WouterRoute path={route.path}>{nodeToRender}</WouterRoute>;
+    if (route.permission && !hasPerm(route.permission)) {
+        return <UnauthorizedPage pageName={route.title} permission={route.permission} />;
+    }
+    return (
+        <div className="relative w-full flex-1">
+            <div className="absolute inset-0 overflow-auto">
+                <route.Component />
+            </div>
+        </div>
+    );
 }
 
 export function MainRouterInner() {
@@ -227,9 +244,12 @@ export function MainRouterInner() {
                 <Route key={route.path} {...route} />
             ))}
 
-            {/* Addon Routes */}
+            {/* Addon Routes â€” WouterRoute must be the direct Switch child
+                so that Switch can read props.path for matching. */}
             {addonPages.map((route) => (
-                <AddonRoute key={route.path} route={route} />
+                <WouterRoute key={route.path} path={route.path}>
+                    <AddonRouteContent route={route} />
+                </WouterRoute>
             ))}
 
             {/* While addons are loading, don't show NotFound for addon paths */}
@@ -239,7 +259,7 @@ export function MainRouterInner() {
                 </WouterRoute>
             )}
 
-            {/* Other Routes - they need to set the title manuually */}
+            {/* Other Routes - they need to set the title manually */}
             {import.meta.env.DEV && (
                 <WouterRoute path="/test">
                     <TestingPage />

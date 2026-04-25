@@ -127,7 +127,6 @@ const ThreadPerfChart = memo(({ data, minTickIntervalMarker, avgColor, width, he
                     modifiers: [['darker', 1.6]],
                 }}
                 tooltip={CustomToolbar}
-                //FIXME: adapt this to light mode
                 markers={
                     minTickIntervalMarker
                         ? [
@@ -182,7 +181,7 @@ const ThreadPerfChart = memo(({ data, minTickIntervalMarker, avgColor, width, he
 
 export default function ThreadPerfCard() {
     const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
-    const [selectedThread, setSelectedThread] = useState<string>('svMain');
+    const [selectedThread, setSelectedThread] = useState<SvRtPerfThreadNamesType>('svMain');
     const svRuntimeData = useAtomValue(dashSvRuntimeAtom);
     const perfCursorData = useAtomValue(dashPerfCursorAtom);
     const getDashDataAge = useGetDashDataAge();
@@ -196,9 +195,7 @@ export default function ThreadPerfCard() {
             return 'incomplete';
         }
 
-        const threadName = (
-            perfCursorData ? perfCursorData.threadName : (selectedThread ?? 'svMain')
-        ) as SvRtPerfThreadNamesType;
+        const threadName = (perfCursorData ? perfCursorData.threadName : selectedThread) as SvRtPerfThreadNamesType;
 
         const { perfBoundaries, perfBucketCounts } = svRuntimeData;
         const minTickInterval = PERF_MIN_TICK_TIME[threadName];
@@ -309,13 +306,17 @@ export default function ThreadPerfCard() {
     }
 
     return (
-        <div className="bg-card fill-primary flex h-80 max-h-80 flex-col border py-2 shadow-xs md:rounded-xl">
-            <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 px-4 pb-2">
-                <h3 className="line-clamp-1 text-sm font-medium tracking-tight">
-                    {cursorThreadLabel ?? selectedThread} performance {titleTimeIndicator}
+        <div className="bg-card fill-primary flex h-80 max-h-80 flex-col rounded-xl border border-border/60 py-2 shadow-sm">
+            <div className="flex flex-row items-center justify-between space-y-0 px-4 pb-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                    {cursorThreadLabel ?? selectedThread} Performance {titleTimeIndicator}
                 </h3>
                 <div className="flex gap-4">
-                    <Select defaultValue={selectedThread} onValueChange={setSelectedThread} disabled={!!perfCursorData}>
+                    <Select
+                        defaultValue={selectedThread}
+                        onValueChange={(value) => setSelectedThread(value as SvRtPerfThreadNamesType)}
+                        disabled={!!perfCursorData}
+                    >
                         <SelectTrigger
                             className={cn('h-6 w-32 grow px-3 py-1 text-sm md:grow-0', !!perfCursorData && 'hidden')}
                         >
@@ -333,9 +334,7 @@ export default function ThreadPerfCard() {
                             </SelectItem>
                         </SelectContent>
                     </Select>
-                    <div className="xs:block hidden">
-                        <BarChartHorizontalIcon />
-                    </div>
+                    <BarChartHorizontalIcon className="h-3.5 w-3.5 text-muted-foreground/30" />
                 </div>
             </div>
             <DebouncedResizeContainer onDebouncedResize={setChartSize}>{contentNode}</DebouncedResizeContainer>

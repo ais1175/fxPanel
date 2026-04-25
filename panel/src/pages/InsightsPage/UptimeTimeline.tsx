@@ -16,7 +16,8 @@ const formatDuration = (ms: number) => {
         return `${days}d ${hours % 24}h`;
     }
     if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    if (minutes > 0) return `${minutes}m`;
+    return '<1m';
 };
 
 type Props = {
@@ -55,13 +56,16 @@ function UptimeTimeline({ segments }: Props) {
                     if (widthPct < 0.2) return null;
                     return (
                         <div
-                            key={i}
-                            className={`group relative ${
-                                seg.status === 'online' ? 'bg-green-500/50' : 'bg-red-500/50'
-                            }`}
+                            key={`${seg.start}-${seg.end}`}
+                            tabIndex={0}
+                            className={
+                                seg.status === 'online'
+                                    ? 'group relative border-r border-emerald-200/20 bg-gradient-to-r from-emerald-500/30 to-cyan-500/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60'
+                                    : 'group relative border-r border-rose-200/20 bg-gradient-to-r from-rose-500/35 to-orange-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60'
+                            }
                             style={{ width: `${widthPct}%` }}
                         >
-                            <div className="absolute bottom-full left-1/2 z-50 mb-1 hidden -translate-x-1/2 rounded border bg-zinc-900 px-2 py-1 text-xs whitespace-nowrap shadow-md group-hover:block">
+                            <div className="bg-card text-card-foreground border-border absolute bottom-full left-1/2 z-50 mb-1 hidden -translate-x-1/2 rounded border px-2 py-1 text-xs whitespace-nowrap shadow-md group-hover:block group-focus:block">
                                 <span className="font-medium">{seg.status === 'online' ? 'Online' : 'Offline'}</span>
                                 {' · '}
                                 {formatDuration(seg.end - seg.start)}

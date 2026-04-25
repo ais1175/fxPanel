@@ -4,7 +4,7 @@
  * No dependencies on AdminStore, sessions, or routes.
  */
 import { TOTP, Secret } from 'otpauth';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
 const TOTP_ISSUER = 'fxPanel';
 const TOTP_PERIOD = 30;
@@ -36,8 +36,28 @@ export function getTotpUri(secret: string, accountName: string): string {
 }
 
 /**
+ * Replay-protection cache. Key is a SHA-256 of (secret + ":" + code); value is
+ * the epoch-ms expiry. Entries expire after one full drift window
+ * (period * (2 * window + 1)) so a captured code cannot be redeemed twice even
+ * within the allowed drift band.
+ *
+ * Using a hash-keyed map (not the raw secret) so the cache contents aren't as
+ * sensitive if dumped in a memory snapshot.
+ */
+const replayCache = new Map<string, number>();
+const REPLAY_TTL_MS = TOTP_PERIOD * 3 * 1000; //window=1 → 3 periods
+let lastReplaySweep = 0;
+const sweepReplayCache = (now: number) => {
+    if (now - lastReplaySweep < 30_000) return;
+    lastReplaySweep = now;
+    for (const [k, exp] of replayCache) if (exp <= now) replayCache.delete(k);
+};
+
+/**
  * Verify a TOTP code against a secret.
  * Allows 1 window of drift (previous + current + next period).
+ * Rejects codes that were already accepted within the drift window
+ * (prevents replay of intercepted/shoulder-surfed codes).
  */
 export function verifyTotpCode(secret: string, code: string): boolean {
     const totp = new TOTP({
@@ -48,7 +68,17 @@ export function verifyTotpCode(secret: string, code: string): boolean {
         secret: Secret.fromBase32(secret),
     });
     const delta = totp.validate({ token: code, window: 1 });
-    return delta !== null;
+    if (delta === null) return false;
+
+    const now = Date.now();
+    sweepReplayCache(now);
+    const key = createHash('sha256').update(secret).update(':').update(code).digest('hex');
+    const existingExpiry = replayCache.get(key);
+    if (existingExpiry !== undefined && existingExpiry > now) {
+        return false;
+    }
+    replayCache.set(key, now + REPLAY_TTL_MS);
+    return true;
 }
 
 /**
@@ -73,10 +103,26 @@ export function hashBackupCode(code: string): string {
 }
 
 /**
- * Verify a backup code against hashed list.
+ * Verify a backup code against the hashed list.
  * Returns the index of the matched code, or -1 if not found.
+ *
+ * Iterates every candidate without short-circuiting and uses
+ * `crypto.timingSafeEqual` so match position is not leaked via latency.
  */
 export function verifyBackupCode(code: string, hashedCodes: string[]): number {
-    const hashed = hashBackupCode(code);
-    return hashedCodes.indexOf(hashed);
+    const inputBuf = Buffer.from(hashBackupCode(code));
+    let matchedIndex = -1;
+    for (let i = 0; i < hashedCodes.length; i++) {
+        const candidateBuf = Buffer.from(hashedCodes[i]);
+        const sameLength = candidateBuf.length === inputBuf.length;
+        // Run a comparison unconditionally so the loop body's cost is constant
+        // regardless of whether the lengths match (defensive — all hashes are
+        // 64-char sha256 hex in practice, but the input may be malformed).
+        const cmpBuf = sameLength ? candidateBuf : inputBuf;
+        const isEqual = timingSafeEqual(cmpBuf, inputBuf) && sameLength;
+        if (isEqual && matchedIndex === -1) {
+            matchedIndex = i;
+        }
+    }
+    return matchedIndex;
 }

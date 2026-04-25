@@ -1,9 +1,11 @@
 import { memo } from 'react';
-import { ResponsiveLine, type Serie, type PointTooltipProps } from '@nivo/line';
+import { ResponsiveLine, type Serie, type SliceTooltipProps } from '@nivo/line';
 import { useIsDarkMode } from '@/hooks/theme';
 import type { InsightsPlayerGrowthPoint } from '@shared/insightsApiTypes';
 
-function ChartTooltip({ point }: PointTooltipProps) {
+function ChartTooltip({ slice }: SliceTooltipProps) {
+    const point = slice.points[0];
+    if (!point) return null;
     return (
         <div className="bg-card text-card-foreground border-border rounded-md border p-2 text-sm shadow-md">
             <div className="font-medium">{point.data.x as string}</div>
@@ -43,12 +45,12 @@ function PlayerGrowthChart({ data }: Props) {
                 margin={{ top: 10, right: 20, bottom: 40, left: 60 }}
                 xScale={{ type: 'point' }}
                 yScale={{ type: 'linear', min: 0, stacked: false }}
-                curve="monotoneX"
-                colors={isDarkMode ? ['#34d399'] : ['#059669']}
-                lineWidth={2}
+                curve="catmullRom"
+                colors={isDarkMode ? ['#22d3ee'] : ['#0ea5e9']}
+                lineWidth={3}
                 enablePoints={false}
                 enableArea={true}
-                areaOpacity={isDarkMode ? 0.15 : 0.1}
+                areaOpacity={isDarkMode ? 0.22 : 0.14}
                 enableGridX={false}
                 enableGridY={true}
                 axisBottom={{
@@ -87,7 +89,8 @@ function PlayerGrowthChart({ data }: Props) {
                     },
                 }}
                 useMesh={true}
-                tooltip={ChartTooltip}
+                enableSlices="x"
+                sliceTooltip={ChartTooltip}
             />
         </div>
     );

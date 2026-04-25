@@ -34,7 +34,7 @@ export default async function AuthDiscordCallback(ctx: InitializedCtx) {
 
     //Validate session state
     const inboundSession = ctx.sessTools.get();
-    if (!inboundSession?.tmpDiscordOAuthState) {
+    if (!inboundSession?.tmpDiscordOAuthState || !inboundSession?.tmpDiscordRedirectUri) {
         return ctx.send<ApiOauthCallbackErrorResp>({
             errorCode: 'invalid_session',
         });
@@ -45,9 +45,10 @@ export default async function AuthDiscordCallback(ctx: InitializedCtx) {
         });
     }
 
-    //Build redirect URI (must match the one used in the authorize request)
-    const origin = ctx.request.headers.origin || ctx.request.headers.referer?.replace(/\/login\/discord\/callback.*/, '') || '';
-    const redirectUri = origin + '/login/discord/callback';
+    //Redirect URI — read from session (bound at authorize time) rather than
+    //re-deriving from request headers, which an attacker could manipulate
+    //to differ from the authorize request.
+    const redirectUri = inboundSession.tmpDiscordRedirectUri;
 
     //Exchange code for access token
     let accessToken: string;
@@ -71,7 +72,15 @@ export default async function AuthDiscordCallback(ctx: InitializedCtx) {
                 errorMessage: `Status ${tokenRes.status}`,
             });
         }
-        const tokenData = await tokenRes.json() as { access_token: string; token_type: string };
+        const tokenData = await tokenRes.json() as { access_token?: unknown };
+        if (!tokenData.access_token || typeof tokenData.access_token !== 'string') {
+            const safeKeys = Object.keys(tokenData).join(', ');
+            console.verbose.warn(`Discord token exchange returned invalid access_token. Response fields: ${safeKeys}`);
+            return ctx.send<ApiOauthCallbackResp>({
+                errorTitle: 'Discord token exchange failed',
+                errorMessage: 'Invalid access_token in response',
+            });
+        }
         accessToken = tokenData.access_token;
     } catch (error) {
         console.verbose.error(`Discord token exchange error: ${emsg(error)}`);
@@ -129,7 +138,7 @@ export default async function AuthDiscordCallback(ctx: InitializedCtx) {
             expiresAt: Date.now() + 86_400_000, //24h
             identifier: discordIdentifier,
         } satisfies DiscordSessAuthType;
-        ctx.sessTools.set({ auth: sessData });
+        ctx.sessTools.regenerate({ auth: sessData });
 
         const authedAdmin = vaultAdmin.getAuthed(sessData.csrfToken);
         authedAdmin.logAction(`logged in from ${ctx.ip} via discord`);

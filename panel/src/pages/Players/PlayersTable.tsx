@@ -5,7 +5,7 @@ import TxAnchor from '@/components/TxAnchor';
 import { cn } from '@/lib/utils';
 import { convertRowDateTime, msToShortDuration } from '@/lib/dateTime';
 import { TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2Icon } from 'lucide-react';
+import { Loader2Icon, ChevronUpIcon, ChevronDownIcon, ChevronsUpDownIcon } from 'lucide-react';
 import { useOpenPlayerModal } from '@/hooks/playerModal';
 import {
     PlayersTableSearchResp,
@@ -19,6 +19,7 @@ import { emsg } from '@shared/emsg';
 import { useAtomValue } from 'jotai';
 import { tagDefinitionsAtom } from '@/hooks/playerlist';
 import { PlayerTag, TagDefinition, AUTO_TAG_DEFINITIONS } from '@shared/socketioTypes';
+import { searchMockPlayers } from './devMockPlayers';
 
 const FALLBACK_TAG_LOOKUP: Record<string, { label: string; color: string; priority: number }> = {
     staff: { label: 'Staff', color: '#EF4444', priority: 1 },
@@ -203,7 +204,7 @@ type SortableTableHeaderProps = {
 function SortableTableHeader({ label, sortKey, sortingState, setSorting, className }: SortableTableHeaderProps) {
     const isSorted = sortingState.key === sortKey;
     const isDesc = sortingState.desc;
-    const sortIcon = isSorted ? isDesc ? '▼' : '▲' : <></>;
+    const SortIcon = isSorted ? (isDesc ? ChevronDownIcon : ChevronUpIcon) : ChevronsUpDownIcon;
     const onClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         e.preventDefault();
         setSorting({
@@ -215,13 +216,15 @@ function SortableTableHeader({ label, sortKey, sortingState, setSorting, classNa
         <th
             onClick={onClick}
             className={cn(
-                'cursor-pointer px-4 py-2 text-left font-light tracking-wider hover:bg-zinc-600',
-                isSorted && 'bg-zinc-700 font-medium',
+                'cursor-pointer px-4 py-2.5 text-left font-medium hover:bg-secondary/40 select-none transition-colors',
+                isSorted && 'bg-secondary/30 text-foreground',
                 className,
             )}
         >
-            {label}
-            <div className="ml-1 inline-block min-w-[2ch]">{sortIcon}</div>
+            <div className="flex items-center gap-1">
+                {label}
+                <SortIcon className={cn('h-3 w-3', isSorted ? 'text-accent' : 'opacity-40')} />
+            </div>
         </th>
     );
 }
@@ -252,6 +255,8 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
         abortOnUnmount: true,
     });
 
+    const fetchNextPageRef = useRef<(resetOffset?: boolean) => Promise<void>>();
+
     const fetchNextPage = async (resetOffset?: boolean) => {
         setIsFetching(true);
         setLoadError(null);
@@ -280,7 +285,9 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
                 queryParams.offsetParam = players[players.length - 1][sorting.key];
                 queryParams.offsetLicense = players[players.length - 1].license;
             }
-            const resp = await playerListingApi({ queryParams });
+            const resp = import.meta.env.DEV
+                ? await searchMockPlayers(queryParams)
+                : await playerListingApi({ queryParams });
 
             //Dealing with errors
             if (resp === undefined) {
@@ -292,10 +299,9 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
             //Setting the states
             setLoadError(null);
             setHasReachedEnd(resp.hasReachedEnd);
-            setIsResetting(false);
             if (resp.players.length) {
                 setPlayers((prev) => (resetOffset ? resp.players : [...prev, ...resp.players]));
-            } else {
+            } else if (resetOffset) {
                 setPlayers([]);
             }
         } catch (error) {
@@ -305,6 +311,12 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
             setIsResetting(false);
         }
     };
+
+    // Stable ref so effects always call the latest fetchNextPage without
+    // depending on its identity (which changes every render).
+    useEffect(() => {
+        fetchNextPageRef.current = fetchNextPage;
+    });
 
     // The virtualizer
     const rowVirtualizer = useVirtualizer({
@@ -326,7 +338,7 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
         if (padStart > 0) {
             TopRowPad = (
                 <tr>
-                    <td colSpan={3} style={{ height: padStart }} />
+                    <td colSpan={4} style={{ height: padStart }} />
                 </tr>
             );
         }
@@ -334,7 +346,7 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
         if (padEnd > 0) {
             BottomRowPad = (
                 <tr>
-                    <td colSpan={3} style={{ height: padEnd }} />
+                    <td colSpan={4} style={{ height: padEnd }} />
                 </tr>
             );
         }
@@ -345,30 +357,29 @@ export default function PlayersTable({ search, filters }: PlayersTableProps) {
         if (!players.length || !virtualItems.length) return;
         const lastVirtualItemIndex = virtualItems[virtualItems.length - 1].index;
         if (players.length <= lastVirtualItemIndex && !hasReachedEnd && !isFetching) {
-            fetchNextPage();
+            fetchNextPageRef.current?.();
         }
     }, [players, virtualItems, hasReachedEnd, isFetching]);
 
     //on state change, reset the list
+    // rowVirtualizer is a stable object from useVirtualizer and fetchNextPageRef is a ref —
+    // neither should trigger re-runs, so they are intentionally omitted from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         rowVirtualizer.scrollToIndex(0);
-        fetchNextPage(true);
+        fetchNextPageRef.current?.(true);
     }, [search, filters, sorting]);
 
     return (
         <div
-            className="max-h-full min-h-96 w-full overflow-auto border md:rounded-lg"
+            className="flex-1 min-h-0 w-full overflow-auto border border-border/60 shadow-sm md:rounded-xl"
             style={{ overflowAnchor: 'none' }}
         >
-            {/* <div
-                className='w-full bg-black p-2'
-                style={{ color: createRandomHslColor() }}
-            >{JSON.stringify({ search, filters, sorting })}</div> */}
             <ScrollArea className="h-full" ref={scrollRef}>
                 <table className="w-full caption-bottom text-sm select-none">
                     <TableHeader>
-                        <tr className="bg-muted text-secondary-foreground sticky top-0 z-10 text-base shadow-md transition-colors">
-                            <th className="text-muted-foreground px-4 py-2 text-left font-light tracking-wider">
+                        <tr className="bg-card/95 text-muted-foreground/60 sticky top-0 z-10 border-b border-border/40 text-[11px] uppercase tracking-wider shadow-sm backdrop-blur-sm transition-colors">
+                            <th className="px-4 py-2.5 text-left font-medium">
                                 Display Name
                             </th>
                             <SortableTableHeader

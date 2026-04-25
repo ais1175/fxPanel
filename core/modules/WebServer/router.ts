@@ -3,7 +3,7 @@ import Router from '@koa/router';
 import KoaRateLimit from 'koa-ratelimit';
 
 import * as routes from '@routes/index';
-import { apiAuthMw, hostAuthMw, intercomAuthMw, webAuthMw } from './middlewares/authMws';
+import { apiAuthMw, assetAuthMw, hostAuthMw, intercomAuthMw, webAuthMw } from './middlewares/authMws';
 import { wrapRoute } from '@lib/wrapRoute';
 
 /**
@@ -58,6 +58,10 @@ export default () => {
             this._expiry.delete(key);
             return super.delete(key);
         }
+        override clear() {
+            this._expiry.clear();
+            return super.clear();
+        }
     }
 
     // Rate limiter for mutation endpoints (kick, ban, warn, etc.) — stricter
@@ -74,6 +78,8 @@ export default () => {
     });
 
     // Rate limiter for read endpoints (search, logs, data) — moderate
+    // All read-limited routes share a single bucket per IP, so the limit
+    // must accommodate concurrent SWR revalidation across multiple pages.
     const readLimiter = KoaRateLimit({
         driver: 'memory',
         db: new TtlMap(60_000),
@@ -81,7 +87,7 @@ export default () => {
         errorMessage: JSON.stringify({
             error: 'Too many requests. Please slow down.',
         }),
-        max: 120,
+        max: 600,
         disableHeader: true,
         id: (ctx: any) => ctx.txVars.realIP,
     });
@@ -116,7 +122,7 @@ export default () => {
     router.post('/auth/totp/setup', apiAuthMw, routes.auth_totpSetup);
     router.post('/auth/totp/confirm', apiAuthMw, routes.auth_totpConfirm);
     router.post('/auth/totp/verify', authLimiter, routes.auth_totpVerify);
-    router.post('/auth/totp/disable', apiAuthMw, routes.auth_totpDisable);
+    router.post('/auth/totp/disable', authLimiter, apiAuthMw, routes.auth_totpDisable);
 
     //Admin Manager
     router.get('/adminManager/list', apiAuthMw, routes.adminManager_list);
@@ -229,8 +235,14 @@ export default () => {
     //Report routes
     router.get('/reports/list', apiAuthMw, readLimiter, routes.reports_list);
     router.get('/reports/detail', apiAuthMw, readLimiter, routes.reports_detail);
+    router.get('/reports/analytics', apiAuthMw, readLimiter, routes.reports_analytics);
+    router.get('/reports/config', apiAuthMw, readLimiter, routes.reports_config);
+    router.get('/reports/screenshot/:id', assetAuthMw, routes.reports_screenshot);
     router.post('/reports/message', apiAuthMw, mutationLimiter, routes.reports_message);
     router.post('/reports/status', apiAuthMw, mutationLimiter, routes.reports_status);
+    router.post('/reports/claim', apiAuthMw, mutationLimiter, routes.reports_claim);
+    router.post('/reports/note', apiAuthMw, mutationLimiter, routes.reports_note);
+    router.delete('/reports/note', apiAuthMw, mutationLimiter, routes.reports_note_delete);
 
     //Addon routes
     router.get('/addons/list', apiAuthMw, routes.addons_list);
@@ -245,11 +257,17 @@ export default () => {
     router.get('/addons/:addonId/logs', apiAuthMw, readLimiter, routes.addons_logs);
     router.all('/addons/:addonId/api/(.*)', apiAuthMw, readLimiter, routes.addons_proxy);
     //Addon static file serving (panel bundles, NUI bundles & static assets)
-    router.get('/addons/:addonId/panel/(.*)', routes.addons_servePanelFile);
-    router.get('/nui/addons/:addonId/(.*)', routes.addons_serveNuiFile);
-    router.get('/addons/:addonId/static/(.*)', routes.addons_serveStaticFile);
-    //Addon public routes (unauthenticated, for addons with publicRoutes enabled)
-    router.all('/site/:addonId/(.*)', readLimiter, routes.addons_publicProxy);
+    //SECURITY: panel & NUI bundles are same-origin, executable assets. They must
+    //          only be served to authenticated admins to avoid exposing addon
+    //          JS/CSS to unauthenticated visitors who could use them as part of
+    //          an XSS / reconnaissance chain.
+    router.get('/addons/:addonId/panel/(.*)', webAuthMw, routes.addons_servePanelFile);
+    router.get('/nui/addons/:addonId/(.*)', assetAuthMw, routes.addons_serveNuiFile);
+    router.get('/addons/:addonId/static/(.*)', assetAuthMw, routes.addons_serveStaticFile);
+    //Addon public routes are intentionally NOT registered on the primary panel
+    //origin. Public traffic for addons with publicRoutes enabled is served by
+    //AddonPublicServer on a dedicated port so that addon-controlled HTML/JS
+    //cannot read admin session cookies on the panel origin.
 
     //Host routes
     router.get('/host/status', hostAuthMw, routes.host_status);

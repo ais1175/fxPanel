@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export const defaultDatabase = {
     version: DATABASE_VERSION,
@@ -6,5 +6,5 @@ export const defaultDatabase = {
     players: [],
     whitelistApprovals: [],
     whitelistRequests: [],
-    reports: [],
+    tickets: [],
 };

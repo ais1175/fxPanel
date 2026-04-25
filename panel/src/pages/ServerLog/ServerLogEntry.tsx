@@ -125,7 +125,7 @@ const ServerLogEntry = memo(function ServerLogEntry({ event, onPlayerClick }: Se
         e.stopPropagation();
         if (event.src.id) {
             const [mutex, netidStr] = String(event.src.id).split('#', 2);
-            const netid = parseInt(netidStr);
+            const netid = parseInt(netidStr, 10);
             if (mutex && !isNaN(netid)) {
                 openPlayerModal({ mutex, netid });
                 return;
@@ -139,13 +139,16 @@ const ServerLogEntry = memo(function ServerLogEntry({ event, onPlayerClick }: Se
         navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
+        }).catch((err) => {
+            setCopied(false);
+            console.error('Failed to copy to clipboard:', err);
         });
     };
 
     const handleOpenPlayer = () => {
         if (!event.src.id) return;
         const [mutex, netidStr] = String(event.src.id).split('#', 2);
-        const netid = parseInt(netidStr);
+        const netid = parseInt(netidStr, 10);
         if (mutex && !isNaN(netid)) {
             setModalOpen(false);
             openPlayerModal({ mutex, netid });
@@ -159,7 +162,7 @@ const ServerLogEntry = memo(function ServerLogEntry({ event, onPlayerClick }: Se
         <>
             <div
                 className={cn(
-                    'hover:bg-muted/50 flex cursor-pointer items-start gap-2 border-l-2 px-3 py-1.5 text-sm transition-colors',
+                    'hover:bg-secondary/30 flex cursor-pointer items-start gap-2 border-l-2 px-3 py-1.5 text-sm transition-colors',
                     cfg.borderColor,
                 )}
                 onClick={() => setModalOpen(true)}
@@ -307,8 +310,8 @@ export const GroupedJoinLeave = memo(function GroupedJoinLeave({ events, type }:
         names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
 
     const absoluteTime = useMemo(
-        () => new Date(events[0].ts).toLocaleTimeString(undefined, timeOptions),
-        [events[0].ts],
+        () => events.length ? new Date(events[0].ts).toLocaleTimeString(undefined, timeOptions) : '',
+        [events.length, events[0]?.ts],
     );
 
     return (

@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useBackendApi } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
 import { Button } from '@/components/ui/button';
-import { Loader2Icon } from 'lucide-react';
+import { Loader2Icon, ActivityIcon } from 'lucide-react';
 import useSWR from 'swr';
 import {
     Dialog,
@@ -13,6 +12,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { ApiTimeout } from '@/hooks/fetch';
+import { PageHeader } from '@/components/page-header';
 
 type DiagnosticsData = {
     message: string;
@@ -206,16 +206,14 @@ export default function DiagnosticsPage() {
 
     return (
         <div className="mx-auto w-full max-w-(--breakpoint-xl) space-y-4 px-2 md:px-0">
-            <div className="px-2 md:px-0">
-                <h1 className="mb-2 text-3xl">Diagnostics</h1>
-            </div>
+            <PageHeader icon={<ActivityIcon />} title="Diagnostics" />
 
             <div className="grid gap-4 md:grid-cols-2">
                 {/* Left column */}
                 <div className="space-y-4">
                     {/* Environment */}
-                    <div className="border-destructive/30 rounded-lg border p-4">
-                        <h2 className="mb-3 text-lg font-bold">Environment</h2>
+                    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground/60">Environment</h2>
                         {!host ? (
                             <p className="text-muted-foreground text-sm">Host data not available.</p>
                         ) : host.error ? (
@@ -258,8 +256,8 @@ export default function DiagnosticsPage() {
                     </div>
 
                     {/* fxPanel Runtime */}
-                    <div className="border-destructive/30 rounded-lg border p-4">
-                        <h2 className="mb-3 text-lg font-bold">fxPanel Runtime</h2>
+                    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground/60">fxPanel Runtime</h2>
                         <div className="space-y-1 text-sm">
                             <p>
                                 <strong>Uptime:</strong> <code>{txadmin.uptime}</code>
@@ -379,8 +377,8 @@ export default function DiagnosticsPage() {
                 {/* Right column */}
                 <div className="space-y-4">
                     {/* Diagnostics Report */}
-                    <div className="border-info/30 rounded-lg border p-4">
-                        <h2 className="mb-3 text-lg font-bold">Diagnostics Report</h2>
+                    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground/60">Diagnostics Report</h2>
                         <div className="flex items-center justify-between gap-4">
                             <p className="text-sm">
                                 To receive fxPanel Support, it is recommended that you send the diagnostics data
@@ -400,8 +398,8 @@ export default function DiagnosticsPage() {
                     </div>
 
                     {/* FXServer Info */}
-                    <div className="border-info/30 rounded-lg border p-4">
-                        <h2 className="mb-3 text-lg font-bold">FXServer /info.json</h2>
+                    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground/60">FXServer /info.json</h2>
                         {!fxserver ? (
                             <p className="text-muted-foreground text-sm">FXServer data not available.</p>
                         ) : (<>
@@ -456,8 +454,8 @@ export default function DiagnosticsPage() {
                     </div>
 
                     {/* Processes */}
-                    <div className="border-info/30 rounded-lg border p-4">
-                        <h2 className="mb-3 text-lg font-bold">Processes</h2>
+                    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground/60">Processes</h2>
                         {!processes?.length ? (
                             <p className="text-muted-foreground text-sm">
                                 Failed to retrieve process data. Check the terminal for more information (if verbosity

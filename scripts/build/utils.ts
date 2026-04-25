@@ -34,7 +34,7 @@ export const licenseBanner = (baseDir = '.', isBundledFile = false) => {
         lineSep,
         'Author: André Tabarra (https://github.com/tabarra)',
         'Author: SomeAussieGaymer (https://github.com/SomeAussieGaymer)',
-        'Repository: https://github.com/SomeAussieGaymer/fxpanel',
+        'Repository: https://github.com/SomeAussieGaymer/fxPanel',
         'fxPanel is a free open source software provided under the license below.',
         lineSep,
         ...fs.readFileSync(licensePath, 'utf8').trim().split('\n'),
@@ -86,9 +86,10 @@ export const getPublishVersion = (isOptional: boolean) => {
     try {
         if (!workflowRef) {
             if (isOptional) {
+                const txVersion = '0.2.2-Beta';
                 return {
-                    txVersion: '0.2.1-Beta',
-                    isPreRelease: false,
+                    txVersion,
+                    isPreRelease: /beta|alpha|rc/i.test(txVersion),
                     preReleaseExpiration: '0',
                 };
             } else {
@@ -110,7 +111,8 @@ export const getPublishVersion = (isOptional: boolean) => {
                   : '0',
         };
     } catch (error) {
-        console.error('Version setup failed: ' + error.message);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Version setup failed: ' + message);
         process.exit(1);
     }
 };
@@ -210,21 +212,21 @@ export const copyStaticFiles = (targetPath: string, txVersion: string, eventName
             fs.rmSync(destPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
         } catch (error) {
             console.warn(
-                `[COPIER] Failed to remove ${destPath}: ${(error as Error).message}, copying over existing files.`,
+                `[COPIER] Failed to remove ${destPath}: ${error instanceof Error ? error.message : String(error)}, copying over existing files.`,
             );
         }
         try {
             fs.cpSync(srcPath, destPath, { recursive: true, force: true });
         } catch (error) {
             failures++;
-            console.error(`[COPIER] Failed to copy ${srcPath} → ${destPath}: ${(error as Error).message}`);
+            console.error(`[COPIER] Failed to copy ${srcPath} → ${destPath}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     try {
         setupDistFxmanifest(targetPath, txVersion);
     } catch (error) {
         failures++;
-        console.error(`[COPIER] Failed to setup fxmanifest: ${(error as Error).message}`);
+        console.error(`[COPIER] Failed to setup fxmanifest: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (failures) {
         console.warn(`[COPIER] Completed with ${failures} error(s).`);

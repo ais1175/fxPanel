@@ -125,7 +125,7 @@ const DialogInfoView: React.FC = () => {
     };
 
     //Log stuff
-    const counts = { ban: 0, warn: 0 };
+    const counts = { ban: 0, warn: 0, kick: 0 };
     for (const action of player.actionHistory) {
         counts[action.type]++;
     }

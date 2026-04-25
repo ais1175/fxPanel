@@ -5,6 +5,7 @@ import { dateToLocaleDateString, dateToLocaleTimeString, isDateToday, tsToLocale
 import TxAnchor from '@/components/TxAnchor';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Link } from 'wouter';
+import { usePageHeader } from '@/hooks/pages';
 
 //MARK: PageHeaderChangelog
 type PageHeaderChangelogProps = {
@@ -66,7 +67,7 @@ export function PageHeaderChangelog({ changelogData }: PageHeaderChangelogProps)
                     </DialogHeader>
                     <div className="max-h-[80vh] space-y-3 overflow-auto pr-3" style={{ scrollbarWidth: 'thin' }}>
                         {reversedChangelog?.map((entry, i) => (
-                            <ChangelogEntry key={i} entry={entry} />
+                            <ChangelogEntry key={`${entry.ts}-${entry.author}-${i}`} entry={entry} />
                         ))}
                     </div>
                 </DialogContent>
@@ -89,14 +90,13 @@ function ChangelogEntry({ entry }: { entry: ConfigChangelogEntry }) {
             </div>
             <div className="flex flex-wrap gap-1 text-sm">
                 {entry.keys.length ? (
-                    entry.keys.map((cfg, index) => (
-                        <span>
-                            <div
-                                key={cfg}
+                    entry.keys.map((cfg: string, index: number) => (
+                        <span key={`${cfg}-${index}`}>
+                            <span
                                 className="bg-secondary/50 inline rounded px-1 py-0.5 font-mono tracking-wide"
                             >
                                 {cfg}
-                            </div>
+                            </span>
                             {index < entry.keys.length - 1 && ','}
                         </span>
                     ))
@@ -131,36 +131,75 @@ export function PageHeaderLinks(props: PageHeaderLinksProps) {
 //MARK: PageHeader
 type PageHeaderProps = {
     title: string;
-    icon: React.ReactNode;
+    icon?: React.ReactNode;
+    description?: string;
     parentName?: string;
     parentLink?: string;
     children?: React.ReactNode;
 };
+
+/**
+ * Standardized page header. Renders above the page body + playerlist sidebar
+ * (hoisted via {@link usePageHeader}) so it spans the full content width and
+ * aligns with the playerlist sidebar below it.
+ *
+ * IMPORTANT: `PageHeader` does NOT render any DOM at its call site — it
+ * publishes a `<PageHeaderContent />` element through `usePageHeader` and
+ * returns `null`. The actual markup is rendered by the layout slot that
+ * subscribes to `pageHeaderAtom`. Place `<PageHeader />` anywhere inside the
+ * page tree; the JSX will appear in the hoisted header region rather than
+ * inline.
+ *
+ * Layout (rendered by `PageHeaderContent`):
+ *  - Accent bar (primary) on the left
+ *  - Optional icon tile
+ *  - Breadcrumb (parent > title) or just title
+ *  - Optional description
+ *  - Optional `children` rendered as action slot on the right
+ *  - Bottom divider
+ */
 export function PageHeader(props: PageHeaderProps) {
-    const titleNodes = useMemo(() => {
-        if (props.parentName && props.parentLink) {
-            return (
-                <>
-                    <Link href={props.parentLink} className="hover:text-secondary-foreground hover:underline">
-                        {props.parentName}
-                    </Link>
-                    <ChevronRightIcon className="opacity-75" />
-                    <li className="text-secondary-foreground">{props.title}</li>
-                </>
-            );
-        } else {
-            return <li className="text-secondary-foreground">{props.title}</li>;
-        }
-    }, [props]);
+    // Hoist the header JSX to the layout-level slot via usePageHeader; this
+    // component intentionally renders nothing at its original location.
+    usePageHeader(<PageHeaderContent {...props} />);
+    return null;
+}
+
+function PageHeaderContent({ title, icon, description, parentName, parentLink, children }: PageHeaderProps) {
     return (
-        <header className="mb-4 border-b">
-            <div className="xbg-blue-700 max-xs:pb-2 xs:min-h-16 max-xs:flex-col xs:gap-4 max-xs:items-start flex items-center justify-between gap-2 px-4 py-2">
-                <ol className="xbg-green-500 text-muted-foreground flex flex-wrap items-center gap-1 text-2xl leading-none sm:gap-2.5">
-                    <span className="opacity-75">{props.icon}</span>
-                    {titleNodes}
-                </ol>
-                {props.children}
+        <div className="mb-3 md:mb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+                <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                    <span className="bg-primary/70 h-9 w-1 shrink-0 rounded-full sm:h-10" />
+                    {icon ? (
+                        <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border sm:h-10 sm:w-10 [&>svg]:size-4 sm:[&>svg]:size-5">
+                            {icon}
+                        </div>
+                    ) : null}
+                    <div className="min-w-0">
+                        {parentName && parentLink ? (
+                            <div className="text-muted-foreground/60 mb-0.5 flex items-center gap-1 text-xs">
+                                <Link href={parentLink} className="hover:text-foreground transition-colors">
+                                    {parentName}
+                                </Link>
+                                <ChevronRightIcon className="size-3" />
+                            </div>
+                        ) : null}
+                        <h1 className="text-foreground truncate text-xl leading-tight font-bold tracking-tight sm:text-2xl">
+                            {title}
+                        </h1>
+                        {description ? (
+                            <p className="text-muted-foreground/60 mt-0.5 truncate text-xs sm:text-sm">{description}</p>
+                        ) : null}
+                    </div>
+                </div>
+                {children ? (
+                    <div className="-mx-0.5 flex flex-wrap items-center gap-2 overflow-x-auto px-0.5">
+                        {children}
+                    </div>
+                ) : null}
             </div>
-        </header>
+            <div className="border-border/40 mt-3 border-b sm:mt-4" />
+        </div>
     );
 }

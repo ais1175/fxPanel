@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { spawn, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import stream from 'node:stream';
+import StreamZip from 'node-stream-zip';
 
 import { txEnv } from '@core/globalData';
 import got from '@lib/got';
@@ -31,6 +32,7 @@ export default class FxUpdater {
     private updateDir!: string;
     private archivePath!: string;
     private stagingDir!: string;
+    private failureStatusPath!: string;
 
     constructor() {
         if (txEnv.isWindows) {
@@ -45,10 +47,34 @@ export default class FxUpdater {
         this.updateDir = path.join(parentDir, 'fxserver_update_temp');
         this.archivePath = path.join(this.updateDir, txEnv.isWindows ? 'server.zip' : 'fx.tar.xz');
         this.stagingDir = path.join(parentDir, 'fxserver_update_staging');
+        this.failureStatusPath = path.join(parentDir, 'fxserver_update_failure.txt');
+        this.loadPersistedFailureStatus();
     }
 
     get status(): FxUpdateStatus {
         return this._status;
+    }
+
+    /**
+     * Loads any persisted updater failure status written by the detached
+     * swap script (used mainly on Windows where the process exits mid-apply).
+     */
+    private loadPersistedFailureStatus() {
+        try {
+            const persisted = fs.readFileSync(this.failureStatusPath, 'utf8').trim();
+            if (!persisted.length) return;
+            this._status = { phase: 'error', message: persisted };
+            console.warn(`Loaded persisted artifact update failure: ${persisted}`);
+        } catch {
+            // no persisted failure status
+        }
+    }
+
+    /**
+     * Clears persisted updater failure status file.
+     */
+    private async clearPersistedFailureStatus() {
+        await fsp.rm(this.failureStatusPath, { force: true }).catch(() => {});
     }
 
     /**
@@ -64,6 +90,8 @@ export default class FxUpdater {
 
         this._status = { phase: 'downloading', percentage: 0 };
         try {
+            await this.clearPersistedFailureStatus();
+
             //Clean up any previous temp files
             await fsp.rm(this.updateDir, { recursive: true, force: true });
             await fsp.rm(this.stagingDir, { recursive: true, force: true });
@@ -72,7 +100,7 @@ export default class FxUpdater {
             //Stream download with progress
             const gotStream = got.stream(url, {
                 timeout: {
-                    request: undefined,
+                    request: 60 * 60 * 1000, // 60 minutes
                     lookup: 10_000,
                     connect: 10_000,
                     response: 30_000,
@@ -84,43 +112,47 @@ export default class FxUpdater {
                     percentage: Math.round(progress.percent * 100),
                 };
             });
-            await pipeline(gotStream, fs.createWriteStream(this.archivePath));
+            const writeStream = fs.createWriteStream(this.archivePath);
+            gotStream.on('error', (err) => {
+                this._status = { phase: 'error', message: emsg(err) };
+                writeStream.destroy(err);
+            });
+            await pipeline(gotStream, writeStream);
 
             //Extract to staging directory
             this._status = { phase: 'extracting' };
             await fsp.mkdir(this.stagingDir, { recursive: true });
             console.warn('Extracting artifact archive...');
-            await new Promise<void>((resolve, reject) => {
-                const ext = path.extname(this.archivePath).toLowerCase();
-                let cmd: string;
-                let args: string[];
-                if (ext === '.zip') {
-                    if (txEnv.isWindows) {
-                        // Use PowerShell Expand-Archive on Windows for ZIP files
-                        cmd = 'powershell';
-                        args = [
-                            '-NoProfile',
-                            '-NonInteractive',
-                            '-Command',
-                            `Expand-Archive -Path '${this.archivePath}' -DestinationPath '${this.stagingDir}' -Force`,
-                        ];
-                    } else {
-                        cmd = 'unzip';
-                        args = ['-o', this.archivePath, '-d', this.stagingDir];
-                    }
-                } else {
-                    cmd = 'tar';
-                    args = ['-xf', this.archivePath, '-C', this.stagingDir];
-                }
-                const child = spawn(cmd, args, {
-                    stdio: 'ignore',
+            const ext = path.extname(this.archivePath).toLowerCase();
+            if (ext === '.zip') {
+                // Use node-stream-zip for cross-platform extraction.
+                // Avoids shelling out to powershell/unzip with interpolated paths
+                // (command injection), and explicitly validates every entry
+                // stays inside stagingDir (zip-slip).
+                await this.extractZipSafe(this.archivePath, this.stagingDir);
+            } else {
+                // .tar.xz — spawn tar directly (no shell); paths are passed as
+                // separate argv entries, so there is no injection surface.
+                await new Promise<void>((resolve, reject) => {
+                    const child = spawn(
+                        'tar',
+                        ['-xf', this.archivePath, '-C', this.stagingDir],
+                        { stdio: ['ignore', 'ignore', 'pipe'] },
+                    );
+                    const stderrChunks: Buffer[] = [];
+                    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+                    child.on('error', reject);
+                    child.on('close', (code) => {
+                        if (code === 0) {
+                            resolve();
+                        } else {
+                            const stderrText = Buffer.concat(stderrChunks).toString().trim();
+                            const detail = stderrText ? `: ${stderrText}` : '';
+                            reject(new Error(`tar exited with code ${code}${detail}`));
+                        }
+                    });
                 });
-                child.on('error', reject);
-                child.on('close', (code) => {
-                    if (code === 0) resolve();
-                    else reject(new Error(`${cmd} exited with code ${code}`));
-                });
-            });
+            }
 
             //Verify the extraction produced something meaningful
             const files = await fsp.readdir(this.stagingDir);
@@ -217,6 +249,7 @@ export default class FxUpdater {
             const msg = emsg(error) ?? 'Unknown download error';
             console.error(`Artifact download failed: ${msg}`);
             this._status = { phase: 'error', message: msg };
+            await fsp.writeFile(this.failureStatusPath, msg).catch(() => {});
             //Cleanup on failure
             await fsp.rm(this.updateDir, { recursive: true, force: true }).catch(() => {});
             await fsp.rm(this.stagingDir, { recursive: true, force: true }).catch(() => {});
@@ -240,6 +273,8 @@ export default class FxUpdater {
         const parentDir = path.dirname(this.artifactRootDir);
 
         try {
+            await this.clearPersistedFailureStatus();
+
             //Check if citizen/ exists in the current artifacts (needs to be preserved)
             //On both platforms, citizen/ is a subdirectory of fxsPath
             const oldCitizenDir = path.join(txEnv.fxsPath, 'citizen');
@@ -273,6 +308,7 @@ export default class FxUpdater {
                 const winParentDir = escapeBatchPath(parentDir);
                 const scriptPath = path.join(parentDir, 'fxs_update_swap.bat');
                 const winScriptPath = escapeBatchPath(scriptPath);
+                const winFailureStatusPath = escapeBatchPath(this.failureStatusPath);
                 const pid = process.pid;
 
                 //Capture the original command line so we can restart after swap
@@ -286,25 +322,43 @@ export default class FxUpdater {
                 } catch {
                     console.warn('Could not capture command line for auto-restart.');
                 }
+                if (!restartCmd.length) {
+                    try {
+                        const quoteArg = (arg: string) => `"${arg.replace(/"/g, '""')}"`;
+                        restartCmd = process.argv.map(quoteArg).join(' ');
+                        console.warn('Using process.argv fallback for auto-restart command.');
+                    } catch {
+                        // no fallback available
+                    }
+                }
                 const winCwd = escapeBatchPath(process.cwd());
 
                 const batLines = [
                     '@echo off',
                     'title FXServer Artifact Update',
+                    `set "FAILFILE=${winFailureStatusPath}"`,
+                    'if exist "%FAILFILE%" del /f /q "%FAILFILE%" >NUL 2>&1',
                     `echo Waiting for FXServer (PID ${pid}) to shut down...`,
-                    'timeout /t 3 /nobreak >nul',
-                    `echo Killing FXServer process (PID ${pid})...`,
-                    `taskkill /F /PID ${pid} >NUL 2>&1`,
-                    'timeout /t 2 /nobreak >nul',
+                    'set waitretries=0',
+                    ':waitpidloop',
                     `tasklist /FI "PID eq ${pid}" 2>NUL | find /I "${pid}" >NUL`,
-                    'if not errorlevel 1 (',
-                    `    echo WARNING: Process ${pid} still alive, retrying...`,
-                    `    taskkill /F /PID ${pid} >NUL 2>&1`,
-                    '    timeout /t 2 /nobreak >nul',
+                    'if errorlevel 1 goto waitpiddone',
+                    'set /a waitretries+=1',
+                    'if %waitretries% GEQ 20 (',
+                    `    set "FAIL_REASON=Could not stop FXServer process ${pid} in time."`,
+                    '    goto updatefailed',
                     ')',
+                    `echo Process ${pid} still alive, forcing shutdown... attempt %waitretries%`,
+                    `taskkill /F /PID ${pid} >NUL 2>&1`,
+                    'timeout /t 1 /nobreak >nul',
+                    'goto waitpidloop',
+                    ':waitpiddone',
+                    'echo FXServer process stopped.',
                 ];
 
-                //Preserve citizen/ by moving it from old to staging (instant on same volume)
+                //Preserve citizen/ using copy-first on Windows.
+                //Directory rename/move is commonly blocked by transient locks,
+                //while robocopy can still succeed in many of those cases.
                 if (citizenExists) {
                     const winOldCitizen = escapeBatchPath(oldCitizenDir);
                     const winNewCitizen = escapeBatchPath(path.join(this.stagingDir, 'citizen'));
@@ -312,9 +366,14 @@ export default class FxUpdater {
                         'echo.',
                         'echo Preserving citizen/ directory...',
                         `if exist "${winNewCitizen}" rmdir /s /q "${winNewCitizen}"`,
-                        `move "${winOldCitizen}" "${winNewCitizen}"`,
-                        'if errorlevel 1 (',
-                        '    echo WARNING: Could not move citizen/, continuing anyway...',
+                        `robocopy "${winOldCitizen}" "${winNewCitizen}" /E /R:3 /W:1 /NFL /NDL /NJH /NJS /NP >NUL`,
+                        'if %ERRORLEVEL% GEQ 8 (',
+                        '    echo WARNING: Could not preserve citizen/. Robocopy error %ERRORLEVEL%. Continuing with artifact-provided citizen/.',
+                        `    if exist "${winNewCitizen}" rmdir /s /q "${winNewCitizen}"`,
+                        ') else (',
+                        '    echo citizen/ copied successfully.',
+                        `    rmdir /s /q "${winOldCitizen}" >NUL 2>&1`,
+                        `    if exist "${winOldCitizen}" echo WARNING: Could not remove old citizen/ source after copy; proceeding anyway.`,
                         ')',
                     );
                 }
@@ -327,10 +386,9 @@ export default class FxUpdater {
                     `rmdir /s /q "${winFxsPath}" 2>NUL`,
                     `if exist "${winFxsPath}" (`,
                     '    set /a retries+=1',
-                    '    if %retries% GEQ 10 (',
-                    '        echo ERROR: Failed to delete old artifact directory after 10 attempts.',
-                    '        pause',
-                    '        exit /b 1',
+                    '    if %retries% GEQ 15 (',
+                    '        echo WARNING: Could not fully delete old artifact directory. Falling back to in-place copy.',
+                    '        goto inplacecopy',
                     '    )',
                     '    echo Waiting for directory to be released... attempt %retries%',
                     '    timeout /t 2 /nobreak >nul',
@@ -339,13 +397,38 @@ export default class FxUpdater {
                     'echo Old artifacts removed.',
                     'echo Moving new artifacts into place...',
                     `move "${winStagingDir}" "${winFxsPath}"`,
-                    'if errorlevel 1 (',
-                    '    echo ERROR: Failed to move staging directory.',
-                    '    pause',
-                    '    exit /b 1',
+                    'if not errorlevel 1 goto updatesuccess',
+                    'echo WARNING: Failed to move staging directory. Falling back to in-place copy...',
+                    ':inplacecopy',
+                    'echo In-place copy excludes citizen/ to avoid lock-related overwrite failures...',
+                    `robocopy "${winStagingDir}" "${winFxsPath}" /E /MOVE /XD citizen /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >NUL`,
+                    'if %ERRORLEVEL% GEQ 8 (',
+                    '    set "FAIL_REASON=Failed to copy staging directory into place."',
+                    '    goto updatefailed',
                     ')',
+                    `if exist "${winStagingDir}\\citizen" (`,
+                    `    if exist "${winFxsPath}\\citizen" (`,
+                    '        echo Keeping existing citizen/ from current install.',
+                    '    ) else (',
+                    '        echo No existing citizen/ found; copying citizen/ from staging...',
+                    `        robocopy "${winStagingDir}\\citizen" "${winFxsPath}\\citizen" /E /R:3 /W:1 /NFL /NDL /NJH /NJS /NP >NUL`,
+                    '        if %ERRORLEVEL% GEQ 8 (',
+                    '            echo WARNING: Could not copy citizen/ from staging. Robocopy error %ERRORLEVEL%.',
+                    '        )',
+                    '    )',
+                    ')',
+                    `if exist "${winStagingDir}" rmdir /s /q "${winStagingDir}"`,
+                    `if exist "${winStagingDir}" echo WARNING: Could not fully remove staging directory.`,
+                    ':updatesuccess',
                     'echo.',
                     'echo Artifact update applied successfully!',
+                    'if exist "%FAILFILE%" del /f /q "%FAILFILE%" >NUL 2>&1',
+                    'goto restartfx',
+                    ':updatefailed',
+                    'echo.',
+                    'echo ERROR: %FAIL_REASON%',
+                    '> "%FAILFILE%" echo %FAIL_REASON%',
+                    'echo Update failed; attempting to restart FXServer with current files...',
                 );
 
                 if (restartCmd) {
@@ -358,6 +441,7 @@ export default class FxUpdater {
                         `@echo off\r\ncd /d "${winCwd}"\r\n${restartCmd}\r\n`,
                     );
                     batLines.push(
+                        ':restartfx',
                         'echo Restarting FXServer...',
                         'echo.',
                         `start "FXServer" cmd.exe /c "${winRestartScript}"`,
@@ -365,7 +449,11 @@ export default class FxUpdater {
                         `del "${winRestartScript}"`,
                     );
                 } else {
-                    batLines.push('echo You may now restart FXServer.', 'echo.', 'pause');
+                    batLines.push(
+                        ':restartfx',
+                        'echo Could not determine restart command automatically.',
+                        'echo Please restart FXServer manually.',
+                    );
                 }
                 batLines.push('del "%~f0"');
 
@@ -548,6 +636,7 @@ export default class FxUpdater {
             const msg = emsg(error) ?? 'Unknown apply error';
             console.error(`Artifact apply failed: ${msg}`);
             this._status = { phase: 'error', message: msg };
+            await fsp.writeFile(this.failureStatusPath, msg).catch(() => {});
             throw error;
         }
     }
@@ -558,7 +647,39 @@ export default class FxUpdater {
     async reset() {
         await fsp.rm(this.updateDir, { recursive: true, force: true }).catch(() => {});
         await fsp.rm(this.stagingDir, { recursive: true, force: true }).catch(() => {});
+        await this.clearPersistedFailureStatus();
         this._status = { phase: 'idle' };
+    }
+
+    /**
+     * Extracts a ZIP archive into `destDir`, validating every entry resolves
+     * inside `destDir` before writing (no zip-slip). Replaces the previous
+     * PowerShell/unzip shell-out which interpolated paths into a command line.
+     */
+    private async extractZipSafe(srcPath: string, destDir: string): Promise<void> {
+        const destResolved = path.resolve(destDir);
+        const allowedPrefix = destResolved + path.sep;
+        const zip = new StreamZip.async({ file: srcPath });
+        try {
+            const entries = await zip.entries();
+            for (const entryName of Object.keys(entries)) {
+                // Reject absolute paths, drive letters, and null bytes.
+                if (
+                    path.isAbsolute(entryName) ||
+                    /^[a-zA-Z]:/.test(entryName) ||
+                    entryName.includes('\0')
+                ) {
+                    throw new Error(`Archive entry has unsafe name: ${entryName}`);
+                }
+                const resolved = path.resolve(destResolved, entryName);
+                if (resolved !== destResolved && !resolved.startsWith(allowedPrefix)) {
+                    throw new Error(`Archive entry escapes staging directory: ${entryName}`);
+                }
+            }
+            await zip.extract(null, destResolved);
+        } finally {
+            await zip.close();
+        }
     }
 
     /**

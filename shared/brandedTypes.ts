@@ -16,3 +16,6 @@ export type License = Brand<string, 'License'>;
 
 /** Action ID (ban/warn/kick, format: X###-####) */
 export type ActionId = Brand<string, 'ActionId'>;
+
+/** Ticket ID (format: TKT-#####) */
+export type TicketId = Brand<string, 'TicketId'>;

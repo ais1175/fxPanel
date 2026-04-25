@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import type { Terminal } from '@xterm/xterm';
 import { sanitizeTermLine } from './liveConsoleUtils';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 
 //Yoinked from the internet, no good source
 const rtlRangeRegex = /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]{3,}/; //ignoring anything less than 3 characters

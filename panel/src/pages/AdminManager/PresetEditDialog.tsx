@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Loader2Icon } from 'lucide-react';
 import { PermissionPreset } from '@shared/permissions';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import PermissionsEditor from './PermissionsEditor';
 
 type PresetEditDialogProps = {

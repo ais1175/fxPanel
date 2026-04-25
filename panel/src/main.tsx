@@ -6,7 +6,7 @@ import ReactDOM from 'react-dom/client';
 import './globals.css';
 
 import MainShell from './layout/MainShell.tsx';
-import { AppErrorFallback } from './components/errorFallback.tsx';
+import { AppErrorFallback } from './components/ErrorFallback.tsx';
 import { logoutWatcher, useIsAuthenticated } from './hooks/auth.ts';
 import AuthShell from './layout/AuthShell.tsx';
 import { isValidRedirectPath, redirectToLogin } from '@/lib/navigation';

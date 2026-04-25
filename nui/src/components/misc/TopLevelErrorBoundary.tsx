@@ -7,29 +7,32 @@ interface ErrorCompState {
     error: Error | null;
 }
 
-export class TopLevelErrorBoundary extends Component<any, ErrorCompState> {
-    state = {
+interface ErrorBoundaryProps {
+    children?: React.ReactNode;
+}
+
+export class TopLevelErrorBoundary extends Component<ErrorBoundaryProps, ErrorCompState> {
+    state: ErrorCompState = {
         hasError: false,
         error: null,
     };
 
-    constructor(props) {
+    constructor(props: ErrorBoundaryProps) {
         super(props);
-        this.handleReloadClick.bind(this);
     }
 
     componentDidUpdate() {
         if (this.state.hasError) fetchNui('focusInputs', true);
     }
 
-    static getDerivedStateFromError(error) {
+    static getDerivedStateFromError(error: Error) {
         return { hasError: true, error };
     }
 
-    handleReloadClick() {
+    handleReloadClick = () => {
         fetchNui('focusInputs', false);
         window.location.reload();
-    }
+    };
 
     render() {
         if (this.state.hasError) {
@@ -42,7 +45,7 @@ export class TopLevelErrorBoundary extends Component<any, ErrorCompState> {
                             will need to be reloaded. The error message is shown below for developer reference.
                             <br />
                             <br />
-                            <code style={{ color: 'red' }}>{this.state.error.message}</code>
+                            <code style={{ color: 'red' }}>{this.state.error?.message}</code>
                         </DialogContentText>
                     </DialogContent>
                     <DialogActions>

@@ -1,5 +1,5 @@
 import { throttle } from 'throttle-debounce';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronsUpDownIcon, XIcon, ChevronDownIcon, ExternalLinkIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -59,15 +59,15 @@ export const throttleFunc = throttle(
  */
 export type HistorySearchBoxReturnStateType = {
     search: HistoryTableSearchType;
-    filterbyType?: string;
-    filterbyAdmin?: string;
+    filterByType?: string;
+    filterByAdmin?: string;
 };
 
 type HistorySearchBoxProps = {
     doSearch: (
         search: HistoryTableSearchType,
-        filterbyType: string | undefined,
-        filterbyAdmin: string | undefined,
+        filterByType: string | undefined,
+        filterByAdmin: string | undefined,
     ) => void;
     initialState: HistorySearchBoxReturnStateType;
     adminStats: {
@@ -82,21 +82,22 @@ export function HistorySearchBox({ doSearch, initialState, adminStats }: History
     const [isSearchTypeDropdownOpen, setSearchTypeDropdownOpen] = useState(false);
     const [currSearchType, setCurrSearchType] = useState<string>(initialState.search.type);
     const [hasSearchText, setHasSearchText] = useState(!!initialState.search.value);
-    const [typeFilter, setTypeFilter] = useState(initialState.filterbyType);
-    const [adminNameFilter, setAdminNameFilter] = useState(initialState.filterbyAdmin);
+    const [typeFilter, setTypeFilter] = useState(initialState.filterByType);
+    const [adminNameFilter, setAdminNameFilter] = useState(initialState.filterByAdmin);
+    const authName = authData && typeof authData === 'object' ? authData.name : undefined;
 
-    const updateSearch = () => {
+    const updateSearch = useCallback(() => {
         if (!inputRef.current) return;
         const searchValue = inputRef.current.value.trim();
         const effectiveTypeFilter = typeFilter !== SEARCH_ANY_STRING ? typeFilter : undefined;
         const effectiveAdminNameFilter = adminNameFilter !== SEARCH_ANY_STRING ? adminNameFilter : undefined;
         doSearch({ value: searchValue, type: currSearchType }, effectiveTypeFilter, effectiveAdminNameFilter);
-    };
+    }, [doSearch, currSearchType, typeFilter, adminNameFilter]);
 
     //Call onSearch when params change
     useEffect(() => {
         updateSearch();
-    }, [currSearchType, typeFilter, adminNameFilter]);
+    }, [updateSearch]);
 
     //Input handlers
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -121,17 +122,18 @@ export function HistorySearchBox({ doSearch, initialState, adminStats }: History
     };
 
     //It's render time! 🎉
+    const filteredAdmins = useMemo(() => {
+        return adminStats.filter((admin) => admin.name !== authName);
+    }, [adminStats, authName]);
+    const selfActionCount = useMemo(() => {
+        return adminStats.find((admin) => admin.name === authName)?.actions || 0;
+    }, [adminStats, authName]);
+
     const selectedSearchType = availableSearchTypes.find((type) => type.value === currSearchType);
     if (!selectedSearchType) throw new Error(`Invalid search type: ${currSearchType}`);
     if (!authData) throw new Error(`authData is not available`);
-    const filteredAdmins = useMemo(() => {
-        return adminStats.filter((admin) => admin.name !== authData.name);
-    }, [adminStats, authData.name]);
-    const selfActionCount = useMemo(() => {
-        return adminStats.find((admin) => admin.name === authData.name)?.actions || 0;
-    }, [adminStats, authData.name]);
     return (
-        <div className="border-border bg-card text-card-foreground mb-2 border p-4 shadow-xs md:mb-4 md:rounded-xl">
+        <div className="border-border/60 bg-card text-card-foreground mb-4 rounded-xl border p-4 shadow-sm">
             <div className="flex flex-wrap-reverse gap-2">
                 <div className="relative min-w-44 grow">
                     <Input
@@ -162,7 +164,7 @@ export function HistorySearchBox({ doSearch, initialState, adminStats }: History
                                 role="combobox"
                                 aria-expanded={isSearchTypeDropdownOpen}
                                 onClick={() => setSearchTypeDropdownOpen(!isSearchTypeDropdownOpen)}
-                                className="xs:w-48 border-input hover:bg-primary grow justify-between bg-black/30 md:grow-0"
+                                className="xs:w-48 grow justify-between md:grow-0"
                             >
                                 Search by {selectedSearchType.label}
                                 <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -187,7 +189,7 @@ export function HistorySearchBox({ doSearch, initialState, adminStats }: History
 
                     <Select defaultValue={typeFilter} onValueChange={setTypeFilter}>
                         <SelectTrigger className="w-36 grow md:grow-0">
-                            <SelectValue placeholder="Filter by admin" />
+                            <SelectValue placeholder="Filter by type" />
                         </SelectTrigger>
                         <SelectContent className="px-0">
                             <SelectItem value={SEARCH_ANY_STRING} className="cursor-pointer">

@@ -35,7 +35,7 @@ function DailyPlayersChart({ daily }: Props) {
         returningPlayers: d.returningPlayers,
     }));
 
-    const colors = isDarkMode ? ['#60a5fa', '#34d399'] : ['#2563eb', '#059669'];
+    const colors = isDarkMode ? ['#38bdf8', '#2dd4bf'] : ['#0284c7', '#0f766e'];
 
     return (
         <div style={{ height: 260 }}>
@@ -47,7 +47,9 @@ function DailyPlayersChart({ daily }: Props) {
                 padding={0.3}
                 groupMode="stacked"
                 colors={colors}
-                borderWidth={0}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.55]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -93,6 +95,8 @@ function DailyPlayersChart({ daily }: Props) {
                         itemTextColor: isDarkMode ? '#a1a1aa' : '#71717a',
                     },
                 ]}
+                animate={true}
+                motionConfig="gentle"
             />
         </div>
     );

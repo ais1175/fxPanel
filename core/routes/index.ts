@@ -133,4 +133,10 @@ export {
     reportsDetail as reports_detail,
     reportsMessage as reports_message,
     reportsStatus as reports_status,
+    ticketsAnalytics as reports_analytics,
+    ticketsConfig as reports_config,
+    ticketsScreenshot as reports_screenshot,
+    ticketsClaim as reports_claim,
+    ticketsNote as reports_note,
+    ticketsNoteDelete as reports_note_delete,
 } from './reports';

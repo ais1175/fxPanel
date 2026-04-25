@@ -1,49 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, LogInIcon } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { ApiOauthRedirectResp, ApiVerifyPasswordReq, ApiVerifyPasswordResp } from '@shared/authApiTypes';
 import { useAuth } from '@/hooks/auth';
-
 import { useLocation } from 'wouter';
 import { fetchWithTimeout } from '@/hooks/fetch';
 import { processFetchError } from './errors';
 import { ServerGlowIcon } from '@/components/serverIcon';
+import { FaDiscord } from 'react-icons/fa';
 
-function HeaderNoServer() {
+function MobileServerHeader() {
+    const server = window.txConsts.server;
+    if (!server?.name) return null;
     return (
-        <div className="text-center">
-            <div className="xs:text-2xl text-primary/85 line-clamp-1 text-xl font-semibold">
-                {/* Server Unconfigured */}
-                {/* Unconfigured Server */}
-                {/* Server Not Configured */}
-                {/* Server Not Yet Configured */}
-                Welcome to fxPanel!
-            </div>
-            <div className="xs:text-base text-muted-foreground text-sm font-normal tracking-wide">
-                {/* please login to set it up */}
-                {/* login to configure it */}
-                please login to continue
+        <div className="mb-6 flex items-center gap-3 xl:hidden">
+            <ServerGlowIcon iconFilename={server.icon} serverName={server.name} gameName={server.game} />
+            <div>
+                <div className="text-base font-semibold leading-tight">{server.name}</div>
+                <div className="text-xs text-muted-foreground">Sign in to continue</div>
             </div>
         </div>
-    );
-}
-
-function HeaderServerInfo() {
-    const server = window.txConsts.server;
-    if (!server || !server.name || (!server.game && !server.icon)) {
-        return <HeaderNoServer />;
-    }
-    return (
-        <>
-            <ServerGlowIcon iconFilename={server.icon} serverName={server.name} gameName={server.game} />
-            <div className="xs:h-full xs:justify-between flex grow flex-col">
-                <div className="xs:text-2xl line-clamp-1 text-xl font-semibold">{server.name}</div>
-                <div className="xs:text-base text-muted-foreground text-sm">Login to continue</div>
-            </div>
-        </>
     );
 }
 
@@ -62,6 +40,7 @@ export default function Login() {
     const passwordRef = useRef<HTMLInputElement>(null);
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
     const [isFetching, setIsFetching] = useState(false);
+    const [fetchingAction, setFetchingAction] = useState<'' | 'login' | 'discourse' | 'discord'>('');
     const setLocation = useLocation()[1];
 
     const onError = (error: any) => {
@@ -81,6 +60,7 @@ export default function Login() {
     const handleLogin = async () => {
         try {
             setIsFetching(true);
+            setFetchingAction('login');
             const data = await fetchWithTimeout<ApiVerifyPasswordResp, ApiVerifyPasswordReq>(
                 `/auth/password?uiVersion=${encodeURIComponent(window.txConsts.txaVersion)}`,
                 {
@@ -107,44 +87,49 @@ export default function Login() {
             onError(error);
         } finally {
             setIsFetching(false);
+            setFetchingAction('');
         }
     };
 
     const handleDiscourseRedirect = async () => {
         try {
             setIsFetching(true);
+            setFetchingAction('discourse');
             const data = await fetchWithTimeout<ApiOauthRedirectResp>(
                 `/auth/discourse/redirect?origin=${encodeURIComponent(window.location.origin)}`,
             );
             if ('error' in data) {
                 onErrorResponse(data.error);
                 setIsFetching(false);
+                setFetchingAction('');
             } else {
-                console.log('Redirecting to', data.authUrl);
                 window.location.href = data.authUrl;
             }
         } catch (error) {
             onError(error);
             setIsFetching(false);
+            setFetchingAction('');
         }
     };
 
     const handleDiscordRedirect = async () => {
         try {
             setIsFetching(true);
+            setFetchingAction('discord');
             const data = await fetchWithTimeout<ApiOauthRedirectResp>(
                 `/auth/discord/redirect?origin=${encodeURIComponent(window.location.origin)}`,
             );
             if ('error' in data) {
                 onErrorResponse(data.error);
                 setIsFetching(false);
+                setFetchingAction('');
             } else {
-                console.log('Redirecting to', data.authUrl);
                 window.location.href = data.authUrl;
             }
         } catch (error) {
             onError(error);
             setIsFetching(false);
+            setFetchingAction('');
         }
     };
 
@@ -154,8 +139,8 @@ export default function Login() {
             const rawLocalStorageStr = localStorage.getItem('authCredsAutofill');
             if (rawLocalStorageStr) {
                 const [user, pass] = JSON.parse(rawLocalStorageStr);
-                usernameRef.current!.value = user ?? '';
-                passwordRef.current!.value = pass ?? '';
+                if (usernameRef.current) usernameRef.current.value = user ?? '';
+                if (passwordRef.current) passwordRef.current.value = pass ?? '';
             }
         } catch (error) {
             console.error('Username/Pass autofill failed', error);
@@ -167,17 +152,17 @@ export default function Login() {
         const hash = window.location.hash;
         if (!hash) return;
         if (hash === LogoutReasonHash.LOGOUT) {
-            setErrorMessage('Logged Out.');
+            setErrorMessage('Logged out.');
         } else if (hash === LogoutReasonHash.EXPIRED) {
-            setErrorMessage('Session Expired.');
+            setErrorMessage('Session expired.');
         } else if (hash === LogoutReasonHash.UPDATED) {
-            setErrorMessage('fxPanel updated!\nPlease login again.');
+            setErrorMessage('fxPanel updated — please sign in again.');
         } else if (hash === LogoutReasonHash.MASTER_ALREADY_SET) {
             setErrorMessage('Master account already configured.');
         } else if (hash === LogoutReasonHash.SHUTDOWN) {
-            setErrorMessage('The fxPanel server shut down.\nPlease start it again to be able to login.');
+            setErrorMessage('fxPanel server shut down.\nStart it again to sign in.');
         }
-        window.location.hash = '';
+        history.replaceState(null, document.title, window.location.pathname + window.location.search);
     }, []);
 
     return (
@@ -186,91 +171,100 @@ export default function Login() {
                 e.preventDefault();
                 handleLogin();
             }}
-            className="w-full rounded-[inherit]"
+            className="flex flex-col gap-5"
         >
-            <CardHeader className="rounded-t-[inherit]">
-                <CardTitle className="xs:h-16 flex h-14 flex-row items-center justify-center gap-4">
-                    <HeaderServerInfo />
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="bg-card flex flex-col gap-4 rounded-b-[inherit] border-t pt-4">
-                {/* Error message */}
-                {errorMessage && (
-                    <div className="text-destructive-inline text-center text-sm whitespace-pre-wrap">
-                        {errorMessage}
-                    </div>
-                )}
+            <MobileServerHeader />
 
-                {/* Form */}
-                <div className="xs:grid xs:gap-4 flex grid-cols-8 flex-col items-baseline gap-2">
-                    <Label className="col-span-2" htmlFor="frm-login">
+            {/* Heading */}
+            <div className="mb-1">
+                <h1 className="text-xl font-semibold text-foreground">Sign in</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">Enter your credentials to continue</p>
+            </div>
+
+            {/* Error */}
+            {errorMessage && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive-inline whitespace-pre-wrap">
+                    {errorMessage}
+                </div>
+            )}
+
+            {/* Fields */}
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="frm-login" className="text-sm font-medium text-foreground/80">
                         Username
                     </Label>
                     <Input
                         id="frm-login"
                         ref={usernameRef}
                         type="text"
-                        placeholder="username"
+                        placeholder="your username"
                         autoCapitalize="off"
                         autoComplete="off"
-                        className="col-span-6"
+                        className="h-10 bg-background/60"
                         required
                     />
                 </div>
-                <div className="xs:grid xs:gap-4 flex grid-cols-8 flex-col items-baseline gap-2">
-                    <Label className="col-span-2" htmlFor="frm-password">
+                <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="frm-password" className="text-sm font-medium text-foreground/80">
                         Password
                     </Label>
                     <Input
                         id="frm-password"
                         ref={passwordRef}
                         type="password"
-                        placeholder="password"
+                        placeholder="••••••••"
                         autoCapitalize="off"
                         autoComplete="off"
-                        className="col-span-6"
+                        className="h-10 bg-background/60"
                         required
                     />
                 </div>
+            </div>
 
-                {/* Buttons */}
-                <Button variant="outline" disabled={isFetching}>
-                    {isFetching ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <LogInIcon className="mr-2 inline h-4 w-4" />
-                    )}{' '}
-                    Login
-                </Button>
+            {/* Primary sign in button */}
+            <Button
+                type="submit"
+                className="h-10 w-full bg-accent text-accent-foreground hover:bg-accent/90 font-medium"
+                disabled={isFetching}
+            >
+                {fetchingAction === 'login' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Sign in
+            </Button>
+
+            {/* OAuth options */}
+            <div className="relative flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground/60 shrink-0">or continue with</span>
+                <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <div className="flex flex-col gap-2">
                 <Button
-                    className="border-none bg-[#F40552] text-white hover:bg-[#CF0948]"
+                    className="h-10 w-full border-border/60 bg-secondary/50 text-foreground hover:bg-secondary hover:text-foreground font-normal"
                     variant="outline"
+                    type="button"
                     disabled={isFetching}
                     onClick={handleDiscourseRedirect}
                 >
-                    {isFetching ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <LogInIcon className="mr-2 inline h-4 w-4" />
-                    )}{' '}
-                    Login with Cfx.re
+                    {fetchingAction === 'discourse' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    <span className="mr-2 font-bold text-[#F40552]">cfx</span>
+                    Cfx.re Account
                 </Button>
+
                 {window.txConsts.discordOAuthEnabled && (
                     <Button
-                        className="border-none bg-[#5865F2] text-white hover:bg-[#4752C4]"
+                        className="h-10 w-full border-border/60 bg-secondary/50 text-foreground hover:bg-secondary hover:text-foreground font-normal"
                         variant="outline"
+                        type="button"
                         disabled={isFetching}
                         onClick={handleDiscordRedirect}
                     >
-                        {isFetching ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                            <LogInIcon className="mr-2 inline h-4 w-4" />
-                        )}{' '}
-                        Login with Discord
+                        {fetchingAction === 'discord' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FaDiscord className="mr-2 h-4 w-4 text-[#5865F2]" />}
+                        Discord
                     </Button>
                 )}
-            </CardContent>
+            </div>
         </form>
     );
 }

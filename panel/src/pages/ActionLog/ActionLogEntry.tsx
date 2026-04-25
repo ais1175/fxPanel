@@ -95,7 +95,7 @@ const ActionLogEntry = memo(function ActionLogEntry({ event, onAdminClick }: Act
         <>
             <div
                 className={cn(
-                    'hover:bg-muted/50 flex cursor-pointer items-start gap-2 border-l-2 px-3 py-1.5 text-sm transition-colors',
+                    'hover:bg-secondary/30 flex cursor-pointer items-start gap-2 border-l-2 px-3 py-1.5 text-sm transition-colors',
                     cfg.borderColor,
                 )}
                 onClick={() => setModalOpen(true)}

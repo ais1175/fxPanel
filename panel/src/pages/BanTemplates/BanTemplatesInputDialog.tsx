@@ -8,7 +8,7 @@ import { AutosizeTextAreaRef, AutosizeTextarea } from '@/components/ui/autosize-
 import { BanTemplatesInputData } from './BanTemplatesPage';
 import { BanDurationType } from '@shared/otherTypes';
 import { banDurationToString } from '@/lib/utils';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 
 //Default dropdown options
 const dropdownOptions = ['2 hours', '8 hours', '1 days', '2 days', '1 weeks', '2 weeks', 'permanent'];

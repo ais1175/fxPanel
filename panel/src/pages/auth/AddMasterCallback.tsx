@@ -20,6 +20,7 @@ import * as CheckboxPrimitive from '@radix-ui/react-checkbox';
 import consts from '@shared/consts';
 import { fetchWithTimeout } from '@/hooks/fetch';
 import { LogoutReasonHash } from './Login';
+import { LogoFullSquareGreen } from '@/components/Logos';
 
 function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallbackFivemData) {
     const { setAuthData } = useAuth();
@@ -31,6 +32,12 @@ function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallba
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
     const [fullPageError, setFullPageError] = useState<AuthErrorData | undefined>();
     const [isSaving, setIsSaving] = useState(false);
+
+    // Holds the auth payload while the transition animation plays.
+    // setAuthData is only called once the panel has fully slid over so the
+    // tree switch (AuthShell → MainShell) happens after the animation ends.
+    const [pendingAuth, setPendingAuth] = useState<ApiAddMasterSaveResp | null>(null);
+    const [panelIn, setPanelIn] = useState(false);
 
     const addMasterSave = async (password: string, discordId: string | undefined) => {
         try {
@@ -51,9 +58,12 @@ function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallba
                     setErrorMessage(data.error);
                 }
             } else {
-                //Hacky override to prevent logout from rendering this page again
-                window.txConsts.hasMasterAccount = true;
-                setAuthData(data);
+                // Store the payload and start the slide-over animation.
+                // setAuthData fires only after the panel finishes sliding.
+                setPendingAuth(data);
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => setPanelIn(true));
+                });
             }
         } catch (error) {
             const { errorTitle, errorMessage } = processFetchError(error);
@@ -61,6 +71,15 @@ function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallba
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handlePanelTransitionEnd = () => {
+        if (!pendingAuth) return;
+        // Tell the OnboardingOverlay to skip its own slide-in since the
+        // screen is already covered by this panel.
+        sessionStorage.setItem('fxp_onboarding_instant', '1');
+        window.txConsts.hasMasterAccount = true;
+        setAuthData(pendingAuth);
     };
 
     const handleSubmit = (event?: React.FormEvent<HTMLFormElement>) => {
@@ -126,6 +145,7 @@ function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallba
     }
 
     return (
+        <>
         <form onSubmit={handleSubmit} className="w-full text-left">
             <CardContent className="flex flex-col gap-4 pt-6">
                 <div>
@@ -214,12 +234,37 @@ function RegisterForm({ fivemId, fivemName, profilePicture }: ApiAddMasterCallba
             </CardContent>
             <CardFooter className="flex-col gap-2">
                 <span className="text-destructive text-center whitespace-pre-wrap">{errorMessage}</span>
-                <Button className="w-full" disabled={isSaving}>
+                <Button className="w-full" disabled={isSaving || !!pendingAuth}>
                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Register
                 </Button>
             </CardFooter>
         </form>
+
+        {/* Transition panel — slides over the whole screen after registration
+            succeeds. Once settled, we switch to MainShell / the setup flow. */}
+        {pendingAuth && (
+            <div className="fixed inset-0 z-[200] bg-background" />
+        )}
+        {pendingAuth && (
+            <div
+                className="fixed inset-0 z-[201] flex min-h-screen w-full flex-col overflow-hidden bg-card"
+                style={{
+                    transform: panelIn ? 'translateX(0%)' : 'translateX(100%)',
+                    transition: 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '-32px 0 80px rgba(0,0,0,0.45)',
+                }}
+                onTransitionEnd={handlePanelTransitionEnd}
+            >
+                <div className="flex shrink-0 items-center gap-3 border-b border-border/40 px-6 py-4">
+                    <LogoFullSquareGreen className="h-8 w-auto opacity-90" />
+                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                        First-time setup
+                    </span>
+                </div>
+            </div>
+        )}
+        </>
     );
 }
 

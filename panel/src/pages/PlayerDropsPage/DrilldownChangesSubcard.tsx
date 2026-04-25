@@ -3,7 +3,7 @@ import { PlayerDropsMessage } from './PlayerDropsGenericSubcards';
 import type { PDLChangeEventType } from '@shared/otherTypes';
 import { processResourceChanges } from './utils';
 import { cn } from '@/lib/utils';
-import { tsToLocaleDateString, tsToLocaleDateTimeString, tsToLocaleTimeString } from '@/lib/dateTime';
+import { tsToLocaleDateTimeString } from '@/lib/dateTime';
 
 function DiffOld({ children }: { children: React.ReactNode }) {
     return <span className="text-background bg-destructive-inline/90 px-1 font-mono text-sm">{children}</span>;
@@ -107,7 +107,7 @@ export default function DrilldownChangesSubcard({ changes }: DrilldownChangesSub
     };
 
     const sortedChanges = useMemo(() => {
-        return changes.sort((a, b) => a.ts - b.ts);
+        return [...changes].sort((a, b) => a.ts - b.ts);
     }, [changes]);
 
     if (!changes.length) {
@@ -115,38 +115,29 @@ export default function DrilldownChangesSubcard({ changes }: DrilldownChangesSub
     }
 
     return (
-        <div className="gap-4 pt-2 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:px-4">
+        <div className="space-y-3">
             {sortedChanges.map((change, index) => (
-                <Fragment key={index}>
-                    <div className="mx-auto hidden items-center gap-4 divide-y md:flex">
-                        <div className="bg-muted flex flex-col items-center justify-center rounded-lg px-2 py-1 text-xs font-medium">
-                            <span>{tsToLocaleDateString(change.ts, 'medium')}</span>
-                            <span>{tsToLocaleTimeString(change.ts)}</span>
-                        </div>
+                <div
+                    key={index}
+                    className={cn(
+                        'bg-secondary/15 border-border/30 rounded-lg border px-3 py-2.5',
+                        'hover:bg-secondary/25 transition-colors',
+                    )}
+                >
+                    <div className="flex flex-wrap-reverse items-start justify-between gap-2">
+                        <h3 className="text-sm font-semibold">
+                            {change.type in eventTitles ? eventTitles[change.type] : change.type}
+                        </h3>
+                        <span className="bg-secondary/40 border-border/40 text-muted-foreground/70 shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium">
+                            {tsToLocaleDateTimeString(change.ts, 'medium', 'short')}
+                        </span>
                     </div>
-                    <div
-                        className={cn(
-                            'col-span-2 flex-1 px-2 py-2 md:col-span-1 md:px-0 md:py-0',
-                            index % 2 === 0 && 'bg-secondary/25 md:bg-transparent',
-                        )}
-                    >
-                        <div className="flex flex-wrap-reverse justify-between">
-                            <h3 className="inline grow text-lg font-semibold">
-                                {change.type in eventTitles ? eventTitles[change.type] : change.type}
-                            </h3>
-                            <div className="mx-auto md:hidden">
-                                <span className="border-muted-foreground text-muted-foreground rounded border px-2 py-0.5 text-xs font-normal">
-                                    {tsToLocaleDateTimeString(change.ts, 'medium', 'short')}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="text-gray-400">
-                            {change.type === 'fxsChanged' && <ChangedFxsEvent change={change} />}
-                            {change.type === 'gameChanged' && <ChangedGameEvent change={change} />}
-                            {change.type === 'resourcesChanged' && <ChangedResourcesEvent change={change} />}
-                        </div>
+                    <div className="text-muted-foreground/80 mt-1 text-sm">
+                        {change.type === 'fxsChanged' && <ChangedFxsEvent change={change} />}
+                        {change.type === 'gameChanged' && <ChangedGameEvent change={change} />}
+                        {change.type === 'resourcesChanged' && <ChangedResourcesEvent change={change} />}
                     </div>
-                </Fragment>
+                </div>
             ))}
         </div>
     );

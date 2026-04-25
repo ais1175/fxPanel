@@ -26,7 +26,8 @@ export function mockPlayerData(players = 500) {
             dist: randomDist,
             health: Math.floor(Math.random() * 100),
             // health: -1,
-            name: randomUsername,
+            displayName: randomUsername,
+            pureName: randomUsername.toLowerCase(),
             tags: isAdmin ? ['staff'] : [],
             vType: randomStatus,
         });

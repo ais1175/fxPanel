@@ -16,23 +16,11 @@ local ServerCtxObj = {
     locale = nil,
     localeData = nil,
     switchPageKey = '',
-    txAdminVersion = '',
+    fxPanelVersion = '',
     alignRight = false,
     announceNotiPos = '', -- top-center, top-right, top-left, bottom-center, bottom-right, bottom-left
     tagDefinitions = {},
 }
-
--- local function getRawCustomLocaleData()
---   LoadResourceFile('monitor', '.runtime/locale.json', function(fileData)
---     if not fileData then
---       TxPrint('^2Loaded custom locale file.')
---     else
---       TxPrint('^1WARNING: failed to load custom locale from path: '..filePath)
---     end
---   end)
-
---   return fileData
--- end
 
 local function getCustomLocaleData()
     local fileData = LoadResourceFile('monitor', '.runtime/locale.json')
@@ -80,8 +68,8 @@ local function syncServerCtx()
     local alignRight = GetConvarBool('txAdmin-menuAlignRight')
     ServerCtxObj.alignRight = alignRight
 
-    local txAdminVersion = GetConvar('txAdmin-version', '0.0.0')
-    ServerCtxObj.txAdminVersion = txAdminVersion
+    local fxPanelVersion = GetConvar('txAdmin-version', '0.0.0')
+    ServerCtxObj.fxPanelVersion = fxPanelVersion
 
     -- Default '' in fxServer
     local svProjectName = GetConvar('sv_projectname', '')

@@ -1,6 +1,7 @@
 const modulename = 'WebServer:AuthMws';
+import { timingSafeEqual } from 'node:crypto';
 import consoleFactory from '@lib/console';
-import { checkRequestAuth } from '../authLogic';
+import { checkRequestAuth, normalAuthLogic, nuiAuthLogic } from '../authLogic';
 import { ApiAuthErrorResp, ApiToastResp, GenericApiErrorResp } from '@shared/genericApiTypes';
 import { InitializedCtx } from '../ctxTypes';
 import { txHostConfig } from '@core/globalData';
@@ -32,8 +33,8 @@ body {
         Redirecting to <a href="/login#expired" target="_parent">login page</a>...
     </p>
 <script${nonceAttr}>
-    // Notify parent window that auth failed
-    window.parent.postMessage({ type: 'logoutNotice' });
+    // Notify parent window that auth failed; restrict to same origin to avoid cross-origin leaks
+    window.parent.postMessage({ type: 'logoutNotice' }, window.location.origin);
     // If parent redirect didn't work, redirect here
     setTimeout(function() {
         window.parent.location.href = '/login#expired';
@@ -85,7 +86,11 @@ export const hostAuthMw = async (ctx: InitializedCtx, next: Function) => {
             docs,
         });
     }
-    if (tokenProvided !== txHostConfig.hostApiToken) {
+    if (
+        typeof txHostConfig.hostApiToken !== 'string' ||
+        tokenProvided.length !== txHostConfig.hostApiToken.length ||
+        !timingSafeEqual(Buffer.from(tokenProvided), Buffer.from(txHostConfig.hostApiToken))
+    ) {
         return ctx.send({
             error: 'invalid token',
             desc: 'the token provided does not match the TXHOST_API_TOKEN environment variable',
@@ -106,13 +111,19 @@ export const intercomAuthMw = async (ctx: InitializedCtx, next: Function) => {
         console.warn(`Intercom request from non-local IP blocked: ${ctx.ip}`);
         return ctx.send({ error: 'invalid request origin' });
     }
+    const txAdminToken = ctx.request.body?.txAdminToken;
     if (
-        typeof ctx.request.body?.txAdminToken !== 'string' ||
-        ctx.request.body.txAdminToken !== txCore.webServer.luaComToken
+        typeof txAdminToken !== 'string' ||
+        typeof txCore.webServer.luaComToken !== 'string' ||
+        !txCore.webServer.luaComToken ||
+        txAdminToken.length !== txCore.webServer.luaComToken.length ||
+        !timingSafeEqual(Buffer.from(txAdminToken), Buffer.from(txCore.webServer.luaComToken))
     ) {
+        console.warn(`Intercom request with invalid token from: ${ctx.ip}`);
         return ctx.send({ error: 'invalid token' });
     }
 
+    console.verbose.debug(`Intercom auth OK from ${ctx.ip} — ${ctx.path}`);
     await next();
 };
 
@@ -178,4 +189,44 @@ export const apiAuthMw = async (ctx: InitializedCtx, next: Function) => {
     //Adding the admin to the context
     ctx.admin = authResult.admin;
     await next();
+};
+
+/**
+ * Asset Authentication Middleware
+ *
+ * Used by executable/static asset routes that must be accessible from either:
+ * - Web panel requests authenticated via session cookie, or
+ * - In-game NUI requests authenticated via x-txadmin-token headers.
+ *
+ * Intentionally skips CSRF checks because static/script/style requests and
+ * token-authenticated NUI fetches do not carry the web CSRF header.
+ */
+export const assetAuthMw = async (ctx: InitializedCtx, next: Function) => {
+    // Prefer regular web session auth for panel/browser asset requests.
+    const webAuthResult = normalAuthLogic(ctx.sessTools);
+    if (webAuthResult.success) {
+        ctx.admin = webAuthResult.admin;
+        await next();
+        return;
+    }
+    if ('rejectReason' in webAuthResult && webAuthResult.rejectReason) {
+        console.verbose.warn(`[assetAuth] Session auth failed: ${webAuthResult.rejectReason}`);
+    }
+
+    // Fallback to token-based NUI auth for in-game requests.
+    const tokenHeader = ctx.request.headers['x-txadmin-token'];
+    if (typeof tokenHeader === 'string' && tokenHeader.length > 0) {
+        const nuiAuthResult = nuiAuthLogic(ctx.ip, ctx.txVars.isLocalRequest, ctx.request.headers);
+        if (nuiAuthResult.success) {
+            ctx.admin = nuiAuthResult.admin;
+            await next();
+            return;
+        }
+        if ('rejectReason' in nuiAuthResult && nuiAuthResult.rejectReason) {
+            console.verbose.warn(`[assetAuth] Token auth failed: ${nuiAuthResult.rejectReason}`);
+        }
+    }
+
+    ctx.status = 404;
+    ctx.body = 'Not found.';
 };

@@ -60,7 +60,11 @@ export default class WebServer {
         // Setting up Koa
         // ===================
         this.app = new Koa();
-        this.app.keys = ['fxPanel' + nanoid()];
+        // Cookie signing key — 32 bytes (256 bits) of CSPRNG output, freshly
+        // generated on every process start. Rotating on restart intentionally
+        // invalidates old signed cookies; any attempt to forge a cookie signature
+        // would need to brute-force the full 256-bit key.
+        this.app.keys = [crypto.randomBytes(32).toString('base64url')];
 
         // Some people might want to enable it, but we are not guaranteeing XFF security
         // due to the many possible ways you can connect to koa.
@@ -82,9 +86,18 @@ export default class WebServer {
             }
         });
 
-        //Disable CORS on dev mode
+        //CORS in dev mode — restricted to localhost dev servers (Vite, etc.)
+        //instead of reflecting arbitrary Origin headers. Cookies are not
+        //exposed cross-origin (credentials=false).
         if (txDevEnv.ENABLED) {
-            this.app.use(KoaCors());
+            const devOriginAllowlist = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+            this.app.use(KoaCors({
+                origin: (ctx) => {
+                    const requestOrigin = ctx.get('Origin');
+                    return devOriginAllowlist.test(requestOrigin) ? requestOrigin : '';
+                },
+                credentials: false,
+            }));
         }
 
         //Setting up timeout/error/no-output/413
@@ -158,7 +171,7 @@ export default class WebServer {
         // Setting up SocketIO
         // ===================
         this.io = new SocketIO(HttpClass.createServer(), { serveClient: false });
-        this.io.use(socketioSessMw(this.sessionCookieName, this.sessionStore));
+        this.io.use(socketioSessMw(this.sessionCookieName, this.sessionStore, this.app.keys as string[]));
         this.webSocket = new WebSocket(this.io);
         //@ts-expect-error handleConnection expects extended socket type
         this.io.on('connection', this.webSocket.handleConnection.bind(this.webSocket));

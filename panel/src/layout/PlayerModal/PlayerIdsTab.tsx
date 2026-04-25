@@ -1,7 +1,7 @@
 import { PlayerModalPlayerData } from '@shared/playerApiTypes';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import MultiIdsList from '@/components/MultiIdsList';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useBackendApi } from '@/hooks/fetch';
 import { useAdminPerms } from '@/hooks/auth';
 import { GenericApiResp } from '@shared/genericApiTypes';

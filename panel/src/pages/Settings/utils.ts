@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { dequal } from 'dequal/lite';
-import { GetConfigsResp, PartialTxConfigs, TxConfigs } from '@shared/otherTypes';
+import { GetConfigsResp, PartialTxConfigs } from '@shared/otherTypes';
 
 /**
  * Types
@@ -44,7 +44,7 @@ type PageConfig = {
 type PageConfigs = Record<string, PageConfig>;
 
 type InferConfigTypes<T extends PageConfigs> = {
-    [K in keyof T]: T[K]['type'];
+    [K in keyof T]: any;
 };
 
 /**
@@ -56,12 +56,10 @@ export const SYM_RESET_CONFIG = Symbol('Settings:ResetConfig');
  * Helper to get the inferred type of a config object.
  */
 export const getPageConfig = <
-    S extends keyof TxConfigs,
-    T extends TxConfigs[S][K],
-    K extends keyof TxConfigs[S] extends string ? keyof TxConfigs[S] : never,
+    T = any,
 >(
-    scope: S,
-    key: K,
+    scope: string,
+    key: string,
     showAdvancedState?: boolean,
     bakedDefault?: T,
 ) => {
@@ -71,8 +69,8 @@ export const getPageConfig = <
         isAdvanced: showAdvancedState,
         bakedDefault,
     } as {
-        scope: S;
-        key: K;
+        scope: string;
+        key: string;
         isAdvanced: boolean;
         bakedDefault: T | undefined;
         type: T;
@@ -82,10 +80,11 @@ export const getPageConfig = <
 /**
  * Reducer to replace a single config value in the state
  */
-export const configsReducer = <T extends PageConfigs>(state: InferConfigTypes<T>, action: PageConfigReducerAction) => {
+export const configsReducer = <T extends PageConfigs>(state: any, action: PageConfigReducerAction<any>) => {
+    const typedState = state as Record<string, any>;
     const newValue =
-        typeof action.configValue === 'function' ? action.configValue(state[action.configName]) : action.configValue;
-    return { ...state, [action.configName]: newValue };
+        typeof action.configValue === 'function' ? action.configValue(typedState[action.configName]) : action.configValue;
+    return { ...typedState, [action.configName]: newValue } as any;
 };
 
 export type PageConfigReducerActionValue<T = any> = (T | undefined) | ((prevValue: T | undefined) => T | undefined);
@@ -97,7 +96,7 @@ export type PageConfigReducerAction<T = any> = {
 /**
  * Helper to get an object with all the config keys set to their baked defaults
  */
-export const getConfigEmptyState = <T extends PageConfigs>(pageConfigs: T) => {
+export const getConfigEmptyState = <T extends PageConfigs>(pageConfigs: T): any => {
     return Object.fromEntries(Object.entries(pageConfigs).map(([k, v]) => [k, v.bakedDefault])) as InferConfigTypes<
         typeof pageConfigs
     >;
@@ -172,13 +171,13 @@ export const getConfigAccessors = <T extends PageConfigs>(
     pageConfigs: T,
     apiData: GetConfigsResp | undefined,
     dispatch: React.Dispatch<PageConfigReducerAction>,
-) => {
+): Record<string, ConfigValueAccessor> => {
     return Object.fromEntries(
         Object.entries(pageConfigs).map(([configName, configData]) => [
             configName,
             getConfigAccessor(cardId, configName, configData, apiData, dispatch),
         ]),
-    ) as { [K in keyof T]: ReturnType<typeof getConfigAccessor<T[K]['type']>> };
+    ) as Record<string, ConfigValueAccessor>;
 };
 
 /**

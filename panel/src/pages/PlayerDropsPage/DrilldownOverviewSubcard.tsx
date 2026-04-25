@@ -49,21 +49,21 @@ export default function DrilldownOverviewSubcard({ dropTypes, avgSessionSeconds 
     }
 
     return (
-        <div className="text-muted-foreground flex flex-col gap-4 px-4 py-4">
+        <div className="text-muted-foreground flex flex-col gap-4">
             <div className="flex flex-wrap justify-evenly gap-4">
                 {categories.map(([reasonId, reasonData]) => (
-                    <Tooltip>
+                    <Tooltip key={reasonId}>
                         <TooltipTrigger asChild>
-                            <div key={reasonId} className="flex flex-col items-center justify-center gap-1 px-4">
+                            <div className="bg-secondary/20 border-border/40 flex flex-col items-center justify-center gap-1 rounded-lg border px-5 py-3">
                                 <span
-                                    className="border-b-2 text-xl font-semibold tracking-wider"
+                                    className="border-b-2 text-lg font-semibold tracking-wider"
                                     style={{ borderColor: reasonData.color }}
                                 >
                                     {reasonData.label}
                                 </span>
-                                <span>
+                                <span className="text-sm">
                                     {numberToLocaleString(reasonData.count)}{' '}
-                                    <small className="opacity-75">
+                                    <small className="text-muted-foreground/60">
                                         ({numberToLocaleString((reasonData.count / totalDrops) * 100, 1)}%)
                                     </small>
                                 </span>
@@ -76,7 +76,7 @@ export default function DrilldownOverviewSubcard({ dropTypes, avgSessionSeconds 
                 ))}
             </div>
             {avgSessionSeconds !== null && (
-                <div className="flex items-center justify-center gap-2 border-t pt-3 text-sm">
+                <div className="flex items-center justify-center gap-2 border-t border-border/40 pt-3 text-sm">
                     <ClockIcon className="size-4 opacity-75" />
                     <span>
                         Average session time at disconnect:{' '}

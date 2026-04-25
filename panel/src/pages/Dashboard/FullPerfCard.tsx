@@ -3,7 +3,7 @@ import React, { ReactNode, memo, useEffect, useMemo, useRef, useState } from 're
 import DebouncedResizeContainer from '@/components/DebouncedResizeContainer';
 import drawFullPerfChart from './drawFullPerfChart';
 import { useBackendApi } from '@/hooks/fetch';
-import type { PerfChartApiResp, PerfChartApiSuccessResp } from '@shared/otherTypes';
+import type { PerfChartApiResp, PerfChartApiSuccessResp, SvRtPerfThreadNamesType } from '@shared/otherTypes';
 import useSWR from 'swr';
 import {
     PerfSnapType,
@@ -20,9 +20,10 @@ import { Button } from '@/components/ui/button';
 import { useSetAtom } from 'jotai';
 import { cn } from '@/lib/utils';
 import { emsg } from '@shared/emsg';
+import { createMockPerfChartApiData } from './devMockData';
 
 type FullPerfChartProps = {
-    threadName: string;
+    threadName: SvRtPerfThreadNamesType;
     apiData: PerfChartApiSuccessResp;
     apiDataAge: number;
     width: number;
@@ -79,7 +80,7 @@ const FullPerfChart = memo(
                     });
                 },
             };
-        }, [apiData, apiDataAge, threadName, isDarkMode, renderError]);
+        }, [apiData, apiDataAge, threadName]);
 
         //Update server stats when data changes
         useEffect(() => {
@@ -212,7 +213,7 @@ function ChartErrorMessage({ error }: { error: Error | string }) {
 
 export default function FullPerfCard() {
     const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
-    const [selectedThread, setSelectedThread] = useState('svMain');
+    const [selectedThread, setSelectedThread] = useState<SvRtPerfThreadNamesType>('svMain');
     const [apiFailReason, setApiFailReason] = useState('');
     const [apiDataAge, setApiDataAge] = useState(0);
     const [showPlayerCount, setShowPlayerCount] = useState(true);
@@ -229,6 +230,12 @@ export default function FullPerfCard() {
         `/perfChartData/${selectedThread}`,
         async () => {
             setApiFailReason('');
+
+            if (import.meta.env.DEV) {
+                setApiDataAge(Date.now());
+                return createMockPerfChartApiData(selectedThread);
+            }
+
             const data = await chartApi({
                 pathParams: { thread: selectedThread },
             });
@@ -275,9 +282,9 @@ export default function FullPerfCard() {
     }
 
     return (
-        <div className="bg-card fill-primary flex h-112 w-full flex-col border pt-2 shadow-xs md:rounded-xl">
-            <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 px-4 pb-2">
-                <h3 className="line-clamp-1 text-sm font-medium tracking-tight">Server performance</h3>
+        <div className="bg-card fill-primary flex min-h-112 w-full flex-1 flex-col rounded-xl border border-border/60 pt-2 shadow-sm">
+            <div className="flex flex-row items-center justify-between space-y-0 px-4 pb-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">Server Performance</h3>
                 <div className="flex items-center gap-2">
                     <Button
                         variant="ghost"
@@ -318,9 +325,12 @@ export default function FullPerfCard() {
                         <MemoryStickIcon className="size-3" />
                         Node Mem
                     </Button>
-                    <Select defaultValue={selectedThread} onValueChange={setSelectedThread}>
+                    <Select
+                        value={selectedThread}
+                        onValueChange={(value) => setSelectedThread(value as SvRtPerfThreadNamesType)}
+                    >
                         <SelectTrigger className="h-6 w-32 grow px-3 py-1 text-sm md:grow-0">
-                            <SelectValue placeholder="Filter by admin" />
+                            <SelectValue placeholder="Select thread" />
                         </SelectTrigger>
                         <SelectContent className="px-0">
                             <SelectItem value={'svMain'} className="cursor-pointer">
@@ -334,9 +344,7 @@ export default function FullPerfCard() {
                             </SelectItem>
                         </SelectContent>
                     </Select>
-                    <div className="xs:block hidden">
-                        <LineChartIcon />
-                    </div>
+                    <LineChartIcon className="h-3.5 w-3.5 text-muted-foreground/30" />
                 </div>
             </div>
             <DebouncedResizeContainer onDebouncedResize={setChartSize}>{contentNode}</DebouncedResizeContainer>

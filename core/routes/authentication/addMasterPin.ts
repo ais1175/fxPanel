@@ -22,8 +22,8 @@ export default async function AuthAddMasterPin(ctx: InitializedCtx) {
         });
     }
 
-    //Checking the PIN
-    if (!pin.length || pin !== txCore.adminStore.addMasterPin) {
+    //Checking the PIN (timing-safe; normalises case and separators)
+    if (!pin.length || !txCore.adminStore.verifyMasterPin(pin)) {
         return ctx.send<ApiOauthRedirectResp>({
             error: `Wrong PIN.`,
         });

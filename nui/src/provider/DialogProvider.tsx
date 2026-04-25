@@ -53,7 +53,7 @@ interface DialogProviderContext {
     isDialogOpen: boolean;
 }
 
-const DialogContext = createContext(null);
+const DialogContext = createContext<DialogProviderContext | null>(null);
 
 const defaultDialogState = {
     description: 'This is the default description for whatever',
@@ -115,8 +115,7 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
         setListenForExit(false);
     }, []);
 
-    const handleDialogClose: ReactEventHandler<{}> = useCallback((e) => {
-        e.stopPropagation();
+    const handleDialogClose = useCallback((_event?: {}, _reason?: 'backdropClick' | 'escapeKeyDown') => {
         setDialogOpen(false);
         setListenForExit(true);
     }, []);
@@ -132,7 +131,7 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
         <DialogContext.Provider
             value={{
                 openDialog,
-                closeDialog: handleDialogClose,
+                closeDialog: () => handleDialogClose(),
                 isDialogOpen: dialogOpen,
             }}
         >
@@ -215,4 +214,10 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
     );
 };
 
-export const useDialogContext = () => useContext<DialogProviderContext>(DialogContext);
+export const useDialogContext = () => {
+    const ctx = useContext(DialogContext);
+    if (!ctx) {
+        throw new Error('useDialogContext must be used within DialogProvider');
+    }
+    return ctx;
+};

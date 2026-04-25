@@ -8,14 +8,13 @@
         "module": "ES2020",
         "moduleResolution": "bundler",
         "resolveJsonModule": true,
+        "types": ["node"],
         "outDir": "../.tsc/shared",
 
         "rootDir": "../",
         "paths": {
-            "@core/*": ["../core/*"],
             "@locale/*": ["../locale/*"]
         }
     },
-    "include": ["**/*", "../locale/*.json"],
-    "references": [{ "path": "../core" }]
+    "include": ["**/*", "../locale/*.json"]
 }

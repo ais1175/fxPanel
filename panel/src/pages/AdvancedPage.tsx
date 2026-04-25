@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { useBackendApi } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2Icon } from 'lucide-react';
+import { Loader2Icon, WrenchIcon } from 'lucide-react';
 import useSWR from 'swr';
+import { PageHeader } from '@/components/page-header';
 
 type AdvancedDataResp = {
     verbosityEnabled: boolean;
@@ -33,18 +34,21 @@ export default function AdvancedPage() {
     });
 
     const swrDataFetcher = async () => {
-        let resp: AdvancedDataResp | undefined;
-        await dataApi({
-            success(data) {
-                resp = data;
-            },
+        return new Promise<AdvancedDataResp>((resolve, reject) => {
+            dataApi({
+                success(data) {
+                    resolve(data);
+                },
+                error(msg) {
+                    reject(new Error(msg));
+                },
+            });
         });
-        return resp;
     };
 
     const { data, mutate } = useSWR('/advanced/data', swrDataFetcher);
 
-    const handleAction = (action: string, parameter: any = false, onSuccess?: (d: AdvancedActionResp) => void) => {
+    const handleAction = (action: string, parameter: string | boolean = false, onSuccess?: (d: AdvancedActionResp) => void) => {
         setIsRunning(true);
         actionApi({
             data: { action, parameter },
@@ -74,10 +78,8 @@ export default function AdvancedPage() {
     };
 
     return (
-        <div className="mx-auto w-full max-w-(--breakpoint-lg) space-y-4 px-2 md:px-0">
-            <div className="px-2 md:px-0">
-                <h1 className="mb-2 text-3xl">Advanced</h1>
-            </div>
+        <div className="mx-auto w-full max-w-(--breakpoint-lg) space-y-4">
+            <PageHeader icon={<WrenchIcon />} title="Advanced" />
 
             <div className="border-warning/30 bg-warning-hint rounded-lg border p-4 text-center text-sm">
                 <strong>
@@ -140,6 +142,7 @@ export default function AdvancedPage() {
                                 disabled={isRunning}
                                 onClick={() => handleAction('profile_monitor')}
                             >
+                                {isRunning && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
                                 Profile Monitor
                             </Button>
                         </div>
@@ -165,6 +168,7 @@ export default function AdvancedPage() {
                                 });
                             }}
                         >
+                            {isRunning && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
                             Magic Button
                         </Button>
                     </div>

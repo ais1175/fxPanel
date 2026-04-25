@@ -42,8 +42,10 @@ function NewPlayersChart({ daily }: Props) {
                 indexBy="day"
                 margin={{ top: 10, right: 10, bottom: 40, left: 40 }}
                 padding={0.3}
-                colors={isDarkMode ? ['#60a5fa'] : ['#2563eb']}
-                borderWidth={0}
+                colors={isDarkMode ? ['#38bdf8'] : ['#0284c7']}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.5]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -76,6 +78,7 @@ function NewPlayersChart({ daily }: Props) {
                     },
                 }}
                 tooltip={ChartTooltip}
+                motionConfig="gentle"
             />
         </div>
     );

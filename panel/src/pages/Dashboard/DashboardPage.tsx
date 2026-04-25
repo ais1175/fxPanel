@@ -6,25 +6,95 @@ import { useSetDashboardData } from './dashboardHooks';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '@/lib/utils';
 import ServerStatsCard from './ServerStatsCard';
 import { useAtomValue } from 'jotai';
-import { txConfigStateAtom } from '@/hooks/status';
+import { txConfigStateAtom, globalStatusAtom } from '@/hooks/status';
 import { useLocation } from 'wouter';
-import { TxConfigState } from '@shared/enums';
+import { TxConfigState, FxMonitorHealth } from '@shared/enums';
 import ModalCentralMessage from '@/components/ModalCentralMessage';
 import GenericSpinner from '@/components/GenericSpinner';
 import { useAddonWidgets } from '@/hooks/addons';
 import { ErrorBoundary } from 'react-error-boundary';
+import { playerCountAtom } from '@/hooks/playerlist';
+import { cn } from '@/lib/utils';
+import { UsersIcon, ClockIcon, LayoutDashboardIcon } from 'lucide-react';
+import { msToShortDuration } from '@/lib/dateTime';
+import { PageHeader } from '@/components/page-header';
+import { createMockDashboardEvent } from './devMockData';
+
+function DashboardHeaderStats() {
+    const status = useAtomValue(globalStatusAtom);
+    const playerCount = useAtomValue(playerCountAtom);
+    if (!status) return null;
+
+    const isRunning = status.runner.isChildAlive;
+    const isHealthy = status.server.health === FxMonitorHealth.ONLINE;
+    const uptimeStr = msToShortDuration(status.server.uptime, {
+        units: ['d', 'h', 'm'],
+        delimiter: ' ',
+    }) || '--';
+
+    return (
+        <>
+            <span
+                className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold',
+                    isRunning && isHealthy
+                        ? 'border-success/30 bg-success/10 text-success-inline'
+                        : isRunning
+                            ? 'border-warning/30 bg-warning/10 text-warning-inline'
+                            : 'border-destructive/30 bg-destructive/10 text-destructive-inline',
+                )}
+            >
+                <span
+                    className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        isRunning && isHealthy ? 'bg-success animate-pulse' : isRunning ? 'bg-warning' : 'bg-destructive',
+                    )}
+                />
+                {isRunning ? (isHealthy ? 'Online' : 'Degraded') : 'Offline'}
+            </span>
+            {isRunning && (
+                <>
+                    <div className="border-border/50 bg-card flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                        <UsersIcon className="text-muted-foreground/70 h-3 w-3" />
+                        <span className="font-mono font-semibold">{playerCount}</span>
+                        <span className="text-muted-foreground/70">players</span>
+                    </div>
+                    <div className="border-border/50 bg-card flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                        <ClockIcon className="text-muted-foreground/70 h-3 w-3" />
+                        <span className="font-mono font-semibold">{uptimeStr}</span>
+                        <span className="text-muted-foreground/70">uptime</span>
+                    </div>
+                </>
+            )}
+        </>
+    );
+}
 
 function DashboardPageInner() {
     const setDashboardData = useSetDashboardData();
     const dashboardWidgets = useAddonWidgets('dashboard.main');
     const sidebarWidgets = useAddonWidgets('dashboard.sidebar');
+    const status = useAtomValue(globalStatusAtom);
 
-    //Runing on mount only
+    //Running on mount only
     useEffect(() => {
+        if (import.meta.env.DEV) {
+            setDashboardData(createMockDashboardEvent());
+            const mockInterval = setInterval(() => {
+                setDashboardData(createMockDashboardEvent());
+            }, 4_000);
+
+            return () => {
+                clearInterval(mockInterval);
+            };
+        }
+
         const socket = getSocket();
+
         const dashboardHandler = (data: any) => {
             setDashboardData(data);
         };
+
         socket.on('dashboard', dashboardHandler);
         joinSocketRoom('dashboard');
 
@@ -32,16 +102,23 @@ function DashboardPageInner() {
             socket.off('dashboard', dashboardHandler);
             leaveSocketRoom('dashboard');
         };
-    }, []);
+    }, [setDashboardData]);
 
     return (
-        <div className="flex w-full min-w-96 flex-col gap-4">
+        <div className="flex min-h-full w-full min-w-96 flex-1 flex-col gap-4">
+            <PageHeader
+                icon={<LayoutDashboardIcon />}
+                title={status?.server.name || 'Dashboard'}
+                description="Overview & real-time monitoring"
+            >
+                <DashboardHeaderStats />
+            </PageHeader>
             <div className="flex w-full flex-col gap-4 lg:flex-row">
-                <div className="flex min-w-0 flex-row gap-4 lg:flex-[5]">
-                    <div className="min-w-0 flex-[2] overflow-hidden">
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row lg:flex-[5]">
+                    <div className="min-w-0 overflow-hidden sm:flex-[2]">
                         <PlayerDropCard />
                     </div>
-                    <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="min-w-0 overflow-hidden sm:flex-1">
                         <ServerStatsCard />
                     </div>
                 </div>
@@ -95,11 +172,15 @@ export default function DashboardPage() {
     const txConfigState = useAtomValue(txConfigStateAtom);
     const setLocation = useLocation()[1];
 
-    if (txConfigState === TxConfigState.Setup) {
-        setLocation('/server/setup');
-        return null;
-    } else if (txConfigState === TxConfigState.Deployer) {
-        setLocation('/server/deployer');
+    useEffect(() => {
+        if (txConfigState === TxConfigState.Setup) {
+            setLocation('/server/setup');
+        } else if (txConfigState === TxConfigState.Deployer) {
+            setLocation('/server/deployer');
+        }
+    }, [txConfigState, setLocation]);
+
+    if (txConfigState === TxConfigState.Setup || txConfigState === TxConfigState.Deployer) {
         return null;
     } else if (txConfigState !== TxConfigState.Ready) {
         return (

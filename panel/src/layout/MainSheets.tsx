@@ -1,128 +1,61 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ServerSidebar } from './ServerSidebar/ServerSidebar';
 import { useGlobalMenuSheet, usePlayerlistSheet, useServerSheet } from '@/hooks/sheets';
-import { MenuNavLink, NavLink } from '@/components/mainPageLink';
-import {
-    ClipboardCheckIcon,
-    DoorOpenIcon,
-    DownloadCloudIcon,
-    FlagIcon,
-    ListIcon,
-    PieChartIcon,
-    ScrollIcon,
-    SettingsIcon,
-    UserSquare2Icon,
-    UsersIcon,
-} from 'lucide-react';
+import { NavLink } from '@/components/MainPageLink';
 import { PlayerlistSidebar } from './PlayerlistSidebar/PlayerlistSidebar';
-import { useAdminPerms } from '@/hooks/auth';
-import { LogoFullSquareGreen } from '@/components/logos';
+import { ServerSidebar } from './ServerSidebar/ServerSidebar';
+import { LogoFullSquareGreen } from '@/components/Logos';
 import { useSwipeGestures } from '@/hooks/useSwipeGestures';
-import { useAddonLoader } from '@/hooks/addons';
-import { BlocksIcon } from 'lucide-react';
+import { SidebarNavContent, ServerStatusCard, SidebarUserButton, SidebarCollapsedCtx } from './LeftSidebar';
 
+/**
+ * Mobile global menu — mirrors the desktop LeftSidebar (sectioned navigation,
+ * server status card, account button) inside a slide-out sheet.
+ */
 export function GlobalMenuSheet() {
     const { isSheetOpen, setIsSheetOpen } = useGlobalMenuSheet();
-    const { hasPerm } = useAdminPerms();
-    const { pages: addonPages } = useAddonLoader();
 
     return (
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetContent
                 side="left"
-                className="xs:w-3/4 flex w-full flex-col gap-0 p-0 select-none"
+                className="xs:w-80 bg-[#0c0e16] flex w-full flex-col gap-0 border-border/40 p-0 select-none"
                 onOpenAutoFocus={(e) => e.preventDefault()}
             >
-                <ScrollArea className="h-full px-6 [&_svg]:shrink-0">
-                    <SheetHeader>
-                        <SheetTitle className="py-6">
-                            <NavLink href="/">
-                                <LogoFullSquareGreen className="h-9 hover:scale-105 hover:brightness-110" />
-                            </NavLink>
-                        </SheetTitle>
+                <SidebarCollapsedCtx.Provider value={false}>
+                    {/* Logo row */}
+                    <SheetHeader className="border-border/40 flex h-14 shrink-0 items-center justify-center border-b px-4">
+                        <SheetTitle className="sr-only">Navigation</SheetTitle>
+                        <NavLink
+                            href="/"
+                            className="flex items-center justify-center opacity-90 transition-opacity hover:opacity-100"
+                        >
+                            <LogoFullSquareGreen className="h-8" />
+                        </NavLink>
                     </SheetHeader>
 
-                    <div className="mb-4">
-                        <h2 className="mb-1.5 text-lg font-semibold tracking-tight">Global Menu</h2>
-                        <div className="xs:grid flex grid-cols-2 flex-row flex-wrap gap-4">
-                            <MenuNavLink href="/players">
-                                <UsersIcon className="mr-2 h-4 w-4" />
-                                Players
-                            </MenuNavLink>
-                            <MenuNavLink href="/history">
-                                <ScrollIcon className="mr-2 h-4 w-4" />
-                                History
-                            </MenuNavLink>
-                            {hasPerm('players.reports') && (
-                                <MenuNavLink href="/reports">
-                                    <FlagIcon className="mr-2 h-4 w-4" />
-                                    Reports
-                                </MenuNavLink>
-                            )}
-                            <MenuNavLink href="/server/player-drops">
-                                <DoorOpenIcon className="mr-2 h-4 w-4" />
-                                Player Drops
-                            </MenuNavLink>
-                            <MenuNavLink href="/whitelist">
-                                <ClipboardCheckIcon className="mr-2 h-4 w-4" />
-                                Whitelist
-                            </MenuNavLink>
-                            <MenuNavLink href="/admins" disabled={!hasPerm('manage.admins')}>
-                                <UserSquare2Icon className="mr-2 h-4 w-4" />
-                                Admins
-                            </MenuNavLink>
-                            <MenuNavLink href="/settings" disabled={!hasPerm('settings.view')}>
-                                <SettingsIcon className="mr-2 h-4 w-4" />
-                                Settings
-                            </MenuNavLink>
+                    {/* Scrollable nav body */}
+                    <ScrollArea className="flex-1">
+                        <div className="flex h-full flex-col">
+                            <SidebarNavContent />
                         </div>
+                    </ScrollArea>
+
+                    {/* Bottom: server status + user */}
+                    <div className="border-border/40 flex shrink-0 flex-col gap-2 border-t p-3">
+                        <ServerStatusCard />
+                        <SidebarUserButton />
                     </div>
-                    <div className="mb-4">
-                        <h2 className="mb-1.5 text-lg font-semibold tracking-tight">System Menu</h2>
-                        <div className="xs:grid flex grid-cols-2 flex-row flex-wrap gap-4">
-                            <MenuNavLink href="/system/master-actions">Master Actions</MenuNavLink>
-                            <MenuNavLink href="/system/diagnostics">
-                                <PieChartIcon className="mr-2 h-4 w-4" />
-                                Diagnostics
-                            </MenuNavLink>
-                            <MenuNavLink href="/system/console-log" disabled={!hasPerm('txadmin.log.view')}>
-                                <ListIcon className="mr-2 h-4 w-4" />
-                                Console Log
-                            </MenuNavLink>
-                            <MenuNavLink href="/system/action-log" disabled={!hasPerm('txadmin.log.view')}>
-                                <ListIcon className="mr-2 h-4 w-4" />
-                                Action Log
-                            </MenuNavLink>
-                            <MenuNavLink href="/system/artifacts" disabled={!hasPerm('all_permissions')}>
-                                <DownloadCloudIcon className="mr-2 h-4 w-4" />
-                                Artifacts
-                            </MenuNavLink>
-                        </div>
-                    </div>
-                    {addonPages.length > 0 && (
-                        <div className="mb-4">
-                            <h2 className="mb-1.5 text-lg font-semibold tracking-tight">Addons</h2>
-                            <div className="xs:grid flex grid-cols-2 flex-row flex-wrap gap-4">
-                                {addonPages.map((page) => (
-                                    <MenuNavLink
-                                        key={page.path}
-                                        href={page.path}
-                                        disabled={page.permission ? !hasPerm(page.permission) : false}
-                                    >
-                                        <BlocksIcon className="mr-2 h-4 w-4" />
-                                        {page.title}
-                                    </MenuNavLink>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </ScrollArea>
+                </SidebarCollapsedCtx.Provider>
             </SheetContent>
         </Sheet>
     );
 }
 
+/**
+ * Legacy server-specific sheet — kept for any code paths that still open it,
+ * but the mobile header no longer surfaces a button for it.
+ */
 export function ServerSidebarSheet() {
     const { isSheetOpen, setIsSheetOpen } = useServerSheet();
     return (
@@ -140,7 +73,7 @@ export function PlayersSidebarSheet() {
     const { isSheetOpen, setIsSheetOpen } = usePlayerlistSheet();
     return (
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-            <SheetContent side="right" className="xs:w-3/4 w-full p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+            <SheetContent side="right" className="xs:w-80 w-full p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
                 <ScrollArea className="h-full">
                     <PlayerlistSidebar isSheet />
                 </ScrollArea>

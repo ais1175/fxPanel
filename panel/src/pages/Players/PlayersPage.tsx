@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { UsersIcon, UserRoundPlusIcon, CalendarPlusIcon } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
 import PageCalloutRow, { PageCalloutProps } from '@/components/PageCalloutRow';
 import {
     PlayerSearchBox,
@@ -9,7 +10,7 @@ import {
 } from './PlayersSearchBox';
 import PlayersTable from './PlayersTable';
 import { PlayersStatsResp, PlayersTableFiltersType, PlayersTableSearchType } from '@shared/playerApiTypes';
-import { useBackendApi } from '@/hooks/fetch';
+import { usePlayersStats } from './usePlayersStats';
 
 //Memoized components
 const PlayerSearchBoxMemo = memo(PlayerSearchBox);
@@ -89,22 +90,9 @@ const getInitialState = () => {
 };
 
 export default function PlayersPage() {
-    const [calloutData, setCalloutData] = useState<PlayersStatsResp | undefined>(undefined);
+    const { stats: calloutData } = usePlayersStats();
     const [searchBoxReturn, setSearchBoxReturn] = useState<PlayersSearchBoxReturnStateType | undefined>(undefined);
-    const statsApi = useBackendApi<PlayersStatsResp>({
-        method: 'GET',
-        path: '/player/stats',
-        abortOnUnmount: true,
-    });
 
-    //Callout data
-    useEffect(() => {
-        statsApi({
-            success(data, toastId) {
-                setCalloutData(data);
-            },
-        });
-    }, []);
 
     //PlayerSearchBox handlers
     const doSearch = useCallback(
@@ -122,7 +110,7 @@ export default function PlayersPage() {
     const initialState = useMemo(getInitialState, []);
 
     const calloutRowData = useMemo(() => {
-        const hasCalloutData = calloutData && !('error' in calloutData);
+        const hasCalloutData = !!calloutData;
         return [
             {
                 label: 'Total Players',
@@ -151,11 +139,10 @@ export default function PlayersPage() {
 
     return (
         <div className="h-contentvh flex w-full min-w-96 flex-col">
-            {/* <div
-            //DEBUG component state
-            className='w-full bg-black p-2'
-            style={{ color: createRandomHslColor() }}
-        >{JSON.stringify(searchBoxReturn)}</div> */}
+            <PageHeader
+                title="Players"
+                icon={<UsersIcon className="size-5" />}
+            />
 
             <PageCalloutRowMemo callouts={calloutRowData} />
 

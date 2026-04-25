@@ -31,11 +31,15 @@ export default async function AuthDiscordRedirect(ctx: InitializedCtx) {
         });
     }
 
-    //Generate state and store in session
+    //Generate state and store in session along with the exact redirect URI
+    //used. The callback MUST reuse this value (not re-derive from request
+    //headers, which are attacker-controllable) — Discord requires that the
+    //token-exchange redirect_uri match the authorize redirect_uri byte-for-byte.
     const state = randomUUID();
     const redirectUri = origin + '/login/discord/callback';
     ctx.sessTools.set({
         tmpDiscordOAuthState: state,
+        tmpDiscordRedirectUri: redirectUri,
     });
 
     //Build authorize URL

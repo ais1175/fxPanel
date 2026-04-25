@@ -1,14 +1,18 @@
 import { useRef, useState } from 'react';
-import type { DatabaseActionBanType } from '../../../../core/modules/Database/databaseTypes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { GenericApiOkResp } from '@shared/genericApiTypes';
+import type { ApiChangeBanDurationReqSchema } from '@shared/historyApiSchemas';
 import { useAdminPerms } from '@/hooks/auth';
 import { Loader2Icon } from 'lucide-react';
 import { useBackendApi } from '@/hooks/fetch';
-import type { ApiChangeBanDurationReqSchema } from '../../../../core/routes/history/actions';
+
+type DatabaseActionBanType = {
+    id: string;
+    revocation?: unknown;
+};
 
 type ActionEditTabProps = {
     action: DatabaseActionBanType;

@@ -59,7 +59,7 @@ local mismatchedTypes = {
     ['sadler2'] = 'automobile', -- trailer
     ['scrap'] = 'automobile', -- trailer
     ['slamtruck'] = 'automobile', -- trailer
-    ['Stryder'] = 'automobile', -- bike
+    ['stryder'] = 'automobile', -- bike
     ['submersible'] = 'submarine', -- boat
     ['submersible2'] = 'submarine', -- boat
     ['thruster'] = 'heli', -- automobile
@@ -133,7 +133,7 @@ RegisterCommand('txAdmin:menu:spawnVehicle', function()
     toggleMenuVisibility(true)
     SetNuiFocus(true, true)
     SendMenuMessage('openSpawnVehicleDialog', {})
-end)
+end, false)
 
 local function reqVehicleDelete(_, cb)
     local veh = getPedVehicle()
@@ -155,7 +155,7 @@ RegisterCommand('txAdmin:menu:deleteVehicle', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleDelete()
-end)
+end, false)
 
 local function reqVehicleFix(_, cb)
     local veh = getPedVehicle()
@@ -176,7 +176,7 @@ RegisterCommand('txAdmin:menu:fixVehicle', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleFix()
-end)
+end, false)
 
 local function reqVehicleBoost(_, cb)
     local veh = getPedVehicle()
@@ -197,7 +197,7 @@ RegisterCommand('txAdmin:menu:boostVehicle', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqVehicleBoost()
-end)
+end, false)
 
 --[[ EVENT HANDLERS + FUNCTION LOGIC ]]
 
@@ -220,9 +220,9 @@ local boostableVehicleClasses = {
     [5] = 'Sports Classics',
     [6] = 'Sports',
     [7] = 'Super',
-    -- [8]='Motorcycles',
+    [8] = 'Motorcycles',
     [9] = 'Off-road',
-    -- [10]='Industrial',
+    [10] = 'Industrial',
     [11] = 'Utility',
     [12] = 'Vans',
     -- [13]='Cycles',
@@ -249,7 +249,7 @@ local function boostVehicleFivem()
     --Check if vehicle already boosted
     --NOTE: state bags were too complicated, and checking for specific float didn't work due to precision
     local boostedFlag = GetVehicleHandlingFloat(veh, 'CHandlingData', 'fInitialDriveMaxFlatVel')
-    if boostedFlag == 300.401214599609375 then
+    if math.abs(boostedFlag - 300.40120) < 0.0001 then
         return SendSnackbarMessage('error', 'nui_menu.page_main.vehicle.boost.already_boosted', true)
     end
 
@@ -313,7 +313,7 @@ local function boostVehicleRedm()
     Citizen.InvokeNative(0x4AF5A4C7B9157D14, horse, 1, duration, true) --EnableAttributeCoreOverpower
     Citizen.InvokeNative(0xF6A7C08DF2E28B28, horse, 1, duration, true) --EnableAttributeOverpower
 
-    AnimpostfxPlay('PlayerOverpower')
+    AnimpostfxPlay('PlayerOverpower', duration, false)
     SendSnackbarMessage('success', 'nui_menu.page_main.vehicle.boost.success', true)
 end
 
@@ -327,7 +327,7 @@ RegisterNetEvent('txcl:vehicle:fix', function()
     if veh and veh > 0 then
         SetVehicleUndriveable(veh, false)
         SetVehicleFixed(veh)
-        SetVehicleEngineOn(veh, true, false)
+        SetVehicleEngineOn(veh, true, false, false)
         SetVehicleDirtLevel(veh, 0.0)
         SetVehicleOnGroundProperly(veh)
     elseif IS_REDM and IsPedOnMount(ped) then
@@ -366,25 +366,38 @@ RegisterNetEvent('txcl:vehicle:spawn:redm', function(model)
     if IsPedOnMount(playerPed) then
         currentVeh = GetMount(playerPed)
     end
+
+    -- request new model before deleting the current vehicle
+    RequestModel(modelHash)
+    local modelLoadAttempts = 0
+    local maxModelLoadAttempts = 200 -- ~3 seconds at Wait(15)
+    while not HasModelLoaded(modelHash) do
+        Wait(15)
+        modelLoadAttempts = modelLoadAttempts + 1
+        if modelLoadAttempts >= maxModelLoadAttempts then
+            DebugPrint('^1Failed to load model: ' .. model)
+            SendSnackbarMessage('error', 'nui_menu.page_main.vehicle.spawn.load_failed', true, { modelName = model })
+            SetModelAsNoLongerNeeded(modelHash)
+            return
+        end
+    end
+
+    -- model loaded successfully, now delete the old vehicle
     local currentVehVelocity
     if currentVeh then
         currentVehVelocity = GetEntityVelocity(currentVeh)
         DeleteEntity(currentVeh)
     end
 
-    -- request new model
-    RequestModel(modelHash)
-    while not HasModelLoaded(modelHash) do
-        Wait(15)
-    end
-
     -- spawn it
     local newVeh
     if isVehicle then
+        ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
         newVeh = CreateVehicle(modelHash, playerCoords, playerHeading, true, false, false)
         SetPedIntoVehicle(playerPed, newVeh, -1)
         SetVehicleOnGroundProperly(newVeh)
     else
+        ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
         newVeh = CreatePed(modelHash, playerCoords, playerHeading, true, false)
         -- Citizen.InvokeNative(0x77FF8D35EEC6BBC4, newVeh, 1, 0) --EquipMetaPedOutfitPreset
         Citizen.InvokeNative(0x283978A15512B2FE, newVeh, true) --SetRandomOutfitVariation
@@ -393,6 +406,7 @@ RegisterNetEvent('txcl:vehicle:spawn:redm', function(model)
 
     -- preserving speed, doesn't work well for horses
     if currentVehVelocity then
+        ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
         SetEntityVelocity(newVeh, currentVehVelocity)
     end
     SetModelAsNoLongerNeeded(modelHash)
@@ -412,6 +426,7 @@ RegisterNetEvent('txcl:seatInVehicle', function(vehNetID, seat, oldVehVelocity)
     local attemptsLimit = 400 -- 400*5 = 2s
     while not NetworkDoesEntityExistWithNetworkId(vehNetID) and attemptsCounter < attemptsLimit do
         Wait(5)
+        attemptsCounter = attemptsCounter + 1
     end
     if not NetworkDoesEntityExistWithNetworkId(vehNetID) then
         return SendSnackbarMessage('error', 'Failed to seat into vehicle (net=' .. vehNetID .. ')', false)
@@ -423,7 +438,7 @@ RegisterNetEvent('txcl:seatInVehicle', function(vehNetID, seat, oldVehVelocity)
         if seat == -1 then
             SetVehicleEngineOn(veh, true, true, false)
             SetVehicleOnGroundProperly(veh)
-            if type(oldVehVelocity) ~= 'vector3' then
+            if type(oldVehVelocity) == 'vector3' then
                 SetEntityVelocity(veh, oldVehVelocity)
             end
             SendSnackbarMessage('success', 'nui_menu.page_main.vehicle.spawn.dialog_success', true)

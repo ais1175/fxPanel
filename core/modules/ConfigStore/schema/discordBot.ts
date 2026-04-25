@@ -44,7 +44,7 @@ const embedJson = typeDefinedConfig({
     name: 'Status Embed JSON',
     default: defaultEmbedJson,
     validator: z.string().min(1).transform(attemptMinifyJsonString),
-    //NOTE: no true valiation in here, done in the module only
+    //NOTE: no true validation in here, done in the module only
     fixer: SYM_FIXER_DEFAULT,
 });
 
@@ -52,7 +52,7 @@ const embedConfigJson = typeDefinedConfig({
     name: 'Status Config JSON',
     default: defaultEmbedConfigJson,
     validator: z.string().min(1).transform(attemptMinifyJsonString),
-    //NOTE: no true valiation in here, done in the module only
+    //NOTE: no true validation in here, done in the module only
     fixer: SYM_FIXER_DEFAULT,
 });
 
@@ -70,11 +70,27 @@ const oauthClientSecret = typeNullableConfig({
     fixer: SYM_FIXER_DEFAULT,
 });
 
+const ticketChannelId = typeNullableConfig({
+    name: 'Ticket Threads Channel ID',
+    default: null,
+    validator: discordSnowflakeSchema.nullable(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const ticketThreadNotifyEnabled = typeDefinedConfig({
+    name: 'Ticket Thread Notifications Enabled',
+    default: true,
+    validator: z.boolean(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
 export default {
     enabled,
     token,
     guild,
     warningsChannel,
+    ticketChannelId,
+    ticketThreadNotifyEnabled,
     embedJson,
     embedConfigJson,
     oauthClientId,

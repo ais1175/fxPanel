@@ -52,7 +52,9 @@ export const processDropsSummary = (
             //Merge the data
             currDayData.changes += hourData.changes;
             for (const [catName, catCount] of hourData.dropTypes.slice()) {
-                const currCatCount = currDayData.dropTypes.find(([currCatName]) => currCatName === catName);
+                const currCatCount = currDayData.dropTypes.find(
+                    ([currCatName]: [string, number]) => currCatName === catName,
+                );
                 if (currCatCount) {
                     currCatCount[1] += catCount;
                 } else {

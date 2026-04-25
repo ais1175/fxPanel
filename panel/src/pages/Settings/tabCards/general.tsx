@@ -14,7 +14,7 @@ import SettingsCardShell from '../SettingsCardShell';
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineCode from '@/components/InlineCode';
 import TxAnchor from '@/components/TxAnchor';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useAdminPerms } from '@/hooks/auth';
 
 const detectBrowserLanguage = () => {
@@ -163,6 +163,8 @@ export default function ConfigCardGeneral({ cardCtx, pageCtx }: SettingsCardProp
                         checked={states.allowSelfIdentifierEdit}
                         onCheckedChange={cfg.allowSelfIdentifierEdit.state.set}
                         disabled={pageCtx.isReadOnly}
+                        checkedLabel="Enabled"
+                        uncheckedLabel="Disabled"
                     />
                     <SettingItemDesc>
                         When enabled, all admins can change their own identifiers (FiveM &amp; Discord) from the

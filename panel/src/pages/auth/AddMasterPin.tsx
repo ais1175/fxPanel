@@ -25,7 +25,7 @@ export default function AddMasterPin() {
             const data = await fetchWithTimeout<ApiAddMasterPinResp, ApiAddMasterPinReq>(`/auth/addMaster/pin`, {
                 method: 'POST',
                 body: {
-                    pin: pinRef.current?.value || '0000',
+                    pin: pinRef.current?.value || '000000',
                     origin: window.location.origin,
                 },
             });
@@ -52,7 +52,7 @@ export default function AddMasterPin() {
     };
 
     useEffect(() => {
-        if (/^#\d{4}$/.test(window.location.hash)) {
+        if (/^#\d{6}$/.test(window.location.hash)) {
             setMessageText('Auto-filled ✔');
             pinRef.current!.value = window.location.hash.substring(1);
         }
@@ -91,10 +91,12 @@ export default function AddMasterPin() {
                     )}
                     id="frm-pin"
                     type="text"
+                    inputMode="numeric"
+                    pattern="\d{6}"
                     ref={pinRef}
-                    minLength={4}
-                    maxLength={4}
-                    placeholder="0000"
+                    minLength={6}
+                    maxLength={6}
+                    placeholder="000000"
                     autoComplete="off"
                     onFocus={(e) => {
                         setIsMessageError(false);
@@ -102,7 +104,11 @@ export default function AddMasterPin() {
                         e.target?.select();
                     }}
                     onChange={(e) => {
-                        if (e.target.value.length === 4) {
+                        const digitsOnly = e.target.value.replace(/\D/g, '');
+                        if (digitsOnly !== e.target.value) {
+                            e.target.value = digitsOnly;
+                        }
+                        if (digitsOnly.length === 6) {
                             submitPin();
                         }
                     }}
