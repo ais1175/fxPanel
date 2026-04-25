@@ -1,4 +1,5 @@
 const modulename = 'WebCtxUtils';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { InjectedTxConsts, ThemeType } from '@shared/otherTypes';
@@ -8,7 +9,26 @@ import consts from '@shared/consts';
 import consoleFactory from '@lib/console';
 import { AuthedAdminType, checkRequestAuth } from './authLogic';
 import { isString } from '@modules/CacheStore';
+import { isPathInside } from '@modules/AddonManager/addonUtils';
+import { PANEL_VAR_NAME_RE, PANEL_VAR_VALUE_RE, PANEL_VAR_FORBIDDEN_RE } from './cssVarSanitize';
 const console = consoleFactory(modulename);
+
+function htmlEscape(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function safeSerialize(obj: unknown): string {
+    return JSON.stringify(obj)
+        .replace(/<\/script/gi, '<\\/script')
+        .replace(/<!--/g, '<\\!--')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
 
 // NOTE: it's not possible to remove the hardcoded import of the entry point in the index.html file
 // even if you set the entry point manually in the vite config.
@@ -16,6 +36,10 @@ const console = consoleFactory(modulename);
 
 //Consts
 const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// Cap inlined panel logo size; anything larger is skipped to avoid bloating
+// the index.html response with a huge base64 blob (and to bound sync I/O).
+const MAX_LOGO_BYTES = 100_000;
 
 //Cache the index.html file unless in dev mode
 let htmlFile: string;
@@ -64,6 +88,129 @@ export const tmpCustomThemes: ThemeType[] = [
 ];
 
 /**
+ * Addon theme compatibility layer.
+ * Reads `static/theme.json` from running addons and returns:
+ *  - The addon's panel CSS inlined as a <style> tag
+ *  - An additional <style> tag with CSS custom properties from theme.json
+ *  - HTML attributes to apply on <html> (e.g. data-addon-themer-enabled)
+ *
+ * This allows theme addons to style the login page and other unauthenticated
+ * views without their JS needing to run and without <link> tags (which would
+ * fail the webAuthMw check on unauthenticated pages).
+ */
+async function getAddonThemeInjection(nonce: string): Promise<{ styleTags: string[]; htmlAttrs: string; logoDataUrl: string | undefined }> {
+    const empty = { styleTags: [], htmlAttrs: '', logoDataUrl: undefined };
+    try {
+        const allAddons = txCore.addonManager.getAllAddons();
+        for (const addon of allAddons) {
+            if (addon.state !== 'running') continue;
+
+            // Use resolveAddonStaticPath for safe path resolution
+            const themePath = txCore.addonManager.resolveAddonStaticPath(addon.manifest.id, 'static', 'theme.json');
+            if (!themePath) continue;
+
+            let raw: string;
+            try {
+                raw = await fsp.readFile(themePath, 'utf-8');
+            } catch {
+                continue;
+            }
+
+            let config: any;
+            try {
+                config = JSON.parse(raw);
+            } catch {
+                continue;
+            }
+
+            if (!config || config.enabled !== true) continue;
+
+            const panelVars = config.panel;
+            if (!panelVars || typeof panelVars !== 'object') continue;
+
+            const styleTags: string[] = [];
+
+            // 1. Inline the addon's panel CSS file (if it has one)
+            if (addon.manifest.panel?.styles) {
+                try {
+                    const cssPath = path.join(addon.dir, addon.manifest.panel.styles);
+                    // Ensure the CSS file is inside the addon directory
+                    const normalizedCss = path.resolve(cssPath);
+                    const normalizedDir = path.resolve(addon.dir);
+                    if (isPathInside(normalizedDir, normalizedCss)) {
+                        const cssContent = (await fsp.readFile(normalizedCss, 'utf-8'))
+                            .replace(/<\/style/gi, '<\\/style');
+                        styleTags.push(`<style${nonce} data-addon-id="${addon.manifest.id}">${cssContent}</style>`);
+                    }
+                } catch {
+                    // CSS file not found or unreadable — continue with just vars
+                }
+            }
+
+            // 2. Build CSS custom property declarations from theme.json
+            const cssDeclarations: string[] = [];
+            for (const [name, value] of Object.entries(panelVars)) {
+                if (typeof name !== 'string' || typeof value !== 'string') continue;
+                const safeName = name.trim();
+                if (!PANEL_VAR_NAME_RE.test(safeName)) continue;
+                const safeValue = value.trim();
+                if (!safeValue) continue;
+                if (PANEL_VAR_FORBIDDEN_RE.test(safeValue)) continue;
+                if (/[;<>{}]/.test(safeValue)) continue;
+                if (!PANEL_VAR_VALUE_RE.test(safeValue)) continue;
+                cssDeclarations.push(`${safeName}: ${safeValue};`);
+            }
+
+            if (cssDeclarations.length > 0) {
+                styleTags.push(`<style${nonce}>html[data-addon-themer-enabled='true'] {\n            ${cssDeclarations.join('\n            ')}\n        }</style>`);
+            }
+
+            // 3. Resolve the panel logo as a data: URI so it works without auth
+            let logoDataUrl: string | undefined;
+            const logoFilename = config.branding?.panelLogo;
+            if (typeof logoFilename === 'string' && logoFilename.trim()) {
+                const logoPath = txCore.addonManager.resolveAddonStaticPath(addon.manifest.id, 'static', logoFilename.trim());
+                if (logoPath) {
+                    try {
+                        const logoStat = await fsp.stat(logoPath);
+                        if (logoStat.size > MAX_LOGO_BYTES) {
+                            console.warn(`Panel logo "${logoFilename}" is ${logoStat.size} bytes (max ${MAX_LOGO_BYTES}); skipping inline.`);
+                        } else {
+                            const logoBytes = await fsp.readFile(logoPath);
+                            const ext = path.extname(logoFilename).toLowerCase();
+                            const mimeMap: Record<string, string> = {
+                                '.png': 'image/png',
+                                '.jpg': 'image/jpeg',
+                                '.jpeg': 'image/jpeg',
+                                '.gif': 'image/gif',
+                                '.svg': 'image/svg+xml',
+                                '.webp': 'image/webp',
+                                '.ico': 'image/x-icon',
+                            };
+                            const mime = mimeMap[ext];
+                            if (!mime) {
+                                console.warn(`Panel logo "${logoFilename}" has unsupported extension "${ext}"; skipping inline.`);
+                            } else {
+                                logoDataUrl = `data:${mime};base64,${logoBytes.toString('base64')}`;
+                            }
+                        }
+                    } catch { /* logo file unreadable */ }
+                }
+            }
+
+            return {
+                styleTags,
+                htmlAttrs: 'data-addon-themer-enabled="true"',
+                logoDataUrl,
+            };
+        }
+    } catch (error) {
+        console.verbose.warn(`Failed to generate addon theme injection: ${emsg(error)}`);
+    }
+    return empty;
+}
+
+/**
  * Returns the react index.html file with placeholders replaced
  * FIXME: add favicon
  */
@@ -102,6 +249,11 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
 
     //Preparing vars
     const basePath = ctx.txVars.isWebInterface ? '/' : consts.nuiWebpipePath;
+
+    //Compute addon theme injection early — the logo URL goes into txConsts
+    const nonce = ctx.state.cspNonce ? ` nonce="${ctx.state.cspNonce}"` : '';
+    const addonThemeResult = await getAddonThemeInjection(nonce);
+
     const injectedConsts: InjectedTxConsts = {
         //env
         fxsVersion: txEnv.fxsVersionTag,
@@ -124,6 +276,7 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
             name: txCore.cacheStore.getTyped('fxsRuntime:projectName', isString) ?? txConfig.general.serverName,
             game: txCore.cacheStore.getTyped('fxsRuntime:gameName', isString),
             icon: txCore.cacheStore.getTyped('fxsRuntime:iconFilename', isString),
+            desc: txCore.cacheStore.getTyped('fxsRuntime:projectDesc', isString),
         },
         hideFxsUpdateNotification: txConfig.general.hideFxsUpdateNotification,
         allowSelfIdentifierEdit: txConfig.general.allowSelfIdentifierEdit,
@@ -132,6 +285,9 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
         //addon permissions
         addonPermissions: txCore.adminStore.getAddonPermissions(),
 
+        //Addon theme compatibility
+        addonThemeLogo: addonThemeResult.logoDataUrl,
+
         //auth
         preAuth: authedAdmin && authedAdmin.getAuthData(),
     };
@@ -139,24 +295,36 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
     //Prepare placeholders
     const replacers: { [key: string]: string } = {};
     replacers.basePath = `<base href="${basePath}">`;
-    replacers.ogTitle = `fxPanel - ${txConfig.general.serverName}`;
+    replacers.ogTitle = `fxPanel - ${htmlEscape(txConfig.general.serverName)}`;
     replacers.ogDescripttion = `Manage & Monitor your FiveM/RedM Server with fxPanel v${txEnv.txaVersion} atop FXServer ${txEnv.fxsVersion}`;
-    const nonce = ctx.state.cspNonce ? ` nonce="${ctx.state.cspNonce}"` : '';
-    replacers.txConstsInjection = `<script${nonce}>window.txConsts = ${JSON.stringify(injectedConsts)};</script>`;
+    replacers.txConstsInjection = `<script${nonce}>window.txConsts = ${safeSerialize(injectedConsts)};</script>`;
     replacers.devModules = txDevEnv.ENABLED ? devModulesScript : '';
 
     //Prepare addon head tags (CSS for approved/running addons)
-    //Only CSS is injected here — JS requires React globals set up by the panel app
+    //Only CSS is injected here — JS requires React globals set up by the panel app.
+    //SECURITY: addon JS/CSS runs same-origin with the panel shell. Never inject
+    //          <link> tags for unauthenticated visitors (e.g. on the login page)
+    //          — doing so would fetch addon-controlled CSS into every request
+    //          that hits index.html, broadening the attack surface.
+    //          Theme CSS is instead inlined server-side below (getAddonThemeInjection).
     const addonTags: string[] = [];
-    try {
-        const panelManifest = txCore.addonManager.getPanelManifest();
-        for (const addon of panelManifest) {
-            if (addon.stylesUrl) {
-                addonTags.push(`<link rel="stylesheet" href="${addon.stylesUrl}" data-addon-id="${addon.id}">`);
+    if (authedAdmin) {
+        try {
+            const panelManifest = txCore.addonManager.getPanelManifest();
+            for (const addon of panelManifest) {
+                if (addon.stylesUrl) {
+                    addonTags.push(`<link rel="stylesheet" href="${addon.stylesUrl}" data-addon-id="${addon.id}">`);
+                }
             }
+        } catch (error) {
+            console.verbose.warn(`Failed to generate addon head tags: ${emsg(error)}`);
         }
-    } catch (error) {
-        console.verbose.warn(`Failed to generate addon head tags: ${emsg(error)}`);
+    }
+
+    //Addon theme compatibility: inject inlined CSS + CSS vars from theme.json
+    //so theming works on the login page (addon JS doesn't run there).
+    for (const tag of addonThemeResult.styleTags) {
+        addonTags.push(tag);
     }
     replacers.addonHeadTags = addonTags.join('\n        ');
 
@@ -174,6 +342,9 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
     } else {
         replacers.customThemesStyle = '';
     }
+
+    //Setting data attributes for addon theming (e.g. data-addon-themer-enabled)
+    replacers.htmlExtraAttrs = addonThemeResult.htmlAttrs;
 
     //Setting the theme class from the cookie
     const themeCookie = ctx.cookies.get('txAdmin-theme');

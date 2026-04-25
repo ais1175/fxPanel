@@ -1,6 +1,37 @@
 import { z } from 'zod';
 
 //============================================
+// Addon Permissions (hoisted for manifest schema)
+//============================================
+
+/**
+ * Enforceable addon permissions.
+ *
+ * SECURITY NOTE: Addon processes run as full Node.js processes via child_process.fork(),
+ * so any permission that depends purely on the addon's *own* behaviour (e.g. outbound HTTP,
+ * filesystem, spawning children) cannot be meaningfully gated here. Only permissions that
+ * are enforced server-side in the core (on IPC boundaries) are listed here so that the
+ * approval UI cannot advertise gates that do not exist.
+ *
+ * - `storage`       — gates the addon's KV storage IPC ops
+ * - `players.read`  — gates read access to player data and player events
+ * - `players.write` — gates the players.addTag / removeTag API calls
+ * - `ws.push`       — gates server → client WebSocket push events
+ *
+ * Approval of an addon still implies full trust: an approved addon is equivalent to code
+ * running inside the txAdmin host process for purposes that are not on an IPC boundary.
+ */
+export const ADDON_PERMISSIONS = [
+    'storage',
+    'players.read',
+    'players.write',
+    'ws.push',
+] as const;
+
+export type AddonPermission = typeof ADDON_PERMISSIONS[number];
+const AddonPermissionSchema = z.enum(ADDON_PERMISSIONS);
+
+//============================================
 // Addon Manifest Schema
 //============================================
 
@@ -40,7 +71,7 @@ export const AddonManifestSchema = z.object({
     id: z.string().regex(addonIdRegex, 'Addon ID must be 3-64 chars, lowercase alphanumeric + hyphens'),
     name: z.string().min(1).max(64),
     description: z.string().max(256),
-    version: z.string().regex(/^\d+\.\d+\.\d+/, 'Version must be semver'),
+    version: z.string().regex(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/, 'Version must be semver'),
     author: z.string().min(1).max(64),
     homepage: z.string().url().optional(),
     license: z.string().optional(),
@@ -56,8 +87,8 @@ export const AddonManifestSchema = z.object({
 
     // Permissions
     permissions: z.object({
-        required: z.array(z.string()).default([]),
-        optional: z.array(z.string()).default([]),
+        required: z.array(AddonPermissionSchema).default([]),
+        optional: z.array(AddonPermissionSchema).default([]),
     }),
 
     // Custom admin permissions this addon registers
@@ -101,27 +132,6 @@ export const AddonManifestSchema = z.object({
 export type AddonManifest = z.infer<typeof AddonManifestSchema>;
 
 //============================================
-// Addon Permissions
-//============================================
-
-export const ADDON_PERMISSIONS = [
-    'storage',
-    'players.read',
-    'players.write',
-    'players.kick',
-    'players.warn',
-    'players.ban',
-    'server.read',
-    'server.announce',
-    'server.command',
-    'database.read',
-    'http.outbound',
-    'ws.push',
-] as const;
-
-export type AddonPermission = typeof ADDON_PERMISSIONS[number];
-
-//============================================
 // Addon State
 //============================================
 
@@ -145,7 +155,7 @@ export type AddonState = typeof ADDON_STATES[number];
 //============================================
 
 export const AddonApprovalSchema = z.object({
-    granted: z.array(z.string()),
+    granted: z.array(AddonPermissionSchema),
     approvedAt: z.string(),
     approvedBy: z.string(),
 });
@@ -209,6 +219,7 @@ export interface AddonPanelDescriptor {
     id: string;
     name: string;
     version: string;
+    fxpanelMinVersion: string;
     entryUrl: string;
     stylesUrl: string | null;
     pages: z.infer<typeof AddonPageSchema>[];

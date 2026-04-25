@@ -64,7 +64,8 @@ export default async function TotpVerify(ctx: InitializedCtx) {
             return sendTypedResp({ error: 'Invalid code. Please try again.' });
         }
 
-        // Upgrade to full session
+        // Upgrade to full session — regenerate the session id to prevent
+        // session-fixation: the pre-2FA cookie value is discarded.
         const sessData = {
             type: 'password',
             username: vaultAdmin.name,
@@ -72,7 +73,7 @@ export default async function TotpVerify(ctx: InitializedCtx) {
             expiresAt: false,
             csrfToken: txCore.adminStore.genCsrfToken(),
         } satisfies PassSessAuthType;
-        ctx.sessTools.set({ auth: sessData });
+        ctx.sessTools.regenerate({ auth: sessData });
 
         txCore.logger.system.write(vaultAdmin.name, `logged in from ${ctx.ip} via password+2FA`, 'login');
         txManager.txRuntime.loginOrigins.count(ctx.txVars.hostType);

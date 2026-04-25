@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { AdminListItem, AdminStatsEntry } from '@shared/adminApiTypes';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import Avatar from '@/components/Avatar';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -20,10 +21,11 @@ import {
     RotateCcwIcon,
     MoreVerticalIcon,
     BarChart3Icon,
+    CrownIcon,
 } from 'lucide-react';
 import AdminStatsDialog from './AdminStatsDialog';
 
-type AdminListCardProps = {
+type AdminListCardBaseProps = {
     admin: AdminListItem;
     stats?: AdminStatsEntry;
     actionsRank?: number;
@@ -31,10 +33,19 @@ type AdminListCardProps = {
     onEdit: () => void;
     onDelete: () => void;
     onResetPassword: () => void;
-    selectMode?: boolean;
-    isSelected?: boolean;
-    onToggleSelect?: () => void;
 };
+
+type AdminListCardProps =
+    | (AdminListCardBaseProps & {
+          selectMode: true;
+          isSelected: boolean;
+          onToggleSelect: () => void;
+      })
+    | (AdminListCardBaseProps & {
+          selectMode?: false;
+          isSelected?: never;
+          onToggleSelect?: never;
+      });
 
 export default function AdminListCard({
     admin,
@@ -58,110 +69,160 @@ export default function AdminListCard({
 
     const showManageActions = canManage && !admin.isYou && !admin.isMaster;
     const showMenu = !selectMode;
-    const canSelect = selectMode && !admin.isMaster && !admin.isYou;
+    const canSelect = !!selectMode && !admin.isMaster && !admin.isYou;
 
     return (
-        <Card
+        <div
             className={cn(
-                'flex flex-col transition-colors',
+                'bg-card border-border/60 group relative flex flex-col gap-3 rounded-xl border px-4 pt-4 pb-3 shadow-sm transition-all',
+                'hover:border-border hover:shadow-md',
                 selectMode && canSelect && 'cursor-pointer',
-                isSelected && 'ring-primary ring-2',
+                selectMode && !canSelect && 'opacity-60',
+                isSelected && 'ring-primary/70 border-primary/60 ring-2',
             )}
             onClick={canSelect ? onToggleSelect : undefined}
+            tabIndex={canSelect ? 0 : undefined}
+            role={canSelect ? 'button' : undefined}
+            aria-pressed={canSelect ? !!isSelected : undefined}
+            onKeyDown={
+                canSelect
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              if (e.key === ' ') e.preventDefault();
+                              onToggleSelect();
+                          }
+                      }
+                    : undefined
+            }
         >
-            <CardContent className="space-y-2 pt-4 pb-3">
-                <div className="flex items-center justify-between">
-                    <div className="flex min-w-0 items-center gap-2">
-                        {selectMode ? (
-                            canSelect ? (
-                                <Checkbox
-                                    checked={isSelected}
-                                    onCheckedChange={onToggleSelect}
-                                    className="shrink-0"
-                                    onClick={(e) => e.stopPropagation()}
-                                />
-                            ) : (
-                                <div className="w-4" />
-                            )
+            {/* ── Top row: avatar + name + menu ── */}
+            <div className="flex items-start gap-3">
+                {/* Selection checkbox (replaces online dot indicator) */}
+                {selectMode && (
+                    <div className="flex h-11 items-center">
+                        {canSelect ? (
+                            <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => onToggleSelect()}
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Select ${admin.name}`}
+                            />
                         ) : (
-                            <div
-                                className={cn(
-                                    'h-2.5 w-2.5 shrink-0 rounded-full',
-                                    admin.isOnline ? 'bg-green-500' : 'bg-muted-foreground/30',
-                                )}
-                                title={admin.isOnline ? 'Online (in-game)' : 'Offline'}
+                            <div className="w-4" />
+                        )}
+                    </div>
+                )}
+
+                {/* Avatar tile */}
+                <div className="relative shrink-0">
+                    <Avatar
+                        username={admin.name}
+                        className="h-11 w-11 rounded-lg text-sm font-bold"
+                    />
+                    {!selectMode && (
+                        <span
+                            className={cn(
+                                'border-card absolute -right-1 -bottom-1 h-3 w-3 rounded-full border-2',
+                                admin.isOnline ? 'bg-success' : 'bg-muted-foreground/40',
+                            )}
+                            title={admin.isOnline ? 'Online (in-game)' : 'Offline'}
+                        />
+                    )}
+                </div>
+
+                {/* Name + meta */}
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold">{admin.name}</span>
+                        {admin.isMaster && (
+                            <CrownIcon
+                                className="h-3.5 w-3.5 shrink-0 text-amber-400/80"
+                                role="img"
+                                aria-label="Master account"
                             />
                         )}
-                        <span className="truncate text-base font-semibold">{admin.name}</span>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                         {admin.isYou && (
-                            <Badge variant="secondary" className="text-xs">
+                            <span className="bg-primary/15 text-primary rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
                                 You
-                            </Badge>
+                            </span>
                         )}
-                        {admin.isMaster && (
-                            <Badge variant="secondary" className="text-xs">
-                                Master
-                            </Badge>
-                        )}
-                        {showMenu && (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                                        <MoreVerticalIcon className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => setShowStats(true)} className="gap-2">
-                                        <BarChart3Icon className="h-3.5 w-3.5" />
-                                        Stats
-                                    </DropdownMenuItem>
-                                    {showManageActions && (
-                                        <>
-                                            <DropdownMenuItem onClick={onEdit} className="gap-2">
-                                                <PencilIcon className="h-3.5 w-3.5" />
-                                                Edit
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={onResetPassword} className="gap-2">
-                                                <RotateCcwIcon className="h-3.5 w-3.5" />
-                                                Reset Password
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                                onClick={onDelete}
-                                                className="text-destructive focus:text-destructive gap-2"
-                                            >
-                                                <TrashIcon className="h-3.5 w-3.5" />
-                                                Delete
-                                            </DropdownMenuItem>
-                                        </>
-                                    )}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        )}
+                        <span className="text-muted-foreground/70 inline-flex items-center gap-1 text-[11px]">
+                            <ShieldCheckIcon className="h-3 w-3" aria-hidden="true" />
+                            {permLabel}
+                        </span>
                     </div>
                 </div>
 
-                <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
-                    <ShieldCheckIcon className="h-3.5 w-3.5" />
-                    {permLabel}
-                </div>
+                {/* Action menu */}
+                {showMenu && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground/60 hover:text-foreground -mt-1 -mr-1 h-7 w-7 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MoreVerticalIcon className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setShowStats(true)} className="gap-2">
+                                <BarChart3Icon className="h-3.5 w-3.5" />
+                                Stats
+                            </DropdownMenuItem>
+                            {showManageActions && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={onEdit} className="gap-2">
+                                        <PencilIcon className="h-3.5 w-3.5" />
+                                        Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onResetPassword} className="gap-2">
+                                        <RotateCcwIcon className="h-3.5 w-3.5" />
+                                        Reset Password
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={onDelete}
+                                        className="text-destructive focus:text-destructive gap-2"
+                                    >
+                                        <TrashIcon className="h-3.5 w-3.5" />
+                                        Delete
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+            </div>
 
-                <div className="flex flex-wrap gap-2">
-                    {admin.hasCitizenFx && (
-                        <Badge variant="outline" className="gap-1 text-xs">
-                            <KeyIcon className="h-3 w-3" />
-                            Cfx.re
-                        </Badge>
-                    )}
-                    {admin.hasDiscord && (
-                        <Badge variant="outline" className="gap-1 text-xs">
-                            <MessageSquareIcon className="h-3 w-3" />
-                            Discord
-                        </Badge>
-                    )}
-                </div>
-            </CardContent>
+            {/* ── Linked identities ── */}
+            <div className="flex flex-wrap items-center gap-1.5">
+                {admin.hasCitizenFx && (
+                    <Badge
+                        variant="outline"
+                        className="border-border/60 bg-background/40 text-muted-foreground gap-1 text-[10px] font-medium"
+                    >
+                        <KeyIcon className="h-3 w-3" />
+                        Cfx.re
+                    </Badge>
+                )}
+                {admin.hasDiscord && (
+                    <Badge
+                        variant="outline"
+                        className="border-border/60 bg-background/40 text-muted-foreground gap-1 text-[10px] font-medium"
+                    >
+                        <MessageSquareIcon className="h-3 w-3" />
+                        Discord
+                    </Badge>
+                )}
+                {!admin.hasCitizenFx && !admin.hasDiscord && (
+                    <span className="text-muted-foreground/50 text-[10px] italic">No identities linked</span>
+                )}
+            </div>
 
             {/* Stats modal */}
             <AdminStatsDialog
@@ -171,6 +232,6 @@ export default function AdminListCard({
                 stats={stats}
                 actionsRank={actionsRank}
             />
-        </Card>
+        </div>
     );
 }

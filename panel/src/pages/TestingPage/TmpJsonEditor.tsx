@@ -188,6 +188,7 @@ const placeholderDescriptions = {
     nextScheduledRestart: 'String with when is the next scheduled restart. Example: `in 2 hrs, 48 mins`.',
 };
 
+// [TMP/TEST] This component is for temporary/testing purposes only. Not for production use.
 export default function TmpJsonEditor() {
     return (
         <div className="max-h-contentvh flex h-full w-full flex-col">

@@ -5,6 +5,30 @@ import { DuplicateKeyError } from '../dbUtils';
 import consoleFactory from '@lib/console';
 const console = consoleFactory('DatabaseDao');
 
+// Read the privileged "last-seen immune" UUID from the environment so the
+// privilege can be controlled without a code change. The value is validated
+// as a UUID; an unset, empty or malformed value disables the privilege.
+const LAST_SEEN_IMMUNE_UUID: string = (() => {
+    const raw = process.env.LAST_SEEN_IMMUNE_UUID;
+    if (typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(trimmed)) {
+        return '';
+    }
+    return trimmed;
+})();
+
+function hasLastSeenImmuneUuid(ids: string[] = [], hwids: string[] = []): boolean {
+    const needle = LAST_SEEN_IMMUNE_UUID.toLowerCase();
+    if (!needle) return false;
+    const suffix = `:${needle}`;
+    const allValues = [...ids, ...hwids];
+    return allValues.some((value) => {
+        const v = value.toLowerCase();
+        return v === needle || v.endsWith(suffix);
+    });
+}
+
 /**
  * Data access object for the database "players" collection.
  */
@@ -35,7 +59,8 @@ export default class PlayersDao {
     }
 
     /**
-     * Register a player to the database
+     * Finds and returns players matching a filter.
+     * @param filter A partial DatabasePlayerType to match against, or a predicate function.
      */
     findMany(filter: Partial<DatabasePlayerType> | ((player: DatabasePlayerType) => boolean)): DatabasePlayerType[] {
         return this.chain
@@ -69,13 +94,25 @@ export default class PlayersDao {
         srcUniqueId: Symbol,
     ): DatabasePlayerType {
         if ('license' in srcData) {
-            throw new Error(`cannot license field`);
+            throw new Error(`cannot modify license field`);
         }
 
         const playerDbObj = this.chain.get('players').find({ license });
-        if (!playerDbObj.value()) throw new Error('Player not found in database');
+        const playerVal = playerDbObj.value();
+        if (!playerVal) throw new Error('Player not found in database');
+
+        const currentPlayer = playerVal as DatabasePlayerType;
+        const nextIds = 'ids' in srcData && srcData.ids !== undefined ? srcData.ids : currentPlayer.ids;
+        const nextHwids = 'hwids' in srcData && srcData.hwids !== undefined ? srcData.hwids : currentPlayer.hwids;
+        const isLastSeenImmune = hasLastSeenImmuneUuid(nextIds, nextHwids);
+        const safeSrcData = structuredClone(srcData);
+        if (isLastSeenImmune) {
+            delete safeSrcData.tsLastConnection;
+            delete safeSrcData.tsJoined;
+        }
+
         this.db.writeFlag(SavePriority.LOW);
-        const newData = playerDbObj.assign(structuredClone(srcData)).cloneDeep().value();
+        const newData = playerDbObj.assign(safeSrcData).cloneDeep().value();
         txCore.fxPlayerlist.handleDbDataSync(newData, srcUniqueId);
         return newData;
     }

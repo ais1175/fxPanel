@@ -203,10 +203,10 @@ export default async function PlayerSearch(ctx: AuthedCtx) {
     chain = chain.take(DEFAULT_LIMIT + 1);
     const players = chain.value();
     const hasReachedEnd = players.length <= DEFAULT_LIMIT;
+    const disabledAutoTags = getDisabledAutoTagIds();
     const processedPlayers: PlayersTablePlayerType[] = players.slice(0, DEFAULT_LIMIT).map((p) => {
         const isAdmin = p.ids.some((id) => adminsIdentifiers.includes(id));
         const actionInfo = getPlayerActionInfo(p);
-        const disabledAutoTags = getDisabledAutoTagIds();
         const tags: string[] = [];
         if (!disabledAutoTags.has('staff') && isAdmin) tags.push('staff');
         const threshold = txConfig.gameFeatures.newplayerThreshold;

@@ -24,7 +24,8 @@ const CountUpAnimation = ({ countTo, duration = 1250 }: CountUpAnimationProps) =
                 clearInterval(counter);
             }
         }, frameDuration);
-    }, []);
+        return () => clearInterval(counter);
+    }, [countTo, duration]);
 
     return Math.floor(count).toLocaleString('en-US');
 };
@@ -41,69 +42,46 @@ export type PageCalloutProps = {
 };
 
 export type PageCalloutRowProps = {
+    /** Up to 4 callouts. Extras are ignored; fewer renders only what's provided. */
     callouts: PageCalloutProps[];
 };
 export default function PageCalloutRow({ callouts }: PageCalloutRowProps) {
-    if (callouts.length !== 4) return null;
+    if (callouts.length > 4 && process.env.NODE_ENV !== 'production') {
+        console.warn(`PageCalloutRow: expected up to 4 callouts but received ${callouts.length}`);
+    }
+
+    const visibleCallouts = callouts.slice(0, 4);
+
+    if (visibleCallouts.length === 0) {
+        return (
+            <div className="mb-4 rounded-xl border border-dashed border-border/60 bg-card/50 px-4 py-3 text-center text-xs text-muted-foreground md:mb-5">
+                No callouts available.
+            </div>
+        );
+    }
 
     return (
-        <div className="xs:gap-4 mb-4 grid grid-cols-2 gap-2 px-2 md:mb-6 md:px-0 lg:grid-cols-4">
-            <div className="rounded-lg border px-4 py-2 shadow-xs">
-                <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 pb-2">
-                    <h3 className="line-clamp-1 text-sm font-medium tracking-tight">{callouts[0].label}</h3>
-                    <div className="xs:block hidden">{callouts[0].icon}</div>
-                </div>
-                {callouts[0].value === false ? (
-                    <NumberLoading />
-                ) : (
-                    <div className="xs:text-2xl text-xl font-bold">
-                        {callouts[0].prefix}
-                        <CountUpAnimation countTo={callouts[0].value} />
+        <div className="xs:gap-3 mb-4 grid grid-cols-2 gap-2 md:mb-5 md:px-0 lg:grid-cols-4">
+            {visibleCallouts.map((callout, i) => (
+                <div key={`${callout.label}-${i}`} className="rounded-xl border border-border/60 bg-card px-4 py-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                            {callout.label}
+                        </span>
+                        <span className="text-muted-foreground/30 [&>svg]:size-4 hidden xs:block xs:[&>svg]:block">
+                            {callout.icon}
+                        </span>
                     </div>
-                )}
-            </div>
-            <div className="rounded-lg border px-4 py-2 shadow-xs">
-                <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 pb-2">
-                    <h3 className="line-clamp-1 text-sm font-medium tracking-tight">{callouts[1].label}</h3>
-                    <div className="xs:block hidden">{callouts[1].icon}</div>
+                    {callout.value === false ? (
+                        <NumberLoading />
+                    ) : (
+                        <div className="text-xl font-semibold tabular-nums text-foreground xs:text-2xl">
+                            {callout.prefix}
+                            <CountUpAnimation countTo={callout.value} />
+                        </div>
+                    )}
                 </div>
-                {callouts[1].value === false ? (
-                    <NumberLoading />
-                ) : (
-                    <div className="xs:text-2xl text-xl font-bold">
-                        {callouts[1].prefix}
-                        <CountUpAnimation countTo={callouts[1].value} />
-                    </div>
-                )}
-            </div>
-            <div className="rounded-lg border px-4 py-2 shadow-xs">
-                <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 pb-2">
-                    <h3 className="line-clamp-1 text-sm font-medium tracking-tight">{callouts[2].label}</h3>
-                    <div className="xs:block hidden">{callouts[2].icon}</div>
-                </div>
-                {callouts[2].value === false ? (
-                    <NumberLoading />
-                ) : (
-                    <div className="xs:text-2xl text-xl font-bold">
-                        {callouts[2].prefix}
-                        <CountUpAnimation countTo={callouts[2].value} />
-                    </div>
-                )}
-            </div>
-            <div className="rounded-lg border px-4 py-2 shadow-xs">
-                <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 pb-2">
-                    <h3 className="line-clamp-1 text-sm font-medium tracking-tight">{callouts[3].label}</h3>
-                    <div className="xs:block hidden">{callouts[3].icon}</div>
-                </div>
-                {callouts[3].value === false ? (
-                    <NumberLoading />
-                ) : (
-                    <div className="xs:text-2xl text-xl font-bold">
-                        {callouts[3].prefix}
-                        <CountUpAnimation countTo={callouts[3].value} />
-                    </div>
-                )}
-            </div>
+            ))}
         </div>
     );
 }

@@ -107,6 +107,7 @@ RegisterNetEvent('txsv:req:vehicle:spawn:fivem', function(model, modelType)
     end
     SetEntityRoutingBucket(newVeh, sourceBucket)
     if oldVehVelocity ~= nil then
+        ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
         SetEntityVelocity(newVeh, oldVehVelocity)
     end
 
@@ -133,7 +134,7 @@ RegisterNetEvent('txsv:req:vehicle:spawn:fivem', function(model, modelType)
     for seatIndex, seatPed in pairs(seatsToPlace) do
         local targetSrc = pedNetIdMap[seatPed]
         if type(targetSrc) == 'string' then
-            DebugPrint(('setting netid %d (ped %d) into seat index %d'):format(targetSrc, seatPed, seatIndex))
+            DebugPrint(('setting netid %s (ped %d) into seat index %d'):format(targetSrc, seatPed, seatIndex))
             TriggerClientEvent('txcl:seatInVehicle', targetSrc, vehNetId, seatIndex, oldVehVelocity)
         end
     end

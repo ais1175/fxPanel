@@ -1,9 +1,14 @@
 const modulename = 'AdminStore';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { nanoid } from 'nanoid';
+import { nanoid, customAlphabet } from 'nanoid';
 import { txHostConfig } from '@core/globalData';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+
+// Digits only — 10^6 = 1,000,000 possibilities; CSPRNG-backed via nanoid.
+const MASTER_PIN_ALPHABET = '0123456789';
+const MASTER_PIN_LENGTH = 6;
+const generateAddMasterPin = customAlphabet(MASTER_PIN_ALPHABET, MASTER_PIN_LENGTH);
 import consoleFactory from '@lib/console';
 import fatalError from '@lib/fatalError';
 import { chalkInversePad } from '@lib/misc';
@@ -39,6 +44,7 @@ export default class AdminStore {
     admins: RawAdminType[] | false | null = null;
     refreshRoutine: NodeJS.Timeout | null = null;
     addMasterPin: string | undefined;
+    public ready: Promise<void> = Promise.resolve();
 
     readonly registeredPermissions: Record<string, string>;
     readonly addonPermissions: PermissionDefinition[] = [];
@@ -71,7 +77,7 @@ export default class AdminStore {
         //Printing PIN or starting loop
         if (!adminFileExists) {
             if (!txHostConfig.defaults.account) {
-                this.addMasterPin = (Math.random() * 10000).toFixed().padStart(4, '0');
+                this.addMasterPin = generateAddMasterPin();
                 this.admins = false;
             } else {
                 const { username, fivemId, password } = txHostConfig.defaults.account as {
@@ -91,9 +97,29 @@ export default class AdminStore {
                 );
             }
         } else {
-            this.loadAdminsFile();
+            this.ready = this.loadAdminsFile().then(() => {});
             this.setupRefreshRoutine();
         }
+    }
+
+    /**
+     * Timing-safe verification of the initial-setup master PIN.
+     * Normalises user input to the PIN alphabet (uppercase, strip spaces/dashes)
+     * before comparing with `crypto.timingSafeEqual`.
+     */
+    verifyMasterPin(input: string): boolean {
+        if (typeof this.addMasterPin !== 'string' || !this.addMasterPin.length) return false;
+        const normalised = (typeof input === 'string' ? input : '')
+            .toUpperCase()
+            .replace(/[\s-]/g, '');
+        const expectedBuf = Buffer.from(this.addMasterPin);
+        const inputBuf = Buffer.from(normalised);
+        if (inputBuf.length !== expectedBuf.length) {
+            // Dummy compare so the length-mismatch branch burns similar CPU
+            timingSafeEqual(expectedBuf, expectedBuf);
+            return false;
+        }
+        return timingSafeEqual(inputBuf, expectedBuf);
     }
 
     /**
@@ -464,7 +490,7 @@ export default class AdminStore {
     /**
      * Rename an admin
      */
-    renameAdmin(oldName: string, newName: string) {
+    async renameAdmin(oldName: string, newName: string): Promise<void> {
         if (!this.admins) throw new Error('Admins not set');
         const oldLower = oldName.toLowerCase();
         const adminIndex = this.admins.findIndex((user) => oldLower === user.name.toLowerCase());
@@ -474,9 +500,11 @@ export default class AdminStore {
         const collision = this.admins.findIndex((user) => newLower === user.name.toLowerCase());
         if (collision !== -1 && collision !== adminIndex) throw new Error('An admin with that name already exists');
         this.admins[adminIndex].name = newName;
-        this.writeAdminsFile().catch((e) => {
-            console.error(`Failed to save admins.json after rename: ${e.message}`);
-        });
+        try {
+            await this.writeAdminsFile();
+        } catch (error) {
+            throw new Error(`Failed to save admins.json with error: ${emsg(error)}`);
+        }
     }
 
     /**
@@ -553,7 +581,10 @@ export default class AdminStore {
         const adminIndex = this.admins.findIndex((user) => username === user.name.toLowerCase());
         if (adminIndex === -1) throw new Error('Admin not found');
         const codes = this.admins[adminIndex].totp_backup_codes;
-        if (!codes || codeIndex < 0 || codeIndex >= codes.length) return;
+        if (!codes || codeIndex < 0 || codeIndex >= codes.length) {
+            console.warn(`consumeBackupCode: invalid state for admin "${username}" — codeIndex=${codeIndex}, codes.length=${codes?.length ?? 'N/A (no codes array)'}`);
+            return;
+        }
         codes.splice(codeIndex, 1);
         try {
             await this.writeAdminsFile();

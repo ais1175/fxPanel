@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -17,7 +17,7 @@ import { Loader2Icon, AlertTriangleIcon } from 'lucide-react';
 import { AdminListItem, ApiAdminSaveResp, ApiAdminSaveReq } from '@shared/adminApiTypes';
 import { PermissionPreset, permissionsMap, registeredPermissions } from '@shared/permissions';
 import { useBackendApi } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import PermissionsEditor from './PermissionsEditor';
 import { emsg } from '@shared/emsg';
 
@@ -39,14 +39,14 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
     const isNew = target === 'new';
 
     const [name, setName] = useState(isNew ? (initialData?.name ?? '') : target.name);
-    const [citizenfxId, setCitizenfxId] = useState(initialData?.citizenfxId ?? '');
-    const [discordId, setDiscordId] = useState(initialData?.discordId ?? '');
+    const [citizenfxId, setCitizenfxId] = useState(isNew ? (initialData?.citizenfxId ?? '') : '');
+    const [discordId, setDiscordId] = useState(isNew ? (initialData?.discordId ?? '') : '');
     const [permissions, setPermissions] = useState<string[]>(isNew ? [] : target.permissions);
     const [isSaving, setIsSaving] = useState(false);
     const [tempPassword, setTempPassword] = useState<string | null>(null);
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const originalPerms = useMemo(() => (isNew ? [] : target.permissions), []);
+    const [originalPerms] = useState<string[]>(() => (isNew ? [] : target.permissions));
 
     const saveApi = useBackendApi<ApiAdminSaveResp, ApiAdminSaveReq>({
         method: 'POST',
@@ -61,13 +61,19 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
         }
     };
 
+    //Compute permission diff
+    const addedPerms = permissions.filter((p) => !originalPerms.includes(p));
+    const removedPerms = originalPerms.filter((p) => !permissions.includes(p));
+    const hasDiff = addedPerms.length > 0 || removedPerms.length > 0;
+    const newDangerous = addedPerms.filter((pid) => registeredPermissions.find((p) => p.id === pid)?.dangerous);
+
     const handleSave = async () => {
         if (!name.trim()) {
             txToast.error({ title: 'Validation Error', msg: 'Username is required.' });
             return;
         }
 
-        //Check for dangerous permissions being added — require confirmation
+        //Check for dangerous permissions being added â€” require confirmation
         if (newDangerous.length > 0 && !showConfirm) {
             setShowConfirm(true);
             return;
@@ -104,12 +110,6 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
             setIsSaving(false);
         }
     };
-
-    //Compute permission diff
-    const addedPerms = permissions.filter((p) => !originalPerms.includes(p));
-    const removedPerms = originalPerms.filter((p) => !permissions.includes(p));
-    const hasDiff = addedPerms.length > 0 || removedPerms.length > 0;
-    const newDangerous = addedPerms.filter((pid) => registeredPermissions.find((p) => p.id === pid)?.dangerous);
 
     //Show dangerous permission confirmation
     if (showConfirm) {
@@ -153,10 +153,11 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
     // Show temp password screen after adding
     if (tempPassword) {
         return (
-            <Dialog open onOpenChange={onClose}>
+            <Dialog open onOpenChange={() => { onSaved(); onClose(); }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>Admin Created</DialogTitle>
+                        <DialogDescription>A temporary password has been generated; copy it now â€” it will not be shown again.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
                         <p className="text-muted-foreground text-sm">
@@ -171,6 +172,7 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
                         <Button
                             onClick={() => {
                                 onSaved();
+                                onClose();
                             }}
                         >
                             Done
@@ -190,7 +192,7 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
 
                 <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
                     <div className="space-y-4 pb-2">
-                        {/* ── Identity fields ── */}
+                        {/* â”€â”€ Identity fields â”€â”€ */}
                         <div className="grid gap-3 sm:grid-cols-3">
                             <div className="space-y-1.5">
                                 <Label htmlFor="admin-name">Username</Label>
@@ -223,7 +225,7 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
 
                         <Separator />
 
-                        {/* ── Preset selector ── */}
+                        {/* â”€â”€ Preset selector â”€â”€ */}
                         <div className="flex items-center gap-3">
                             <Label className="text-sm font-medium whitespace-nowrap">Apply Preset:</Label>
                             <Select onValueChange={applyPreset}>
@@ -242,10 +244,10 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
 
                         <Separator />
 
-                        {/* ── Permissions editor ── */}
+                        {/* â”€â”€ Permissions editor â”€â”€ */}
                         <PermissionsEditor selected={permissions} onChange={setPermissions} />
 
-                        {/* ── Permission diff summary ── */}
+                        {/* â”€â”€ Permission diff summary â”€â”€ */}
                         {!isNew && hasDiff && (
                             <div className="space-y-1.5 rounded-md border p-3">
                                 <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
@@ -272,7 +274,7 @@ export default function AdminEditDialog({ target, allPresets, onClose, onSaved, 
                                                 variant="outline"
                                                 className="border-destructive/40 text-destructive text-[10px]"
                                             >
-                                                − {permissionsMap.get(pid)?.label ?? pid}
+                                                âˆ’ {permissionsMap.get(pid)?.label ?? pid}
                                             </Badge>
                                         ))}
                                     </div>

@@ -6,10 +6,10 @@ const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const getHeatColor = (value: number, max: number) => {
     if (max === 0) return 'rgb(39,39,42)';
     const ratio = value / max;
-    // cfx-ui dark: zinc-800 → accent blue
-    const r = Math.round(39 + (59 - 39) * ratio);
-    const g = Math.round(39 + (130 - 39) * ratio);
-    const b = Math.round(42 + (246 - 42) * ratio);
+    // Deep slate -> cyan -> warm highlight
+    const r = Math.round(31 + (251 - 31) * Math.pow(ratio, 1.15));
+    const g = Math.round(41 + (191 - 41) * ratio);
+    const b = Math.round(55 + (36 - 55) * Math.pow(ratio, 0.75));
     return `rgb(${r},${g},${b})`;
 };
 
@@ -64,7 +64,7 @@ function PeakHoursHeatmap({ cells, maxAvg }: Props) {
                                     className="group relative h-5 w-6 cursor-default rounded-sm"
                                     style={{ backgroundColor: getHeatColor(value, maxAvg) }}
                                 >
-                                    <div className="absolute bottom-full left-1/2 z-50 mb-1 hidden -translate-x-1/2 rounded border bg-zinc-900 px-2 py-1 text-xs whitespace-nowrap shadow-md group-hover:block">
+                                    <div className="bg-card text-card-foreground border-border absolute bottom-full left-1/2 z-50 mb-1 hidden -translate-x-1/2 rounded border px-2 py-1 text-xs whitespace-nowrap shadow-md group-hover:block">
                                         {label} {String(hour).padStart(2, '0')}:00 — <strong>{value}</strong> avg
                                         players
                                     </div>

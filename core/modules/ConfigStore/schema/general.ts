@@ -38,4 +38,10 @@ export default {
         validator: z.boolean(),
         fixer: SYM_FIXER_DEFAULT,
     }),
+    enableTelemetry: typeDefinedConfig({
+        name: 'Enable Anonymous Telemetry',
+        default: false,
+        validator: z.boolean(),
+        fixer: SYM_FIXER_DEFAULT,
+    }),
 } as const;

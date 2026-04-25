@@ -9,23 +9,14 @@ import {
 } from '@/components/ui/navigation-menu';
 import { cn } from '@/lib/utils';
 import { useRoute } from 'wouter';
-import MainPageLink from '@/components/mainPageLink';
-import { cva } from 'class-variance-authority';
+import MainPageLink from '@/components/MainPageLink';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAdminPerms } from '@/hooks/auth';
 import { useAddonLoader } from '@/hooks/addons';
 
-const buttonVariants = cva(
-    `group inline-flex h-10 w-max items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-hidden disabled:pointer-events-none disabled:opacity-50 ring-offset-background  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`,
-    {
-        variants: {
-            variant: {
-                default: 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                secondary: 'bg-accent/15 text-accent',
-            },
-        },
-    },
-);
+const navLinkBase = `relative inline-flex h-9 items-center justify-center rounded-md px-3 text-sm transition-colors focus:outline-hidden disabled:pointer-events-none disabled:opacity-50 ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`;
+const navLinkActive = `text-foreground font-medium after:absolute after:bottom-0.5 after:left-3 after:right-3 after:h-px after:rounded-full after:bg-accent`;
+const navLinkDefault = `text-muted-foreground font-normal hover:text-foreground hover:bg-secondary/40`;
 
 type HeaderMenuLinkProps = {
     href: string;
@@ -40,13 +31,7 @@ function HeaderMenuLink(props: HeaderMenuLinkProps) {
             {props.disabled ? (
                 <Tooltip>
                     <TooltipTrigger className="cursor-help">
-                        <a
-                            className={cn(
-                                buttonVariants({ variant: 'default' }),
-                                'pointer-events-none opacity-50',
-                                props.className,
-                            )}
-                        >
+                        <a className={cn(navLinkBase, navLinkDefault, 'pointer-events-none opacity-40', props.className)}>
                             {props.children}
                         </a>
                     </TooltipTrigger>
@@ -59,7 +44,7 @@ function HeaderMenuLink(props: HeaderMenuLinkProps) {
                 <MainPageLink
                     href={props.href}
                     isActive={isActive}
-                    className={cn(buttonVariants({ variant: isActive ? 'secondary' : 'default' }), props.className)}
+                    className={cn(navLinkBase, isActive ? navLinkActive : navLinkDefault, props.className)}
                 >
                     {props.children}
                 </MainPageLink>
@@ -78,38 +63,64 @@ function HeaderMenuItem(props: HeaderMenuLinkProps) {
     );
 }
 
+const dropdownLinkClass = `w-44 justify-start rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors`;
+const dropdownContentClass = `flex list-none flex-col gap-0.5 p-2 min-w-[10rem]`;
+
 //NOTE: breaking NavigationMenuItem into a separate menu because the dropdown is positioned wrong otherwise
 export default function DesktopNavbar() {
     const { hasPerm } = useAdminPerms();
     const { pages: addonPages } = useAddonLoader();
 
+    const handleTriggerClick = (e: React.MouseEvent<HTMLElement>) => {
+        if (e.currentTarget.dataset['state'] === 'open') e.preventDefault();
+    };
+
     return (
-        <div className="flex flex-row space-x-1 select-none">
+        <div className="flex flex-row items-center gap-0.5 select-none">
             <NavigationMenu>
                 <NavigationMenuList>
                     <HeaderMenuItem href="/players">Players</HeaderMenuItem>
                     <HeaderMenuItem href="/history">History</HeaderMenuItem>
-                    {hasPerm('players.reports') && <HeaderMenuItem href="/reports">Reports</HeaderMenuItem>}
                 </NavigationMenuList>
             </NavigationMenu>
+
+            {hasPerm('players.reports') && (
+                <NavigationMenu>
+                    <NavigationMenuList>
+                        <NavigationMenuItem>
+                            <NavigationMenuTrigger
+                                className={cn(navLinkBase, navLinkDefault, 'data-[state=open]:text-foreground data-[state=open]:bg-secondary/40')}
+                                onClick={handleTriggerClick}
+                            >
+                                Reports
+                            </NavigationMenuTrigger>
+                            <NavigationMenuContent className={dropdownContentClass}>
+                                <HeaderMenuLink className={dropdownLinkClass} href="/reports">
+                                    Open Tickets
+                                </HeaderMenuLink>
+                                <HeaderMenuLink className={dropdownLinkClass} href="/reports/analytics">
+                                    Analytics
+                                </HeaderMenuLink>
+                            </NavigationMenuContent>
+                        </NavigationMenuItem>
+                    </NavigationMenuList>
+                </NavigationMenu>
+            )}
 
             <NavigationMenu>
                 <NavigationMenuList>
                     <NavigationMenuItem>
                         <NavigationMenuTrigger
-                            onClick={(e) => {
-                                if (e.currentTarget.dataset['state'] === 'open') {
-                                    e.preventDefault();
-                                }
-                            }}
+                            className={cn(navLinkBase, navLinkDefault, 'data-[state=open]:text-foreground data-[state=open]:bg-secondary/40')}
+                            onClick={handleTriggerClick}
                         >
                             Insights
                         </NavigationMenuTrigger>
-                        <NavigationMenuContent className="flex list-none flex-col gap-2 p-4">
-                            <HeaderMenuLink className="w-36 justify-start" href="/insights">
+                        <NavigationMenuContent className={dropdownContentClass}>
+                            <HeaderMenuLink className={dropdownLinkClass} href="/insights">
                                 Overview
                             </HeaderMenuLink>
-                            <HeaderMenuLink className="w-36 justify-start" href="/server/player-drops">
+                            <HeaderMenuLink className={dropdownLinkClass} href="/server/player-drops">
                                 Player Drops
                             </HeaderMenuLink>
                         </NavigationMenuContent>
@@ -130,42 +141,37 @@ export default function DesktopNavbar() {
             </NavigationMenu>
 
             <NavigationMenu>
-                <NavigationMenuList className="aaaaaaaaaaa">
+                <NavigationMenuList>
                     <NavigationMenuItem>
                         <NavigationMenuTrigger
-                            onClick={(e) => {
-                                //To prevent very annoying behavior where you go click on the menu
-                                //item and it will close the menu because it just opened on hover
-                                if (e.currentTarget.dataset['state'] === 'open') {
-                                    e.preventDefault();
-                                }
-                            }}
+                            className={cn(navLinkBase, navLinkDefault, 'data-[state=open]:text-foreground data-[state=open]:bg-secondary/40')}
+                            onClick={handleTriggerClick}
                         >
                             System
                         </NavigationMenuTrigger>
-                        <NavigationMenuContent className="flex list-none flex-col gap-2 p-4">
-                            <HeaderMenuLink className="w-36 justify-start" href="/system/master-actions">
+                        <NavigationMenuContent className={dropdownContentClass}>
+                            <HeaderMenuLink className={dropdownLinkClass} href="/system/master-actions">
                                 Master Actions
                             </HeaderMenuLink>
-                            <HeaderMenuLink className="w-36 justify-start" href="/system/diagnostics">
+                            <HeaderMenuLink className={dropdownLinkClass} href="/system/diagnostics">
                                 Diagnostics
                             </HeaderMenuLink>
                             <HeaderMenuLink
-                                className="w-36 justify-start"
+                                className={dropdownLinkClass}
                                 href="/system/console-log"
                                 disabled={!hasPerm('txadmin.log.view')}
                             >
                                 Console Log
                             </HeaderMenuLink>
                             <HeaderMenuLink
-                                className="w-36 justify-start"
+                                className={dropdownLinkClass}
                                 href="/system/action-log"
                                 disabled={!hasPerm('txadmin.log.view')}
                             >
                                 Action Log
                             </HeaderMenuLink>
                             <HeaderMenuLink
-                                className="w-36 justify-start"
+                                className={dropdownLinkClass}
                                 href="/system/artifacts"
                                 disabled={!hasPerm('all_permissions')}
                             >
@@ -189,19 +195,16 @@ export default function DesktopNavbar() {
                         ) : (
                             <NavigationMenuItem>
                                 <NavigationMenuTrigger
-                                    onClick={(e) => {
-                                        if (e.currentTarget.dataset['state'] === 'open') {
-                                            e.preventDefault();
-                                        }
-                                    }}
+                                    className={cn(navLinkBase, navLinkDefault, 'data-[state=open]:text-foreground data-[state=open]:bg-secondary/40')}
+                                    onClick={handleTriggerClick}
                                 >
                                     Addons
                                 </NavigationMenuTrigger>
-                                <NavigationMenuContent className="flex list-none flex-col gap-2 p-4">
+                                <NavigationMenuContent className={dropdownContentClass}>
                                     {addonPages.map((page) => (
                                         <HeaderMenuLink
                                             key={page.path}
-                                            className="w-36 justify-start"
+                                            className={dropdownLinkClass}
                                             href={page.path}
                                             disabled={page.permission ? !hasPerm(page.permission) : false}
                                         >

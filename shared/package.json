@@ -1,6 +1,6 @@
 {
-    "name": "txadmin-shared",
-    "version": "1.0.0",
+    "name": "fxpanel-shared",
+    "version": "0.2.2",
     "description": "The shared package contains stuff used in more than one package, no build step required.",
     "type": "module",
     "main": "index.js",

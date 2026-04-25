@@ -16,7 +16,7 @@ import { useAccountModal, useCloseAccountModal } from '@/hooks/dialogs';
 import { GenericApiOkResp } from '@shared/genericApiTypes';
 import { ApiTimeout, fetchWithTimeout, useAuthedFetcher, useBackendApi } from '@/hooks/fetch';
 import consts from '@shared/consts';
-import { txToast } from './txToaster';
+import { txToast } from './TxToaster';
 import useSWR from 'swr';
 import TxAnchor from './TxAnchor';
 import QRCode from 'qrcode';
@@ -345,8 +345,9 @@ function TwoFactorTab() {
     const [isLoading, setIsLoading] = useState(false);
 
     const authedFetcher = useAuthedFetcher();
+    const safeAuthData = authData && typeof authData === 'object' ? authData : null;
 
-    const is2faEnabled = authData?.totpEnabled ?? false;
+    const is2faEnabled = safeAuthData?.totpEnabled ?? false;
 
     const handleStartSetup = async () => {
         setError('');

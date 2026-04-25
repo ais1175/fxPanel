@@ -1,5 +1,5 @@
 import InlineCode from '@/components/InlineCode';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { Button } from '@/components/ui/button';
 import { useOpenPromptDialog } from '@/hooks/dialogs';
 import { useCloseAllSheets } from '@/hooks/sheets';

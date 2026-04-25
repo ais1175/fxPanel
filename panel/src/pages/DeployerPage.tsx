@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBackendApi, ApiTimeout } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2Icon, ChevronRightIcon, ChevronLeftIcon, CheckIcon, XIcon } from 'lucide-react';
@@ -8,7 +8,7 @@ import useSWR from 'swr';
 import { navigate as setLocation } from 'wouter/use-browser-location';
 import { LazyMonacoEditor } from '@/components/LazyMonacoEditor';
 
-// ── Types ──────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type RecipeInfo = {
     isTrustedSource: boolean;
     name: string;
@@ -64,7 +64,7 @@ type ActionResp = {
     markdown?: boolean;
 };
 
-// ── Step: Review ───────────────────────────────────────────────────────
+// â”€â”€ Step: Review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepReview({
     recipe,
     onConfirm,
@@ -124,7 +124,7 @@ function StepReview({
     );
 }
 
-// ── Step: Input ────────────────────────────────────────────────────────
+// â”€â”€ Step: Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepInput({
     requireDBConfig,
     requiresGithubToken,
@@ -311,7 +311,7 @@ function StepInput({
     );
 }
 
-// ── Step: Run ──────────────────────────────────────────────────────────
+// â”€â”€ Step: Run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepRun({ deployPath, onDone, onCancel }: { deployPath: string; onDone: () => void; onCancel: () => void }) {
     const [log, setLog] = useState<string[]>([]);
     const [progress, setProgress] = useState(0);
@@ -385,7 +385,7 @@ function StepRun({ deployPath, onDone, onCancel }: { deployPath: string; onDone:
                 />
             </div>
             <div className="text-muted-foreground text-xs">
-                {progress}% — {status}
+                {progress}% â€” {status}
             </div>
 
             {/* Log output */}
@@ -415,7 +415,7 @@ function StepRun({ deployPath, onDone, onCancel }: { deployPath: string; onDone:
     );
 }
 
-// ── Step: Configure ────────────────────────────────────────────────────
+// â”€â”€ Step: Configure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepConfigure({
     serverCFG,
     onSave,
@@ -453,7 +453,7 @@ function StepConfigure({
     );
 }
 
-// ── Main Deployer Page ─────────────────────────────────────────────────
+// â”€â”€ Main Deployer Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function DeployerPage() {
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -503,7 +503,7 @@ export default function DeployerPage() {
                 pathParams: { action },
                 data: body,
                 timeout: ApiTimeout.REALLY_LONG,
-                toastLoadingMessage: 'Processing…',
+                toastLoadingMessage: 'Processingâ€¦',
                 success(resp) {
                     setActionLoading(false);
                     if (resp.refresh) {

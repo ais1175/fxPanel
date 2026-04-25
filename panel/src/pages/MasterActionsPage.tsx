@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useBackendApi } from '@/hooks/fetch';
 import { useAdminPerms } from '@/hooks/auth';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useOpenConfirmDialog } from '@/hooks/dialogs';
 import { Button } from '@/components/ui/button';
-import { Loader2Icon } from 'lucide-react';
+import { Loader2Icon, ZapIcon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiTimeout } from '@/hooks/fetch';
+import { PageHeader } from '@/components/page-header';
 
 type CleanDbResp = {
     msElapsed?: number;
@@ -159,11 +160,8 @@ export default function MasterActionsPage() {
               : 'general';
 
     return (
-        <div className="mx-auto w-full max-w-(--breakpoint-md) space-y-4 px-2 md:px-0">
-            <div className="px-2 md:px-0">
-                <h1 className="mb-2 text-3xl">Master Actions</h1>
-            </div>
-
+        <div className="mx-auto w-full max-w-(--breakpoint-md) space-y-4">
+            <PageHeader icon={<ZapIcon />} title="Master Actions" />
             {!isMasterAdmin && (
                 <div className="border-warning/30 bg-warning-hint rounded-lg border p-4 text-center text-sm">
                     <strong>Warning:</strong> You MUST be the Master Admin to be able to use the options below.
@@ -193,7 +191,7 @@ export default function MasterActionsPage() {
                                 <p className="text-warning text-sm">
                                     This option has been moved to the{' '}
                                     <a href="/settings#fxserver" className="text-warning font-bold underline">
-                                        Settings → FXServer
+                                        Settings â†’ FXServer
                                     </a>{' '}
                                     page.
                                 </p>

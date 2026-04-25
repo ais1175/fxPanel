@@ -1,5 +1,5 @@
 import { throttle } from 'throttle-debounce';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronsUpDownIcon, FilterXIcon, XIcon, ChevronDownIcon, ExternalLinkIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -82,16 +82,16 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
     const [hasSearchText, setHasSearchText] = useState(!!initialState.search.value);
     const [rememberSearchType, setRememberSearchType] = useState(initialState.rememberSearchType);
 
-    const updateSearch = () => {
+    const updateSearch = useCallback(() => {
         if (!inputRef.current) return;
         const searchValue = inputRef.current.value.trim();
         doSearch({ value: searchValue, type: currSearchType }, selectedFilters, rememberSearchType);
-    };
+    }, [doSearch, currSearchType, selectedFilters, rememberSearchType]);
 
     //Call onSearch when params change
     useEffect(() => {
         updateSearch();
-    }, [currSearchType, selectedFilters]);
+    }, [updateSearch]);
 
     //Input handlers
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -104,8 +104,11 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
             setHasSearchText(false);
         } else {
             throttleFunc(updateSearch);
-            setHasSearchText(true);
         }
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setHasSearchText(e.currentTarget.value.length > 0);
     };
 
     const clearSearchBtn = () => {
@@ -130,7 +133,7 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
         ? `${selectedFilters.length} Filter${selectedFilters.length > 1 ? 's' : ''}`
         : 'No filters';
     return (
-        <div className="border-border bg-card text-card-foreground mb-2 border p-4 shadow-xs md:mb-4 md:rounded-xl">
+        <div className="border-border/60 bg-card text-card-foreground mb-4 rounded-xl border p-4 shadow-sm">
             <div className="flex flex-wrap-reverse gap-2">
                 <div className="relative min-w-44 grow">
                     <Input
@@ -142,6 +145,7 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
                         placeholder={selectedSearchType.placeholder}
                         defaultValue={initialState.search.value}
                         onKeyDown={handleInputKeyDown}
+                        onChange={handleInputChange}
                     />
                     {hasSearchText && (
                         <button
@@ -161,7 +165,7 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
                                 role="combobox"
                                 aria-expanded={isSearchTypeDropdownOpen}
                                 onClick={() => setSearchTypeDropdownOpen(!isSearchTypeDropdownOpen)}
-                                className="xs:w-48 border-input hover:bg-primary grow justify-between bg-black/30 md:grow-0"
+                                className="xs:w-48 grow justify-between md:grow-0"
                             >
                                 Search by {selectedSearchType.label}
                                 <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -199,7 +203,7 @@ export function PlayerSearchBox({ doSearch, initialState }: PlayerSearchBoxProps
                                 role="combobox"
                                 aria-expanded={isFilterDropdownOpen}
                                 onClick={() => setFilterDropdownOpen(!isFilterDropdownOpen)}
-                                className="xs:w-44 border-input hover:bg-primary grow justify-between bg-black/30 md:grow-0"
+                                className="xs:w-44 grow justify-between md:grow-0"
                             >
                                 {filterBtnMessage}
                                 <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />

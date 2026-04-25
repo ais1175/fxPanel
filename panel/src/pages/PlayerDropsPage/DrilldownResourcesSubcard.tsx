@@ -33,13 +33,13 @@ export default function DrilldownResourcesSubcard({ resKicks }: DrilldownResourc
     }
 
     return (
-        <div className="text-muted-foreground flex flex-wrap justify-evenly gap-4 px-4 py-4">
+        <div className="text-muted-foreground flex flex-wrap justify-evenly gap-3">
             {resources.map(([resName, resData]) => (
-                <div key={resName} className="flex flex-col items-center justify-center gap-1 px-4">
-                    <span className="border-b-2 text-lg tracking-wider">{resData.label}</span>
-                    <span className="text-sm">
+                <div key={resName} className="bg-secondary/20 border-border/40 flex flex-col items-center justify-center gap-1 rounded-lg border px-5 py-3">
+                    <span className="font-mono text-sm font-medium">{resData.label}</span>
+                    <span className="text-xs">
                         {numberToLocaleString(resData.count)}{' '}
-                        <small className="opacity-75">
+                        <small className="text-muted-foreground/60">
                             ({numberToLocaleString((resData.count / totalKicks) * 100, 1)}%)
                         </small>
                     </span>

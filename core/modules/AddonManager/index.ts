@@ -11,13 +11,14 @@ import AddonStorage from './addonStorage';
 import AddonProcess from './addonProcess';
 import AddonFileWatcher from './addonFileWatcher';
 import AddonPublicServer from './addonPublicServer';
-import { topologicalSort as topoSort, getMissingDependencies as getMissingDeps } from './addonUtils';
+import { topologicalSort as topoSort, getMissingDependencies as getMissingDeps, isPathInside, isPathInsideOrEqual } from './addonUtils';
 import {
     AddonManifestSchema,
     AddonConfigSchema,
     AddonState,
     AddonPanelDescriptor,
     AddonNuiDescriptor,
+    ADDON_PERMISSIONS,
     AddonListItem,
     type AddonManifest,
     type AddonConfig,
@@ -45,11 +46,11 @@ const ADDON_DATA_DIR = 'addon-data';
  * Conforms to the GenericTxModule interface. Registered as a module in txAdmin boot.
  */
 export default class AddonManager {
-    public readonly timers: NodeJS.Timer[] = [];
     private config: AddonConfig;
     private readonly addons = new Map<string, AddonDescriptor>();
     private readonly storage: AddonStorage;
     private readonly addonsDir: string;
+    private readonly nodeModulesDir: string;
     private readonly configPath: string;
     private fileWatcher: AddonFileWatcher | null = null;
     private publicServer: AddonPublicServer | null = null;
@@ -58,6 +59,7 @@ export default class AddonManager {
     constructor() {
         // Resolve paths
         this.addonsDir = path.join(txEnv.txaPath, ADDONS_DIR);
+        this.nodeModulesDir = path.join(txEnv.txaPath, 'node_modules');
         this.configPath = txEnv.profileSubPath(CONFIG_FILE);
         const dataDir = txEnv.profileSubPath(ADDON_DATA_DIR);
 
@@ -118,6 +120,12 @@ export default class AddonManager {
      * Full boot sequence.
      */
     private async boot(): Promise<void> {
+        // Pre-flight: verify addon-sdk is available
+        const sdkPath = path.join(this.nodeModulesDir, 'addon-sdk');
+        if (!fs.existsSync(sdkPath)) {
+            console.error(`addon-sdk not found at ${sdkPath} — addons will not be able to start. Ensure the monitor resource was deployed correctly.`);
+        }
+
         // 1. Discover and validate
         this.discover();
 
@@ -127,6 +135,16 @@ export default class AddonManager {
         // 3. Start addon processes
         await this.startProcesses();
 
+        // Ensure NUI addon assets are mirrored on normal boot as well.
+        // Without this, fresh boots can emit a NUI manifest that points to
+        // addon files not yet present under monitor/nui/addons.
+        const hasNuiAddon = [...this.addons.values()].some(
+            (addon) => addon.state === 'running' && !!addon.manifest.nui,
+        );
+        if (hasNuiAddon) {
+            await this.syncMonitorAddonAssets();
+        }
+
         // 4. Start file watcher for hot-reload
         this.fileWatcher = new AddonFileWatcher(this.addonsDir, (dirName, nuiOnly) => {
             const addonId = this.resolveAddonIdFromDir(dirName);
@@ -135,7 +153,9 @@ export default class AddonManager {
                 const addon = addonId ? this.addons.get(addonId) : undefined;
                 if (addon?.state === 'running' && addon.manifest.nui) {
                     console.log(`NUI-only change in addon "${addonId}", refreshing monitor resource...`);
-                    this.ensureMonitorResource();
+                    this.ensureMonitorResource().catch((err) => {
+                        console.warn(`ensure monitor (NUI hot-reload) failed: ${(err as Error).message}`);
+                    });
                     this.broadcastReloadEvent(addonId!, 'reloaded');
                 }
                 return;
@@ -219,10 +239,11 @@ export default class AddonManager {
                     continue;
                 }
 
-                // Validated paths within addon dir — prevent path traversal
+                // Validated paths within addon dir — prevent path traversal (including
+                // sibling-prefix escapes and symlinks out of the addon tree).
                 if (manifest.server?.entry) {
                     const resolved = path.resolve(addonDir, manifest.server.entry);
-                    if (!resolved.startsWith(path.resolve(addonDir))) {
+                    if (!isPathInside(addonDir, resolved)) {
                         console.warn(`Addon ${manifest.id}: server entry path escapes addon directory, skipping`);
                         continue;
                     }
@@ -356,6 +377,7 @@ export default class AddonManager {
                 addonId: addon.manifest.id,
                 entryPath: addon.manifest.server.entry,
                 addonDir: addon.dir,
+                nodeModulesDir: this.nodeModulesDir,
                 permissions: addon.grantedPermissions,
                 storage: this.storage.getScope(addon.manifest.id),
                 onWsPush: this.handleWsPush.bind(this),
@@ -498,6 +520,7 @@ export default class AddonManager {
                 id: addon.manifest.id,
                 name: addon.manifest.name,
                 version: addon.manifest.version,
+                fxpanelMinVersion: addon.manifest.fxpanel.minVersion,
                 entryUrl: `/addons/${addon.manifest.id}/panel/${path.basename(addon.manifest.panel.entry)}`,
                 stylesUrl: addon.manifest.panel.styles
                     ? `/addons/${addon.manifest.id}/panel/${path.basename(addon.manifest.panel.styles)}`
@@ -562,9 +585,32 @@ export default class AddonManager {
         const addon = this.addons.get(addonId);
         if (!addon) return { success: false, error: 'Addon not found' };
 
+        // Normalise: dedupe + drop non-string values
+        const rawGranted = Array.isArray(grantedPermissions) ? grantedPermissions : [];
+        const uniqueGranted = Array.from(new Set(rawGranted.filter((p): p is string => typeof p === 'string')));
+
+        // Only accept permissions that are BOTH a known enforceable permission AND
+        // declared by the manifest as required or optional. Anything else cannot be
+        // smuggled into the approval record (defence against hidden-permission grants
+        // and forward-compat with new permission IDs the host doesn't understand).
+        const knownPerms = new Set<string>(ADDON_PERMISSIONS as readonly string[]);
+        const declaredPerms = new Set<string>([
+            ...addon.manifest.permissions.required,
+            ...addon.manifest.permissions.optional,
+        ]);
+        const unknown = uniqueGranted.filter(p => !knownPerms.has(p));
+        if (unknown.length > 0) {
+            return { success: false, error: `Unknown permissions: ${unknown.join(', ')}` };
+        }
+        const undeclared = uniqueGranted.filter(p => !declaredPerms.has(p));
+        if (undeclared.length > 0) {
+            return { success: false, error: `Permissions not declared in manifest: ${undeclared.join(', ')}` };
+        }
+        const sanitisedGranted = uniqueGranted;
+
         // Verify all required permissions are granted
         const missingRequired = addon.manifest.permissions.required.filter(
-            p => !grantedPermissions.includes(p)
+            p => !sanitisedGranted.includes(p),
         );
         if (missingRequired.length > 0) {
             return {
@@ -575,7 +621,7 @@ export default class AddonManager {
 
         // Update config
         this.config.approved[addonId] = {
-            granted: grantedPermissions,
+            granted: sanitisedGranted,
             approvedAt: new Date().toISOString(),
             approvedBy,
         };
@@ -716,6 +762,7 @@ export default class AddonManager {
             addonId: addon.manifest.id,
             entryPath: addon.manifest.server.entry,
             addonDir: addon.dir,
+            nodeModulesDir: this.nodeModulesDir,
             permissions: addon.grantedPermissions,
             storage: this.storage.getScope(addon.manifest.id),
             onWsPush: this.handleWsPush.bind(this),
@@ -740,24 +787,48 @@ export default class AddonManager {
     }
 
     /**
-     * Resolve a panel static file path for serving.
+     * Resolve a panel/NUI/static file path for serving.
      * Returns the absolute path if valid, or null if invalid.
+     *
+     * SECURITY: guards against
+     *   - `..`-style traversal
+     *   - sibling-prefix escapes (e.g. `/addons/foo2/...` when base is `/addons/foo/panel`)
+     *   - symlink escapes pointing outside the addon tree
+     *   - hidden/dotfile serving (e.g. `.git/`, `.env`)
+     * The addon directory itself must also be inside the configured addons root.
      */
     resolveAddonStaticPath(addonId: string, layer: 'panel' | 'nui' | 'static', filePath: string): string | null {
         const addon = this.addons.get(addonId);
         if (!addon) return null;
 
-        // Resolve and validate path is within addon's layer directory
+        // Reject null bytes and absolute paths outright
+        if (!filePath || filePath.includes('\0') || path.isAbsolute(filePath)) return null;
+
+        // Reject any dotfile/dotfolder segment to avoid leaking .env, .git, etc.
+        const segments = filePath.split(/[\\/]+/);
+        if (segments.some(seg => seg === '..' || (seg.startsWith('.') && seg.length > 1))) {
+            return null;
+        }
+
+        // Ensure the addon directory itself is still inside the managed addons root
+        // (defence in depth against a manifest pointing at a symlinked sibling).
+        if (!isPathInsideOrEqual(this.addonsDir, addon.dir)) return null;
+
         const layerDir = path.join(addon.dir, layer);
         const resolved = path.resolve(layerDir, filePath);
 
-        if (!resolved.startsWith(path.resolve(layerDir))) {
-            return null; // Path traversal attempt
+        if (!isPathInside(layerDir, resolved)) {
+            return null; // Path traversal / sibling-prefix / symlink escape
         }
 
-        if (!fs.existsSync(resolved)) {
+        // Must be an existing, regular file (not a symlink, directory, or device).
+        let stat: fs.Stats;
+        try {
+            stat = fs.lstatSync(resolved);
+        } catch {
             return null;
         }
+        if (!stat.isFile() || stat.isSymbolicLink()) return null;
 
         return resolved;
     }
@@ -907,10 +978,11 @@ export default class AddonManager {
             return { success: false, error: 'Version incompatible' };
         }
 
-        // 5. Path traversal check on server entry
+        // 5. Path traversal check on server entry (robust against sibling-prefix
+        //    and symlink escapes).
         if (manifest.server?.entry) {
             const resolved = path.resolve(addonDir, manifest.server.entry);
-            if (!resolved.startsWith(path.resolve(addonDir))) {
+            if (!isPathInside(addonDir, resolved)) {
                 console.warn(`Addon ${addonId}: server entry escapes addon directory on reload`);
                 if (existing) existing.state = 'invalid';
                 return { success: false, error: 'Server entry escapes addon directory' };
@@ -996,7 +1068,7 @@ export default class AddonManager {
             this.registerAddonPerms(this.addons.get(addonId)!);
             console.log(`Addon ${addonId} reloaded (no server process)`);
             this.broadcastReloadEvent(addonId, 'reloaded');
-            if (!skipEnsure && manifest.nui) this.ensureMonitorResource();
+            if (!skipEnsure && manifest.nui) await this.ensureMonitorResource();
             return { success: true };
         }
 
@@ -1004,6 +1076,7 @@ export default class AddonManager {
             addonId: manifest.id,
             entryPath: manifest.server.entry,
             addonDir,
+            nodeModulesDir: this.nodeModulesDir,
             permissions: grantedPermissions,
             storage: this.storage.getScope(manifest.id),
             onWsPush: this.handleWsPush.bind(this),
@@ -1023,7 +1096,7 @@ export default class AddonManager {
             console.log(`Addon ${addonId} reloaded and running`);
             this.broadcastReloadEvent(addonId, 'reloaded');
             await this.maybeStartPublicServer();
-            if (!skipEnsure && manifest.nui) this.ensureMonitorResource();
+            if (!skipEnsure && manifest.nui) await this.ensureMonitorResource();
             return { success: true };
         } else {
             this.addons.set(addonId, {
@@ -1069,7 +1142,7 @@ export default class AddonManager {
         const hasNuiAddon = [...this.addons.values()].some(
             a => a.state === 'running' && a.manifest.nui,
         );
-        if (hasNuiAddon) this.ensureMonitorResource();
+        if (hasNuiAddon) await this.ensureMonitorResource();
 
         const running = [...this.addons.values()].filter(a => a.state === 'running').length;
         console.log(`Reload complete: ${running}/${this.addons.size} addons running`);
@@ -1080,8 +1153,10 @@ export default class AddonManager {
      * Ensure (restart) the monitor resource so the NUI browser is recreated
      * with fresh addon JS/CSS. Players stay connected — only the NUI resets.
      */
-    private ensureMonitorResource(): void {
+    private async ensureMonitorResource(): Promise<void> {
         try {
+            await this.syncMonitorAddonAssets();
+
             const setCmdResult = txCore.fxRunner.sendCommand(
                 'set',
                 ['txAdmin-luaComToken', txCore.webServer.luaComToken],
@@ -1099,6 +1174,100 @@ export default class AddonManager {
             }
         } catch (err) {
             console.warn(`ensure monitor failed: ${(err as Error).message}`);
+        }
+    }
+
+    /**
+     * Mirror running addon NUI/static assets into the monitor resource so
+     * `nui://monitor/nui/addons/*` and `nui://monitor/addons/*` can load them.
+     */
+    private async syncMonitorAddonAssets(): Promise<void> {
+        // txEnv.txaPath IS the monitor resource root (GetResourcePath('monitor'))
+        // so nui://monitor/... maps directly to txEnv.txaPath/...
+        const monitorRoot = txEnv.txaPath;
+        const monitorNuiAddonsRoot = path.join(monitorRoot, 'nui', 'addons');
+        const monitorStaticAddonsRoot = path.join(monitorRoot, 'addons');
+
+        const copyDirRecursive = async (sourceDir: string, targetDir: string): Promise<void> => {
+            await fs.promises.mkdir(targetDir, { recursive: true });
+            const entries = await fs.promises.readdir(sourceDir, { withFileTypes: true });
+            for (const entry of entries) {
+                const src = path.join(sourceDir, entry.name);
+                const dst = path.join(targetDir, entry.name);
+                if (entry.isSymbolicLink()) {
+                    continue;
+                }
+                if (entry.isDirectory()) {
+                    await copyDirRecursive(src, dst);
+                } else if (entry.isFile()) {
+                    await fs.promises.copyFile(src, dst);
+                }
+            }
+        };
+
+        await fs.promises.mkdir(monitorNuiAddonsRoot, { recursive: true });
+        await fs.promises.mkdir(monitorStaticAddonsRoot, { recursive: true });
+
+        const runningNuiAddons = [...this.addons.values()].filter(
+            (addon) => addon.state === 'running' && !!addon.manifest.nui,
+        );
+        const desiredIds = new Set(runningNuiAddons.map((addon) => addon.manifest.id));
+
+        const pruneStaleDirs = async (rootDir: string) => {
+            try {
+                const entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
+                await Promise.all(entries.map(async (entry) => {
+                    if (!entry.isDirectory()) return;
+                    if (!desiredIds.has(entry.name)) {
+                        await fs.promises.rm(path.join(rootDir, entry.name), { recursive: true, force: true });
+                    }
+                }));
+            } catch (err: unknown) {
+                const code = (typeof err === 'object' && err !== null && 'code' in err)
+                    ? (err as NodeJS.ErrnoException).code
+                    : undefined;
+                if (code !== 'ENOENT') throw err;
+            }
+        };
+
+        await pruneStaleDirs(monitorNuiAddonsRoot);
+        await pruneStaleDirs(monitorStaticAddonsRoot);
+
+        for (const addon of runningNuiAddons) {
+            const addonId = addon.manifest.id;
+            try {
+                const sourceNuiDir = path.join(addon.dir, 'nui');
+                const targetNuiDir = path.join(monitorNuiAddonsRoot, addonId);
+                let nuiSrcIsDir = false;
+                try {
+                    const st = await fs.promises.stat(sourceNuiDir);
+                    nuiSrcIsDir = st.isDirectory();
+                } catch (err: any) {
+                    if (err?.code !== 'ENOENT') throw err;
+                }
+                if (nuiSrcIsDir) {
+                    await fs.promises.rm(targetNuiDir, { recursive: true, force: true });
+                    await copyDirRecursive(sourceNuiDir, targetNuiDir);
+                }
+
+                const sourceStaticDir = path.join(addon.dir, 'static');
+                const targetAddonRoot = path.join(monitorStaticAddonsRoot, addonId);
+                const targetStaticDir = path.join(targetAddonRoot, 'static');
+                await fs.promises.mkdir(targetAddonRoot, { recursive: true });
+                await fs.promises.rm(targetStaticDir, { recursive: true, force: true });
+                let staticSrcIsDir = false;
+                try {
+                    const st = await fs.promises.stat(sourceStaticDir);
+                    staticSrcIsDir = st.isDirectory();
+                } catch (err: any) {
+                    if (err?.code !== 'ENOENT') throw err;
+                }
+                if (staticSrcIsDir) {
+                    await copyDirRecursive(sourceStaticDir, targetStaticDir);
+                }
+            } catch (error) {
+                console.warn(`Failed syncing monitor assets for addon '${addonId}': ${(error as Error).message}`);
+            }
         }
     }
 

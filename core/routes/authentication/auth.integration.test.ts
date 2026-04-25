@@ -79,6 +79,7 @@ function createInitCtx(
         sessTools: {
             get: vi.fn(() => sessData),
             set: vi.fn((data: any) => Object.assign(sessData, data)),
+            regenerate: vi.fn((data: any) => Object.assign(sessData, data)),
             destroy: vi.fn(),
         },
         admin: {
@@ -120,7 +121,7 @@ suite('AuthVerifyPassword', () => {
         const { ctx, sentData } = createInitCtx({ body: { username: 'admin', password: 'teste123' } });
         await AuthVerifyPassword(ctx);
         expect(sentData[0]).toMatchObject({ name: 'admin', isMaster: true });
-        expect(ctx.sessTools.set).toHaveBeenCalled();
+        expect(ctx.sessTools.regenerate).toHaveBeenCalled();
         expect(txCore.logger.system.write).toHaveBeenCalledWith('admin', expect.stringContaining('logged in'), 'login');
     });
 
@@ -128,7 +129,7 @@ suite('AuthVerifyPassword', () => {
         const { ctx, sentData } = createInitCtx({ body: { username: 'totpadmin', password: 'teste123' } });
         await AuthVerifyPassword(ctx);
         expect(sentData[0]).toMatchObject({ totp_required: true });
-        expect(ctx.sessTools.set).toHaveBeenCalledWith(
+        expect(ctx.sessTools.regenerate).toHaveBeenCalledWith(
             expect.objectContaining({ auth: expect.objectContaining({ type: 'pending_2fa' }) }),
         );
     });

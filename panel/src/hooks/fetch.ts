@@ -1,4 +1,4 @@
-import { txToast, validToastTypes } from '@/components/txToaster';
+import { txToast, validToastTypes } from '@/components/TxToaster';
 import { useCsrfToken, useExpireAuthData } from '@/hooks/auth';
 import { useEffect, useRef } from 'react';
 
@@ -31,7 +31,7 @@ export class BackendApiError extends Error {
  * Returns a function to make authenticated fetch requests
  */
 type FetcherOpts = {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'DELETE';
     body?: any;
 };
 
@@ -96,7 +96,7 @@ export const fetchWithTimeout = async <Resp = any, Req = any>(url: string, fetch
  */
 type HookOpts = {
     //I'm pretty sure the webpipe supports only GET and POST
-    method: 'GET' | 'POST';
+    method: 'GET' | 'POST' | 'DELETE';
     path: string;
     abortOnUnmount?: boolean;
     throwGenericErrors?: boolean;

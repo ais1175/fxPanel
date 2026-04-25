@@ -19,7 +19,7 @@ import {
     Trash2Icon,
     EyeIcon,
 } from 'lucide-react';
-import { KickOneIcon } from '@/components/kickIcons';
+import { KickOneIcon } from '@/components/KickIcons';
 import { useBackendApi, ApiTimeout } from '@/hooks/fetch';
 import { useAdminPerms } from '@/hooks/auth';
 import { useOpenPromptDialog, useOpenConfirmDialog } from '@/hooks/dialogs';

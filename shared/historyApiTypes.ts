@@ -1,5 +1,6 @@
-import { DatabaseActionType } from '@modules/Database/databaseTypes';
 import { GenericApiErrorResp } from './genericApiTypes';
+
+export type DatabaseActionType = any;
 
 export type HistoryStatsResp =
     | {

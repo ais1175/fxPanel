@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackendApi } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -17,7 +17,7 @@ import useSWR from 'swr';
 import { navigate as setLocation } from 'wouter/use-browser-location';
 import { ApiTimeout } from '@/hooks/fetch';
 
-// ── Types ──────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type SetupDataResp = {
     redirect?: string;
     error?: string;
@@ -56,7 +56,7 @@ type SaveResp = {
     message?: string;
 };
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function buildDeployName(templateName: string) {
     const sanitized = templateName
         .replace(/[^a-zA-Z0-9]/g, '')
@@ -73,7 +73,7 @@ function tagColor(tag: string) {
     return 'bg-muted text-muted-foreground';
 }
 
-// ── Step Components ────────────────────────────────────────────────────
+// â”€â”€ Step Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Step 1: Server Name */
 function StepServerName({
@@ -223,7 +223,7 @@ function StepPopularTemplates({
             {fetchError && <p className="text-destructive">{fetchError}</p>}
             {!recipes && !fetchError && (
                 <div className="flex items-center gap-2">
-                    <Loader2Icon className="animate-spin" /> Loading recipes…
+                    <Loader2Icon className="animate-spin" /> Loading recipesâ€¦
                 </div>
             )}
             {recipes && (
@@ -593,9 +593,9 @@ function StepServerCFG({
     );
 }
 
-// ── Main Setup Page ────────────────────────────────────────────────────
+// â”€â”€ Main Setup Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function SetupPage() {
-    // ── Data fetch ──
+    // â”€â”€ Data fetch â”€â”€
     const dataApi = useBackendApi<SetupDataResp>({
         method: 'GET',
         path: '/setup/data',
@@ -611,7 +611,7 @@ export default function SetupPage() {
     };
     const { data, isLoading } = useSWR('/setup/data', swrFetcher, { revalidateOnFocus: false });
 
-    // ── Wizard state ──
+    // â”€â”€ Wizard state â”€â”€
     const [step, setStep] = useState(0); // 0-based, auto-advanced if skipServerName
     const [serverName, setServerName] = useState('');
     const [deployType, setDeployType] = useState<DeploymentType | null>(null);
@@ -673,7 +673,7 @@ export default function SetupPage() {
         return `${sanitized}_${deploymentTs}`;
     }, [recipeName, selectedRecipe?.name, deploymentTs]);
 
-    // ── Save handler ──
+    // â”€â”€ Save handler â”€â”€
     const performSave = useCallback(() => {
         if (!deployType) return;
         setSaving(true);
@@ -717,12 +717,12 @@ export default function SetupPage() {
         saveApi({
             data: payload,
             timeout: ApiTimeout.LONG,
-            toastLoadingMessage: 'Saving…',
+            toastLoadingMessage: 'Savingâ€¦',
             success(resp) {
                 setSaving(false);
                 if (resp.success) {
                     if (deployType === 'local') {
-                        txToast.success('Server saved. Starting…');
+                        txToast.success('Server saved. Startingâ€¦');
                         setLocation('/server/console');
                     } else {
                         setLocation('/server/deployer');
@@ -738,7 +738,7 @@ export default function SetupPage() {
         });
     }, [deployType, serverName, selectedRecipe, recipeURL, deployPath, deploymentID, dataFolder, cfgFile, saveApi]);
 
-    // ── Loading state ──
+    // â”€â”€ Loading state â”€â”€
     if (isLoading || !data) {
         return (
             <div className="flex h-full items-center justify-center">
@@ -747,7 +747,7 @@ export default function SetupPage() {
         );
     }
 
-    // ── Error state ──
+    // â”€â”€ Error state â”€â”€
     if (errorMessage) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-3">
@@ -757,14 +757,14 @@ export default function SetupPage() {
         );
     }
 
-    // ── Step progress indicator ──
-    const totalSteps = deployType === 'local' ? 4 : 4; // name, type, template/path, target/cfg → save
+    // â”€â”€ Step progress indicator â”€â”€
+    const totalSteps = deployType === 'local' ? 4 : 4; // name, type, template/path, target/cfg â†’ save
     const stepLabels =
         deployType === 'local'
             ? ['Server Name', 'Type', 'Data Folder', 'CFG File']
             : ['Server Name', 'Type', 'Template', 'Deploy Target'];
 
-    // ── Render current step ──
+    // â”€â”€ Render current step â”€â”€
     const renderStep = () => {
         // Step 0: Server Name
         if (step === 0) {

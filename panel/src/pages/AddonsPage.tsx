@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import useSWR from 'swr';
-import { useAuthedFetcher, useBackendApi } from '@/hooks/fetch';
+import { useAuthedFetcher } from '@/hooks/fetch';
 import { useAdminPerms } from '@/hooks/auth';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { resetAddonCache, useAddonWidgets, useAddonSettings } from '@/hooks/addons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,16 +32,8 @@ interface AddonsListResponse {
 
 const permissionDescriptions: Record<string, string> = {
     'storage': 'Read/write to addon\'s own scoped key-value store',
-    'players.read': 'Read player data and receive player events',
-    'players.write': 'Modify player data and tags',
-    'players.kick': 'Kick players from the server',
-    'players.warn': 'Issue warnings to players',
-    'players.ban': 'Ban players from the server',
-    'server.read': 'Read server status and resource list',
-    'server.announce': 'Send server-wide announcements',
-    'server.command': 'Execute server console commands',
-    'database.read': 'Read-only access to player/action database',
-    'http.outbound': 'Make outbound HTTP requests',
+    'players.read': 'Read player data such as custom tags and metadata',
+    'players.write': 'Modify player custom tags via the players.addTag / players.removeTag APIs',
     'ws.push': 'Push real-time data to panel clients via WebSocket',
 };
 
@@ -179,7 +171,7 @@ function AddonCard({
                 {/* Actions */}
                 {!isReadOnly && (
                     <div className="flex flex-wrap gap-2 pt-1">
-                        {needsApproval && (
+                        {(needsApproval || needsReapproval) && (
                             <Button size="sm" onClick={() => onApprove(addon)}>
                                 <ShieldCheckIcon className="mr-1 h-4 w-4" />
                                 {needsReapproval ? 'Re-approve' : 'Approve'}
@@ -290,7 +282,7 @@ function AddonLogsDialog({
                         <p className="text-muted-foreground">No log entries.</p>
                     )}
                     {logs.map((log, i) => (
-                        <div key={i} className="flex gap-2 py-0.5">
+                        <div key={`${log.timestamp}-${i}`} className="flex gap-2 py-0.5">
                             <span className="text-muted-foreground shrink-0">
                                 {new Date(log.timestamp).toLocaleTimeString()}
                             </span>
@@ -346,10 +338,6 @@ export default function AddonsPage() {
     const isReadOnly = !hasPerm('all_permissions');
     const fetcher = useAuthedFetcher();
     const settingsWidgets = useAddonWidgets('settings.sections');
-    const addonApi = useBackendApi<any>({
-        method: 'POST',
-        path: '',
-    });
 
     const { data, error, isLoading, mutate } = useSWR<AddonsListResponse>(
         '/addons/list',
@@ -364,6 +352,7 @@ export default function AddonsPage() {
     const [settingsAddonId, setSettingsAddonId] = useState<string | null>(null);
     const [logsAddonId, setLogsAddonId] = useState<string | null>(null);
     const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
 
     const handleOpenApproval = useCallback((addon: AddonListItem) => {
         setApprovalTarget(addon);
@@ -465,18 +454,6 @@ export default function AddonsPage() {
         );
     }, []);
 
-    if (error) {
-        return (
-            <div className="flex flex-col items-center justify-center gap-2 p-8">
-                <AlertTriangleIcon className="h-8 w-8 text-destructive" />
-                <p className="text-destructive">Failed to load addons.</p>
-            </div>
-        );
-    }
-
-    const addons = data?.addons ?? [];
-    const [isScanning, setIsScanning] = useState(false);
-
     const handleScanAddons = useCallback(async () => {
         setIsScanning(true);
         try {
@@ -494,6 +471,17 @@ export default function AddonsPage() {
             setIsScanning(false);
         }
     }, [fetcher, mutate]);
+
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-2 p-8">
+                <AlertTriangleIcon className="h-8 w-8 text-destructive" />
+                <p className="text-destructive">Failed to load addons.</p>
+            </div>
+        );
+    }
+
+    const addons = data?.addons ?? [];
 
     return (
         <div className="flex w-full flex-col gap-4">

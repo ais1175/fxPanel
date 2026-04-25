@@ -1,4 +1,4 @@
-import { KickAllIcon } from '@/components/kickIcons';
+import { KickAllIcon } from '@/components/KickIcons';
 import { fxRunnerStateAtom, txConfigStateAtom } from '@/hooks/status';
 import { cn } from '@/lib/utils';
 import { cva } from 'class-variance-authority';

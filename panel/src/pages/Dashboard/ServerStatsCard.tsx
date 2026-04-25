@@ -19,58 +19,52 @@ type HostStatsDataProps = {
         | undefined;
 };
 
-const HostStatsData = memo(({ uptimePct, medianPlayerCount, fxsMemory, nodeMemory }: HostStatsDataProps) => {
-    const uptimePart = uptimePct ? uptimePct.toFixed(2) + '%' : '--';
-    const medianPlayerPart = medianPlayerCount ? Math.ceil(medianPlayerCount) : '--';
-    const fxsPart = fxsMemory ? fxsMemory.toFixed(2) + 'MB' : '--';
+type StatRowProps = {
+    icon: React.ElementType;
+    label: string;
+    value: React.ReactNode;
+    valueClass?: string | null;
+    title?: string;
+};
+function StatRow({ icon: Icon, label, value, valueClass, title }: StatRowProps) {
+    return (
+        <div className="flex items-center gap-3 py-2.5" title={title}>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/50">
+                <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+            </div>
+            <span className="flex-1 text-xs text-muted-foreground/70">{label}</span>
+            <span className={cn('font-mono text-sm font-semibold', valueClass ?? 'text-foreground')}>{value}</span>
+        </div>
+    );
+}
 
-    let nodeCustomClass = null;
+const HostStatsData = memo(({ uptimePct, medianPlayerCount, fxsMemory, nodeMemory }: HostStatsDataProps) => {
+    const uptimePart = uptimePct != null ? uptimePct.toFixed(2) + '%' : '--';
+    const medianPlayerPart = medianPlayerCount != null ? String(Math.ceil(medianPlayerCount)) : '--';
+    const fxsPart = fxsMemory != null ? fxsMemory.toFixed(2) + ' MB' : '--';
+
+    let nodeCustomClass: string | null = null;
     let nodePart: React.ReactNode = '--';
+    let nodeTitle = '';
     if (nodeMemory) {
-        const nodeMemoryUsage = Math.ceil((nodeMemory.used / nodeMemory.limit) * 100);
-        nodePart = nodeMemory.used.toFixed(2) + 'MB' + ' (' + nodeMemoryUsage + '%)';
-        if (nodeMemoryUsage > 85) {
-            nodeCustomClass = 'text-destructive';
-        } else if (nodeMemoryUsage > 70) {
-            nodeCustomClass = 'text-warning';
+        if (nodeMemory.limit > 0) {
+            const pct = Math.ceil((nodeMemory.used / nodeMemory.limit) * 100);
+            nodePart = `${nodeMemory.used.toFixed(2)} MB (${pct}%)`;
+            nodeTitle = `${nodeMemory.used.toFixed(2)} MB / ${nodeMemory.limit} MB`;
+            if (pct > 85) nodeCustomClass = 'text-destructive';
+            else if (pct > 70) nodeCustomClass = 'text-warning-inline';
+        } else {
+            nodePart = `${nodeMemory.used.toFixed(2)} MB`;
+            nodeTitle = `${nodeMemory.used.toFixed(2)} MB`;
         }
     }
 
     return (
-        <div className="text-muted-foreground grid h-full grid-cols-2 gap-4 pb-2 sm:grid-cols-1">
-            <div className="flex items-center">
-                <TimerIcon className="mr-2 hidden opacity-75 sm:block sm:size-6 md:size-12" />
-                <div className="mr-auto ml-auto flex flex-col sm:mr-0 sm:ml-auto">
-                    <span className="text-primary text-center text-xl sm:text-right">{uptimePart}</span>
-                    <span className="text-center text-sm sm:text-right">Uptime 24h</span>
-                </div>
-            </div>
-            <div className="flex items-center">
-                <TrendingUpIcon className="mr-2 hidden opacity-75 sm:block sm:size-6 md:size-12" />
-                <div className="mr-auto ml-auto flex flex-col sm:mr-0 sm:ml-auto">
-                    <span className="text-primary text-center text-xl sm:text-right">{medianPlayerPart}</span>
-                    <span className="text-center text-sm sm:text-right">Median Players 24h</span>
-                </div>
-            </div>
-            <div className="flex items-center">
-                <MemoryStickIcon className="mr-2 hidden opacity-75 sm:block sm:size-6 md:size-12" />
-                <div className="mr-auto ml-auto flex flex-col sm:mr-0 sm:ml-auto">
-                    <span className="text-primary text-center text-xl sm:text-right">{fxsPart}</span>
-                    <span className="text-center text-sm sm:text-right">FXServer Memory</span>
-                </div>
-            </div>
-            <div
-                className={cn('flex items-center', nodeCustomClass ?? 'text-muted-foreground')}
-                title={nodeMemory ? `${nodeMemory.used.toFixed(2)}MB / ${nodeMemory.limit}MB` : ''}
-            >
-                <MemoryStickIcon className="mr-2 hidden opacity-75 sm:block sm:size-6 md:size-12" />
-                <div className="mr-auto ml-auto flex flex-col sm:mr-0 sm:ml-auto">
-                    <span className={cn('text-center text-xl sm:text-right', nodeCustomClass ?? 'text-primary')}>
-                        {nodePart}
-                    </span>
-                    <span className="text-center text-sm sm:text-right">Node.js Memory</span>
-                </div>
-            </div>
+        <div className="flex flex-col divide-y divide-border/30">
+            <StatRow icon={TimerIcon} label="Uptime 24h" value={uptimePart} />
+            <StatRow icon={TrendingUpIcon} label="Median Players 24h" value={medianPlayerPart} />
+            <StatRow icon={MemoryStickIcon} label="FXServer Memory" value={fxsPart} />
+            <StatRow icon={MemoryStickIcon} label="Node.js Memory" value={nodePart} valueClass={nodeCustomClass} title={nodeTitle} />
         </div>
     );
 });
@@ -112,7 +106,7 @@ export default function ServerStatsCard() {
                 titleTimeIndicator: dataAge.isStale ? '(minutes ago)' : '(live)',
             };
         }
-    }, [svRuntimeData, perfCursorData]);
+    }, [svRuntimeData, perfCursorData, getDashDataAge]);
 
     //Rendering
     let titleNode: React.ReactNode = null;
@@ -136,12 +130,12 @@ export default function ServerStatsCard() {
     }
 
     return (
-        <div className="bg-card flex h-80 max-h-80 flex-col border px-4 py-2 shadow-xs md:rounded-xl">
-            <div className="text-muted-foreground flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="line-clamp-1 text-sm font-medium tracking-tight">Server stats {titleNode}</h3>
-                <div className="xs:block hidden">
-                    <GaugeIcon />
-                </div>
+        <div className="bg-card flex h-80 max-h-80 flex-col rounded-xl border border-border/60 px-4 py-3 shadow-sm">
+            <div className="flex flex-row items-center justify-between pb-1">
+                <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                    Server Stats {titleNode}
+                </h3>
+                <GaugeIcon className="h-3.5 w-3.5 text-muted-foreground/30" />
             </div>
             {contentNode}
         </div>

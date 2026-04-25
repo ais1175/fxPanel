@@ -120,6 +120,7 @@ async function handleAdd(ctx: AuthedCtx) {
             }
         } catch (error) {
             console.error(`Failed to resolve CitizenFX ID to game identifier with error: ${emsg(error)}`);
+            return ctx.send({ type: 'danger', message: 'Failed to verify CitizenFX ID. Please try again or check the ID.' });
         }
     }
 
@@ -229,6 +230,7 @@ async function handleEdit(ctx: AuthedCtx) {
             }
         } catch (error) {
             console.error(`Failed to resolve CitizenFX ID to game identifier with error: ${emsg(error)}`);
+            return ctx.send({ type: 'danger', message: 'Failed to verify CitizenFX ID. Please try again or check the ID.' });
         }
     }
 
@@ -271,7 +273,7 @@ async function handleEdit(ctx: AuthedCtx) {
         await txCore.adminStore.editAdmin(lookupName, null, citizenfxData, discordData, permissions);
         //Rename if name changed
         if (name.toLowerCase() !== lookupName.toLowerCase()) {
-            txCore.adminStore.renameAdmin(lookupName, name);
+            await txCore.adminStore.renameAdmin(lookupName, name);
         }
         ctx.admin.logAction(`Editing user '${name}'.`);
         return ctx.send({ type: 'success', refresh: true });

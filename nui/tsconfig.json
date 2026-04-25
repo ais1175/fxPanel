@@ -9,17 +9,19 @@
         "strict": true,
         "forceConsistentCasingInFileNames": true,
         "module": "ES6",
+        "moduleResolution": "bundler",
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
         "jsx": "react-jsx",
+        "types": ["node"],
 
         /* mod resolution. */
         "paths": {
             "@shared/*": ["../shared/*"],
+            "@locale/*": ["../locale/*"],
             "@nui/*": ["./*"]
         }
     },
-    "include": ["src"],
-    "references": [{ "path": "./tsconfig.node.json" }, { "path": "../shared" }]
+    "include": ["src"]
 }

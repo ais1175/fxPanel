@@ -22,7 +22,7 @@ function SessionLengthChart({ buckets }: Props) {
     const isDarkMode = useIsDarkMode();
 
     if (!Array.isArray(buckets) || !buckets.length) {
-        return <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">No data</div>;
+        return <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">No data available</div>;
     }
 
     const data: BarDatum[] = buckets.map((b) => ({
@@ -38,8 +38,10 @@ function SessionLengthChart({ buckets }: Props) {
                 indexBy="label"
                 margin={{ top: 10, right: 10, bottom: 50, left: 40 }}
                 padding={0.3}
-                colors={isDarkMode ? ['#f59e0b'] : ['#d97706']}
-                borderWidth={0}
+                colors={isDarkMode ? ['#fbbf24'] : ['#d97706']}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.55]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -68,6 +70,8 @@ function SessionLengthChart({ buckets }: Props) {
                     },
                 }}
                 tooltip={ChartTooltip}
+                animate={true}
+                motionConfig="gentle"
             />
         </div>
     );

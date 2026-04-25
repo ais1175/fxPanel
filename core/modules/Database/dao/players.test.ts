@@ -151,7 +151,7 @@ suite('PlayersDao', () => {
     suite('update', () => {
         it('should throw when trying to update license field', () => {
             expect(() => dao.update('a'.repeat(40), { license: 'new' } as any, Symbol('test'))).toThrow(
-                'cannot license field',
+                'cannot modify license field',
             );
         });
     });

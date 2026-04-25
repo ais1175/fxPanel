@@ -1,11 +1,16 @@
-import { SvRtPerfThreadNamesType } from '@core/modules/Metrics/svRuntime/config';
-import { SvRtNodeMemoryType, SvRtPerfBoundariesType } from '@core/modules/Metrics/svRuntime/perfSchemas';
+import type { BanTemplatesDataType, SvRtPerfThreadNamesType } from './otherTypes';
 import type { ReactAuthDataType } from './authApiTypes';
 import type { UpdateDataType } from './otherTypes';
 import { DiscordBotStatus, TxConfigState, type FxMonitorHealth } from './enums';
 import type { LiveConsoleInitialData } from './consoleBlock';
 import type { SpectateFrameEventData } from './spectateApiTypes';
 import type { ResourcesWsEventType } from './resourcesApiTypes';
+
+export type SvRtNodeMemoryType = {
+    used: number;
+    limit: number;
+};
+export type SvRtPerfBoundariesType = Array<number | '+Inf'>;
 
 /**
  * Status channel
@@ -136,6 +141,7 @@ export type ListenEventsMap = {
     consoleData: (data: string | LiveConsoleInitialData) => void;
     logData: (data: { ts: number; type: string; src: { id: string | false; name: string }; msg: string }[]) => void;
     dashboard: (data: DashboardDataEventType) => void;
+    banTemplatesUpdate: (data: BanTemplatesDataType[]) => void;
     resources: (data: ResourcesWsEventType) => void;
 
     //Standalone events

@@ -374,7 +374,7 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
         }
 
         //Check for +set
-        if (['+set', '+setr', '+setr'].includes(cmd.command)) {
+        if (['+set', '+sets', '+setr'].includes(cmd.command)) {
             const msg = `Line ${cmd.line}: remove the '+' from '${cmd.command}', as this is not an launch parameter.`;
             warnings.add(cmd.file, cmd.line, msg);
             continue;
@@ -436,11 +436,11 @@ const validateCommands = async (parsedCommands: (ExecRecursionError | Command)[]
             continue;
         }
 
-        //Comment out any fxPanel-managed convar sets
+        //Comment out any fxPanel-managed convar sets (including legacy txadmin prefix)
         if (
             ['set', 'sets', 'setr'].includes(cmd.command) &&
             cmd.args.length === 2 &&
-            cmd.args[0].toLowerCase().startsWith('fxpanel')
+            (cmd.args[0].toLowerCase().startsWith('fxpanel') || cmd.args[0].toLowerCase().startsWith('txadmin'))
         ) {
             toCommentOut.add(
                 cmd.file,
@@ -565,11 +565,11 @@ const getConnectEndpoint = (endpoints: EndpointsObjectType, hasEndpointCommand: 
         const instruction = hasEndpointCommand ? 'Please delete all \`endpoint_add_*\` lines and' : 'Please';
         const suggestedPort = txHostConfig.fxsPort ?? 30120;
         const suggestedInterface = txHostConfig.netInterface ?? '0.0.0.0';
-        const desidredEndpoint = `${suggestedInterface}:${suggestedPort}`;
+        const desiredEndpoint = `${suggestedInterface}:${suggestedPort}`;
         const msg = [
             `Your config file does not specify valid endpoints for FXServer to use. ${instruction} add the following to the start of the file:`,
-            `\`endpoint_add_tcp "${desidredEndpoint}"\``,
-            `\`endpoint_add_udp "${desidredEndpoint}"\``,
+            `\`endpoint_add_tcp "${desiredEndpoint}"\``,
+            `\`endpoint_add_udp "${desiredEndpoint}"\``,
         ].join('\n');
         throw new Error(msg);
     }
@@ -612,7 +612,7 @@ export const validateFixServerConfig = async (cfgPath: string, serverDataPath: s
             const cfgRaw = await fsp.readFile(targetCfgPath, 'utf8');
 
             //modify the cfg lines
-            const fileEOL = detectNewline(cfgRaw);
+            const fileEOL = detectNewline(cfgRaw) ?? '\n';
             const cfgLines = cfgRaw.split(/\r?\n/);
             for (const [ln, reason] of actions) {
                 if (ln === false) continue;

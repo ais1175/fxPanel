@@ -8,14 +8,14 @@ import { txEnv, txHostConfig } from '@core/globalData';
 import type { DatabaseObjectType } from './instance';
 import consoleFactory from '@lib/console';
 import { msToDuration } from '@lib/misc';
-import type { ActionId } from '@shared/brandedTypes';
+import type { ActionId, TicketId } from '@shared/brandedTypes';
 const console = consoleFactory(modulename);
 
 //Consts
 type IdStorageTypes = DatabaseObjectType | Set<string>;
 const maxAttempts = 10;
 const noIdErrorMessage =
-    'Unnable to generate new Random ID possibly due to the decreased available entropy. Please send a screenshot of the detailed information in the terminal for the txAdmin devs.';
+    'Unable to generate new Random ID possibly due to the decreased available entropy. Please send a screenshot of the detailed information in the terminal for the txAdmin devs.';
 
 /**
  * Prints a diagnostics message to the console that should help us identify what is the problem and the potential solution
@@ -122,6 +122,24 @@ export const genReportID = (storage: IdStorageTypes) => {
         const id = 'RPT-' + randFunc.customAlphabet(consts.actionIdAlphabet, 5)();
         if (checkUniqueness(storage, id, 'reports')) {
             return id;
+        }
+    }
+
+    printDiagnostics().catch((e) => {});
+    throw new Error(noIdErrorMessage);
+};
+
+/**
+ * Generates an unique ticket ID (TKT- prefix), or throws an error
+ */
+export const genTicketID = (storage: IdStorageTypes): TicketId => {
+    let attempts = 0;
+    while (attempts < maxAttempts) {
+        attempts++;
+        const randFunc = attempts <= 5 ? nanoidSecure : nanoidNonSecure;
+        const id = 'TKT-' + randFunc.customAlphabet(consts.actionIdAlphabet, 5)();
+        if (checkUniqueness(storage, id, 'tickets')) {
+            return id as TicketId;
         }
     }
 

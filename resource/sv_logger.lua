@@ -15,7 +15,7 @@ local loggerBuffer = {}
 
 --- function logger
 --- Sends logs through fd3 to the server & displays the logs on the panel.
----@param src number the source of the player who did the action, or 'tx' if internal
+---@param src number|string the source of the player who did the action, or 'tx' if internal
 ---@param type string the action type
 ---@param data table|nil the event data
 local function logger(src, type, data)
@@ -59,7 +59,7 @@ CreateThread(function()
     for i = 0, resCount do
         local resName = GetResourceByFindIndex(i)
         if GetResourceState(resName) == 'started' then
-            local resVersion = GetResourceMetadata(resName, 'version')
+            local resVersion = GetResourceMetadata(resName, 'version', 0)
             if type(resVersion) == 'string' and #resVersion > 0 then
                 resList[#resList + 1] = resName .. '/' .. resVersion
             else
@@ -168,13 +168,16 @@ AddEventHandler('explosionEvent', function(source, ev)
         return
     end
 
-    if ev.explosionType < -1 or ev.explosionType > 77 then
+    if ev.explosionType < -1 or ev.explosionType > #explosionTypes - 1 then
         ev.explosionType = 'UNKNOWN'
     else
-        ev.explosionType = explosionTypes[ev.explosionType + 1]
+        ---@diagnostic disable-next-line: param-type-mismatch
+        ev.explosionType = explosionTypes[ev.explosionType + 1] or 'UNKNOWN'
     end
 
-    logger(tonumber(source), 'explosionEvent', ev)
+    ---@diagnostic disable-next-line: param-type-mismatch
+    local src = tonumber(source) or source
+    logger(src, 'explosionEvent', ev)
 end)
 
 -- An internal server handler, this is NOT exposed to the client
@@ -306,12 +309,24 @@ end)
 
 --FIXME: deprecate or allow server commands
 --FIXME: didn't migrate to keep compatibility with external calls
+local warnedCommandExecuted = false
 RegisterNetEvent('txaLogger:CommandExecuted', function(data)
+    if source ~= 0 then return end
+    if not warnedCommandExecuted then
+        warnedCommandExecuted = true
+        TxPrint(("^3DEPRECATED: the event 'txaLogger:CommandExecuted' is deprecated and will be removed in a future release. Caller invoked from resource '%s'. Update your code to call logger(source, 'CommandExecuted', data) directly or use the current txAdmin logging API."):format(GetInvokingResource() or 'unknown'))
+    end
     logger(source, 'CommandExecuted', data)
 end)
 
 --FIXME: didn't migrate to keep compatibility with external calls
+local warnedDebugMessage = false
 RegisterNetEvent('txaLogger:DebugMessage', function(data)
+    if source ~= 0 then return end
+    if not warnedDebugMessage then
+        warnedDebugMessage = true
+        TxPrint(("^3DEPRECATED: the event 'txaLogger:DebugMessage' is deprecated and will be removed in a future release. Caller invoked from resource '%s'. Update your code to call logger(source, 'DebugMessage', data) directly or use the current txAdmin logging API."):format(GetInvokingResource() or 'unknown'))
+    end
     logger(source, 'DebugMessage', data)
 end)
 

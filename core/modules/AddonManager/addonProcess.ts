@@ -3,8 +3,8 @@ import { fork, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import consoleFactory from '@lib/console';
-import { txEnv } from '@core/globalData';
 import { AddonStorageScope } from './addonStorage';
+import { isPathInside } from './addonUtils';
 import { ServerPlayer } from '@lib/player/playerClasses';
 import type {
     AddonState,
@@ -54,10 +54,13 @@ export default class AddonProcess {
     private readonly onCrash: ((addonId: string) => void) | undefined;
     private readonly logPrefix: string;
 
+    private readonly nodeModulesDir: string;
+
     constructor(opts: {
         addonId: string;
         entryPath: string;
         addonDir: string;
+        nodeModulesDir: string;
         permissions: string[];
         storage: AddonStorageScope;
         onWsPush: (addonId: string, event: string, data: unknown) => void;
@@ -66,6 +69,7 @@ export default class AddonProcess {
         this.addonId = opts.addonId;
         this.entryPath = opts.entryPath;
         this.addonDir = opts.addonDir;
+        this.nodeModulesDir = opts.nodeModulesDir;
         this.permissions = opts.permissions;
         this.storage = opts.storage;
         this.onWsPush = opts.onWsPush;
@@ -83,8 +87,9 @@ export default class AddonProcess {
         // Resolve entry path relative to addon dir
         const resolvedEntry = path.resolve(this.addonDir, this.entryPath);
 
-        // Verify entry path is within addon directory (prevent path traversal)
-        if (!resolvedEntry.startsWith(path.resolve(this.addonDir))) {
+        // Verify entry path is strictly within addon directory (prevent path traversal
+        // via ../, sibling-prefix paths like <addonDir>2/..., and symlink escapes).
+        if (!isPathInside(this.addonDir, resolvedEntry)) {
             this.state = 'failed';
             return { success: false, error: 'Entry path escapes addon directory' };
         }
@@ -93,13 +98,38 @@ export default class AddonProcess {
             // The addon-sdk lives at <txaPath>/node_modules/addon-sdk/
             // ESM resolution walks up the directory tree to find node_modules,
             // so addons at <txaPath>/addons/<id>/ naturally resolve it.
+            //
+            // Do NOT inherit the parent's execArgv (which may contain debug/inspect
+            // flags that would expose the host Node process to the addon), and
+            // explicitly neutralise a few foot-guns.
+            //
+            // Inside FXServer's embedded Node runtime, process.execPath points to
+            // FXServer.exe rather than node. Using it as the fork executable would
+            // spawn a full FXServer instance instead of a plain Node process, causing
+            // a duplicate-core boot and config-lock conflict. Detect this and fall
+            // back to the system Node.js binary.
+            const isFxServerRuntime = /FXServer/i.test(path.basename(process.execPath));
+            // Whitelist of additional process.env keys to forward to addon child processes.
+            // These are safe locale/timezone/terminal vars that addons may legitimately need.
+            const envWhitelist = ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM'] as const;
+            const whitelistedEnv = Object.fromEntries(
+                envWhitelist.flatMap((key) => (process.env[key] !== undefined ? [[key, process.env[key]]] : [])),
+            );
             this.child = fork(resolvedEntry, [], {
                 cwd: this.addonDir,
+                ...(isFxServerRuntime && { execPath: 'node' }),
                 env: {
+                    ...whitelistedEnv,
+                    PATH: process.env.PATH,
+                    HOME: process.env.HOME,
                     NODE_ENV: process.env.NODE_ENV,
                     ADDON_ID: this.addonId,
-                    // No access to core secrets, db paths, tokens, etc.
+                    NODE_PATH: this.nodeModulesDir,
                 },
+                execArgv: [
+                    // Throw on __proto__ writes to reduce prototype-pollution blast radius.
+                    '--disable-proto=throw',
+                ],
                 stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
                 serialization: 'json',
             });
@@ -333,10 +363,13 @@ export default class AddonProcess {
                 if (pending) {
                     this.pendingRequests.delete(msg.id);
                     clearTimeout(pending.timer);
-                    // Sanitize response - strip dangerous headers
-                    const headers = { ...(msg.payload.headers || {}) };
-                    delete headers['set-cookie'];
-                    delete headers['Set-Cookie'];
+                    // Sanitize response - strip dangerous headers (case-insensitive)
+                    const headers: Record<string, string> = {};
+                    for (const [key, value] of Object.entries(msg.payload.headers || {})) {
+                        if (key.toLowerCase() !== 'set-cookie') {
+                            headers[key] = value as string;
+                        }
+                    }
                     pending.resolve({
                         status: msg.payload.status,
                         headers,
@@ -457,10 +490,18 @@ export default class AddonProcess {
             let result: unknown;
             switch (payload.op) {
                 case 'get':
-                    result = this.storage.get(payload.key!);
+                    if (!payload.key) {
+                        this.send({ type: 'storage-response', id, payload: { data: null, error: 'Missing key for get operation' } });
+                        return;
+                    }
+                    result = this.storage.get(payload.key);
                     break;
                 case 'set': {
-                    const setResult = this.storage.set(payload.key!, payload.value);
+                    if (!payload.key) {
+                        this.send({ type: 'storage-response', id, payload: { data: null, error: 'Missing key for set operation' } });
+                        return;
+                    }
+                    const setResult = this.storage.set(payload.key, payload.value);
                     if (!setResult.success) {
                         this.send({ type: 'storage-response', id, payload: { data: null, error: setResult.error } });
                         return;
@@ -469,7 +510,11 @@ export default class AddonProcess {
                     break;
                 }
                 case 'delete':
-                    this.storage.delete(payload.key!);
+                    if (!payload.key) {
+                        this.send({ type: 'storage-response', id, payload: { data: null, error: 'Missing key for delete operation' } });
+                        return;
+                    }
+                    this.storage.delete(payload.key);
                     result = true;
                     break;
                 case 'list':

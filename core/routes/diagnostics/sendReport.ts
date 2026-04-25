@@ -138,8 +138,8 @@ export default async function SendDiagnosticsReport(ctx: AuthedCtx) {
     const reportData = {
         $schemaVersion: 2,
         $txVersion: txEnv.txaVersion,
-        $fxVersion: txEnv.fxsVersion,
-        $provider: String(txHostConfig.providerName), //we want an 'undefined'
+        $fxVersion: String(txEnv.fxsVersion),
+        $provider: txHostConfig.providerName ?? undefined,
         diagnostics,
         txSystemLog,
         txActionLog,

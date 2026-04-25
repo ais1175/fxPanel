@@ -1,6 +1,6 @@
 {
     "name": "fxPanel-core",
-    "version": "1.0.0",
+    "version": "0.2.2",
     "description": "The core package is the backend of fxPanel and handles running fxserver and the web server and every other internal backend stuff.",
     "type": "module",
     "scripts": {

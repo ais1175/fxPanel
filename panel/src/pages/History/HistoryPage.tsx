@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangleIcon, GavelIcon } from 'lucide-react';
+import { AlertTriangleIcon, GavelIcon, ClockIcon } from 'lucide-react';
 import PageCalloutRow, { PageCalloutProps } from '@/components/PageCalloutRow';
+import { PageHeader } from '@/components/page-header';
 import {
     HistorySearchBox,
     HistorySearchBoxReturnStateType,
@@ -10,7 +11,6 @@ import {
 import HistoryTable from './HistoryTable';
 import { HistoryStatsResp, HistoryTableSearchType } from '@shared/historyApiTypes';
 import { useBackendApi } from '@/hooks/fetch';
-import { createRandomHslColor } from '@/lib/utils';
 
 //Memoized components
 const HistorySearchBoxMemo = memo(HistorySearchBox);
@@ -20,8 +20,8 @@ const PageCalloutRowMemo = memo(PageCalloutRow);
 //Helpers for storing search and filters in URL
 const updateUrlSearchParams = (
     search: HistoryTableSearchType,
-    filterbyType: string | undefined,
-    filterbyAdmin: string | undefined,
+    filterByType: string | undefined,
+    filterByAdmin: string | undefined,
 ) => {
     const newUrl = new URL(window.location.toString());
     if (search && search.type && search.value) {
@@ -31,13 +31,13 @@ const updateUrlSearchParams = (
         newUrl.searchParams.delete('searchType');
         newUrl.searchParams.delete('searchQuery');
     }
-    if (filterbyType && filterbyType !== '!any') {
-        newUrl.searchParams.set('filterbyType', filterbyType);
+    if (filterByType && filterByType !== '!any') {
+        newUrl.searchParams.set('filterbyType', filterByType);
     } else {
         newUrl.searchParams.delete('filterbyType');
     }
-    if (filterbyAdmin && filterbyAdmin !== '!any') {
-        newUrl.searchParams.set('filterbyAdmin', filterbyAdmin);
+    if (filterByAdmin && filterByAdmin !== '!any') {
+        newUrl.searchParams.set('filterbyAdmin', filterByAdmin);
     } else {
         newUrl.searchParams.delete('filterbyAdmin');
     }
@@ -60,8 +60,8 @@ const getInitialState = () => {
                       type: availableSearchTypes[0].value,
                       value: '',
                   },
-        filterbyType: params.get('filterbyType') ?? SEARCH_ANY_STRING,
-        filterbyAdmin: params.get('filterbyAdmin') ?? SEARCH_ANY_STRING,
+        filterByType: params.get('filterbyType') ?? SEARCH_ANY_STRING,
+        filterByAdmin: params.get('filterbyAdmin') ?? SEARCH_ANY_STRING,
     } satisfies HistorySearchBoxReturnStateType;
 };
 
@@ -75,9 +75,10 @@ export default function HistoryPage() {
     });
 
     //Callout data
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only fetch; statsApi identity changes each render
     useEffect(() => {
         statsApi({
-            success(data, toastId) {
+            success(data) {
                 setCalloutData(data);
             },
         });
@@ -85,9 +86,9 @@ export default function HistoryPage() {
 
     //HistorySearchBox handlers
     const doSearch = useCallback(
-        (search: HistoryTableSearchType, filterbyType: string | undefined, filterbyAdmin: string | undefined) => {
-            setSearchBoxReturn({ search, filterbyType, filterbyAdmin });
-            updateUrlSearchParams(search, filterbyType, filterbyAdmin);
+        (search: HistoryTableSearchType, filterByType: string | undefined, filterByAdmin: string | undefined) => {
+            setSearchBoxReturn({ search, filterByType, filterByAdmin });
+            updateUrlSearchParams(search, filterByType, filterByAdmin);
         },
         [],
     );
@@ -123,11 +124,10 @@ export default function HistoryPage() {
 
     return (
         <div className="h-contentvh flex w-full min-w-96 flex-col">
-            {/* <div
-            //DEBUG component state
-            className='w-full bg-black p-2'
-            style={{ color: createRandomHslColor() }}
-        >{JSON.stringify(searchBoxReturn)}</div> */}
+            <PageHeader
+                title="History"
+                icon={<ClockIcon className="size-5" />}
+            />
 
             <PageCalloutRowMemo callouts={calloutRowData} />
 
@@ -142,8 +142,8 @@ export default function HistoryPage() {
             {searchBoxReturn ? (
                 <HistoryTableMemo
                     search={searchBoxReturn.search}
-                    filterbyType={searchBoxReturn.filterbyType}
-                    filterbyAdmin={searchBoxReturn.filterbyAdmin}
+                    filterByType={searchBoxReturn.filterByType}
+                    filterByAdmin={searchBoxReturn.filterByAdmin}
                 />
             ) : null}
         </div>

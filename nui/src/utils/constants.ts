@@ -1,7 +1,6 @@
-import { PlayerModalSuccess } from '@shared/playerApiTypes';
 import { AUTO_TAG_DEFINITIONS } from '@shared/socketioTypes';
 
-export const MockedPlayerDetails: PlayerModalSuccess = {
+export const MockedPlayerDetails = {
     serverTime: Math.floor(Date.now() / 1000),
     tagDefinitions: AUTO_TAG_DEFINITIONS,
     banTemplates: [
@@ -347,4 +346,4 @@ export const MockedPlayerDetails: PlayerModalSuccess = {
         ],
         tsLastConnection: 1667708940,
     },
-};
+} as any;

@@ -9,7 +9,7 @@ import { MaterialDesignContent, SnackbarProvider } from 'notistack';
 import { registerDebugFunctions } from './utils/registerDebugFunctions';
 import { useNuiEvent } from './hooks/useNuiEvent';
 import { useGameCapture } from './hooks/useGameCapture';
-import styled from '@emotion/styled';
+import { styled } from '@mui/material/styles';
 import rawMenuTheme from './styles/theme';
 import rawMenuRedmTheme from './styles/theme-redm';
 import { useIsRedm } from './state/isRedm.state';
@@ -18,18 +18,6 @@ import { useNuiAddonLoader } from './hooks/useNuiAddonLoader';
 registerDebugFunctions();
 
 //Instantiating the two themes
-declare module '@mui/material/styles' {
-    interface Theme {
-        name: string;
-        logo: string;
-    }
-
-    // allow configuration using `createTheme`
-    interface ThemeOptions {
-        name?: string;
-        logo?: string;
-    }
-}
 const menuRedmTheme = createTheme(rawMenuRedmTheme);
 const menuTheme = createTheme(rawMenuTheme);
 
@@ -101,6 +89,9 @@ const App = () => {
 };
 
 const rootContainer = document.getElementById('root');
+if (!rootContainer) {
+    throw new Error('Root element #root not found');
+}
 const root = createRoot(rootContainer);
 root.render(
     <JotaiProvider>

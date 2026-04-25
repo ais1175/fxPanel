@@ -22,6 +22,46 @@ const reportsEnabled = typeDefinedConfig({
     fixer: SYM_FIXER_DEFAULT,
 });
 
+const ticketCategories = typeDefinedConfig({
+    name: 'Ticket Categories',
+    default: ['Player Report', 'Bug Report', 'Question', 'Other'] as string[],
+    validator: z.array(z.string().min(1).max(64)).min(1).max(20),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const ticketCategoryDescriptions = typeDefinedConfig({
+    name: 'Ticket Category Descriptions',
+    default: {
+        'Player Report': 'Report a player for rule violations.',
+        'Bug Report': 'Report a bug or server issue.',
+        'Question': 'Ask a question to staff.',
+        'Other': 'Anything else.',
+    } as Record<string, string>,
+    validator: z.record(z.string().min(1).max(128)),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const ticketPriorityEnabled = typeDefinedConfig({
+    name: 'Ticket Priority Enabled',
+    default: false,
+    validator: z.boolean(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const ticketFeedbackEnabled = typeDefinedConfig({
+    name: 'Ticket Feedback Enabled',
+    default: true,
+    validator: z.boolean(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const ticketRetentionDays = typeDefinedConfig({
+    name: 'Ticket Retention Days',
+    default: 30,
+    validator: z.number().int().min(1).max(365),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
 const menuEnabled = typeDefinedConfig({
     name: 'Menu Enabled',
     default: true,
@@ -108,6 +148,11 @@ const customTags = typeDefinedConfig({
 
 export default {
     reportsEnabled,
+    ticketCategories,
+    ticketCategoryDescriptions,
+    ticketPriorityEnabled,
+    ticketFeedbackEnabled,
+    ticketRetentionDays,
     menuEnabled,
     menuAlignRight,
     menuPageKey,

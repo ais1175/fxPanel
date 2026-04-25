@@ -1,6 +1,6 @@
 type CleanFullPathReturn = { path: string } | { error: string };
 
-export default function cleanFullPath(input: string, isWindows): CleanFullPathReturn {
+export default function cleanFullPath(input: string, isWindows: boolean): CleanFullPathReturn {
     //Path must be a string
     if (typeof input !== 'string') {
         return { error: 'path must be a string' };

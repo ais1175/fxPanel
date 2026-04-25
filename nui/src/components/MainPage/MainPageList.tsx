@@ -86,7 +86,7 @@ export const MainPageList: React.FC = () => {
         <Box sx={{ pointerEvents: 'none' }}>
             <StyledList>
                 {menuListItems.map((item, index) =>
-                    item.isMultiAction ? (
+                    'isMultiAction' in item && item.isMultiAction ? (
                         // @ts-ignore
                         <MenuListItemMulti key={index} selected={curSelected === index} {...item} />
                     ) : (
@@ -109,7 +109,7 @@ export const MainPageList: React.FC = () => {
           fontSize: 12,
         }}
       >
-        v{serverCtx.txAdminVersion}
+        v{serverCtx.fxPanelVersion}
       </Typography>  */}
         </Box>
     );

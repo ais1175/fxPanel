@@ -1,5 +1,5 @@
 const modulename = 'DiscordBot';
-import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits } from 'discord.js';
+import Discord, { ActivityType, AttachmentBuilder, ChannelType, Client, EmbedBuilder, GatewayIntentBits } from 'discord.js';
 import { Agent } from 'undici';
 import slashCommands from './slash';
 import interactionCreateHandler from './interactionCreateHandler';
@@ -9,6 +9,7 @@ import { embedColors } from './discordHelpers';
 import { DiscordBotStatus } from '@shared/enums';
 import { UpdateConfigKeySet } from '@modules/ConfigStore/utils';
 import { txHostConfig } from '@core/globalData';
+import type { DatabaseTicketType } from '@shared/ticketApiTypes';
 const console = consoleFactory(modulename);
 
 //Types
@@ -33,7 +34,12 @@ export default class DiscordBot {
     static readonly configKeysWatched = ['discordBot.embedJson', 'discordBot.embedConfigJson'];
 
     readonly #clientOptions: Discord.ClientOptions = {
-        intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+        intents: [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMembers,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.MessageContent,
+        ],
         allowedMentions: {
             parse: ['users'],
             repliedUser: true,
@@ -360,6 +366,40 @@ export default class DiscordBot {
                 this.refreshWsStatus();
             });
             this.#client.on('interactionCreate', interactionCreateHandler);
+
+            // Forward Discord thread replies back into the ticket system
+            this.#client.on('messageCreate', (message) => {
+                if (message.author.bot) return;
+                if (!message.channel.isThread()) return;
+                const content = message.content.trim();
+                const attachmentUrls = message.attachments
+                    .filter((a) => !!a.url)
+                    .map((a) => a.url)
+                    .slice(0, 3);
+                if (!content.length && attachmentUrls.length === 0) return;
+                try {
+                    const ticket = txCore.database.tickets.findByDiscordThread(message.channel.id);
+                    if (!ticket) return;
+                    const authorName = message.member?.displayName ?? message.author.globalName ?? message.author.username;
+                    const msgTs = Math.floor(message.createdTimestamp / 1000);
+                    const imageUrls = attachmentUrls.length > 0 ? attachmentUrls : undefined;
+                    const ticketMessage = {
+                        author: authorName,
+                        authorType: 'discord' as const,
+                        content,
+                        imageUrls,
+                        ts: msgTs,
+                    };
+                    txCore.database.tickets.addMessage(ticket.id, ticketMessage);
+                    txCore.fxRunner.sendEvent('ticketNewMessage', {
+                        ticketId: ticket.id,
+                        reporterLicense: ticket.reporter.license,
+                        message: ticketMessage,
+                    });
+                } catch (error) {
+                    console.error(`Failed to process ticket message for thread ${message.channel.id}: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            });
             // this.#client.on('debug', console.verbose.debug);
 
             //Start bot
@@ -383,6 +423,91 @@ export default class DiscordBot {
                 return reject(error);
             });
         });
+    }
+
+    /**
+     * Creates (or finds) a Discord thread for a new ticket and stores the thread ID.
+     * Supports both Forum channels (creates a forum post) and Text channels (creates a public thread).
+     */
+    async createTicketThread(channelId: string, threadName: string, ticket: DatabaseTicketType, screenshotBuffer?: Buffer): Promise<void> {
+        if (!this.#client?.isReady()) throw new Error(`discord bot not ready yet`);
+
+        const channel = await this.#client.channels.fetch(channelId);
+        if (!channel) throw new Error(`ticket channel ${channelId} not found`);
+
+        const priorityColorMap: Record<string, Discord.ColorResolvable> = {
+            critical: embedColors.danger as Discord.ColorResolvable,
+            high: embedColors.danger as Discord.ColorResolvable,
+            medium: embedColors.warning as Discord.ColorResolvable,
+        };
+        const priorityColor: Discord.ColorResolvable = ticket.priority
+            ? (priorityColorMap[ticket.priority] ?? (embedColors.info as Discord.ColorResolvable))
+            : (embedColors.info as Discord.ColorResolvable);
+
+        const embed = new EmbedBuilder()
+            .setTitle(`[${ticket.id}] ${ticket.category}`)
+            .setDescription(ticket.description.slice(0, 2048))
+            .addFields(
+                { name: 'Reporter', value: `${ticket.reporter.name} (#${ticket.reporter.netid})`, inline: true },
+                { name: 'Status', value: ticket.status, inline: true },
+                ...(ticket.priority ? [{ name: 'Priority', value: ticket.priority, inline: true }] : []),
+                ...(ticket.targets.length > 0
+                    ? [{ name: 'Targets', value: ticket.targets.map((t) => `${t.name} (#${t.netid})`).join(', '), inline: false }]
+                    : []),
+            )
+            .setColor(priorityColor)
+            .setTimestamp(ticket.tsCreated * 1000);
+
+        let thread: Discord.ThreadChannel;
+
+        if (channel.type === ChannelType.GuildForum) {
+            // Forum channel — create a forum post (which is also a thread)
+            thread = await channel.threads.create({
+                name: threadName,
+                message: { embeds: [embed] },
+            });
+        } else if (
+            channel.type === ChannelType.GuildText ||
+            channel.type === ChannelType.GuildAnnouncement
+        ) {
+            // Text channel — send a message then create a thread on it
+            const msg = await (channel as Discord.TextChannel).send({ embeds: [embed] });
+            thread = await msg.startThread({ name: threadName });
+        } else {
+            throw new Error(`channel type ${channel.type} is not supported for ticket threads`);
+        }
+
+        // Persist the thread ID on the ticket
+        txCore.database.tickets.setDiscordThread(ticket.id, thread.id);
+
+        // Upload screenshot as a file attachment if provided
+        if (screenshotBuffer) {
+            const attachment = new AttachmentBuilder(screenshotBuffer, { name: 'screenshot.png' });
+            await thread.send({ content: '📸 Screenshot attached', files: [attachment] });
+        }
+    }
+
+    /**
+     * Posts a message to the Discord thread linked to a ticket, if one exists.
+     * Silently no-ops if the bot isn't ready or no thread is linked.
+     */
+    async postTicketThreadMessage(ticketId: string, authorName: string, content: string, imageUrls?: string[]): Promise<void> {
+        if (!this.#client?.isReady()) return;
+
+        const threadId = txCore.database.tickets.getDiscordThreadId(ticketId);
+        if (!threadId) return;
+
+        try {
+            const thread = await this.#client.channels.fetch(threadId);
+            if (!thread || !(thread instanceof Discord.ThreadChannel)) return;
+            let text = `**${authorName}:** ${content.slice(0, 1900)}`;
+            if (imageUrls && imageUrls.length > 0) {
+                text += '\n' + imageUrls.slice(0, 3).join('\n');
+            }
+            await thread.send(text.trim());
+        } catch (error) {
+            console.verbose.warn(`Failed to post to Discord thread ${threadId}: ${emsg(error)}`);
+        }
     }
 
     /**

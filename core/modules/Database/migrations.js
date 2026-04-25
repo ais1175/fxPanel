@@ -189,6 +189,51 @@ export default async (dbo) => {
         await dbo.write();
     }
 
+    if (dbo.data.version === 6) {
+        console.warn('Updating your players database from v6 to v7.');
+        console.warn('This process will migrate reports → tickets with new schema.');
+
+        // Migrate old reports array to tickets array
+        if (Array.isArray(dbo.data.reports) && dbo.data.reports.length) {
+            dbo.data.tickets = dbo.data.reports.map((r) => {
+                const categoryMap = {
+                    playerReport: 'Player Report',
+                    bugReport: 'Bug Report',
+                    question: 'Question',
+                };
+                return {
+                    id: 'TKT-' + r.id.replace(/^RPT-/, ''),
+                    status: r.status === 'resolved' ? 'resolved' : r.status,
+                    category: categoryMap[r.type] ?? r.type ?? 'Other',
+                    reporter: { license: r.reporter.license, name: r.reporter.name, netid: r.reporter.netid },
+                    targets: (r.targets ?? []).map((t) => ({ license: t.license, name: t.name, netid: t.netid })),
+                    description: r.reason ?? '',
+                    messages: (r.messages ?? []).map((m, idx) => ({
+                        id: `msg-${idx}`,
+                        author: m.author,
+                        authorType: m.authorType,
+                        content: m.content,
+                        ts: m.ts,
+                    })),
+                    staffNotes: [],
+                    logContext: r.logContext ?? { reporter: [], targets: [], world: [] },
+                    claimedBy: undefined,
+                    resolvedBy: r.resolvedBy ?? undefined,
+                    tsCreated: r.tsCreated,
+                    tsLastActivity: r.tsResolved ?? r.tsCreated,
+                    tsResolved: r.tsResolved,
+                };
+            });
+            console.warn(`Migrated ${dbo.data.tickets.length} reports to tickets.`);
+        } else {
+            dbo.data.tickets = [];
+        }
+        dbo.data.reports = undefined;
+
+        dbo.data.version = 7;
+        await dbo.write();
+    }
+
     if (dbo.data.version !== DATABASE_VERSION) {
         fatalError.Database(52, [
             'Unexpected migration error: Did not reach the expected database version.',

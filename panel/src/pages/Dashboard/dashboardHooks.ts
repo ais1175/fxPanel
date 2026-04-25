@@ -1,6 +1,7 @@
 import { atom, useAtomValue, useSetAtom } from 'jotai';
 import { PerfSnapType } from './chartingUtils';
 import { DashboardDataEventType, DashboardPleyerDropDataType, DashboardSvRuntimeDataType } from '@shared/socketioTypes';
+import { SvRtPerfThreadNamesType } from '@shared/otherTypes';
 import { throttle } from 'throttle-debounce';
 import { useCallback } from 'react';
 
@@ -8,7 +9,7 @@ import { useCallback } from 'react';
  * Types
  */
 type DashboardPerfCursorDataType = {
-    threadName: string;
+    threadName: SvRtPerfThreadNamesType;
     snap: PerfSnapType;
 };
 type DashboardServerStatsDataType = {

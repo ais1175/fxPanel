@@ -83,8 +83,8 @@ local function disableRagdollingWhileFall()
         ApplyForceToEntity(
             ped,
             3, --MaxForceRot2
-            vector3(0.0, 0.0, -downForce), --force
-            vector3(0.0, 0.0, 0.0), --offset
+            0.0, 0.0, -downForce, --force
+            0.0, 0.0, 0.0, --offset
             0, --boneIndex
             true, --isDirectionRel
             true, --ignoreUpVec
@@ -95,7 +95,7 @@ local function disableRagdollingWhileFall()
         DebugPrint('Ped should fall, applying down force:', downForce)
 
         --Await for ped to start falling for up to 1 second
-        --If it doesn't, asume that it is not going to fall and return
+        --If it doesn't, assume that it is not going to fall and return
         local fallAwaitLimit = 1000
         local fallAwaitStep = 25
         local fallAwaitElapsed = 0
@@ -135,7 +135,7 @@ local setLocallyInvisibleFunc = IS_FIVEM and SetEntityLocallyInvisible or SetPla
 local function toggleFreecam(enabled)
     noClipEnabled = enabled
     local ped = PlayerPedId()
-    SetEntityVisible(ped, not enabled)
+    SetEntityVisible(ped, not enabled, false)
     SetEntityInvincible(ped, enabled)
     FreezeEntityPosition(ped, enabled)
 
@@ -148,7 +148,7 @@ local function toggleFreecam(enabled)
         if freecamVeh > 0 then
             NetworkSetEntityInvisibleToNetwork(freecamVeh, true)
             SetEntityCollision(freecamVeh, false, false)
-            SetEntityVisible(freecamVeh, false)
+            SetEntityVisible(freecamVeh, false, false)
             FreezeEntityPosition(freecamVeh, true)
             if not isVehAHorse then
                 SetVehicleCanBreak(freecamVeh, false)
@@ -182,13 +182,13 @@ local function toggleFreecam(enabled)
                 SetEntityCoords(freecamVeh, coords[1], coords[2], coords[3], false, false, false, false)
                 SetVehicleOnGroundProperly(freecamVeh)
                 SetEntityCollision(freecamVeh, true, true)
-                SetEntityVisible(freecamVeh, true)
+                SetEntityVisible(freecamVeh, true, false)
                 FreezeEntityPosition(freecamVeh, false)
 
                 if isVehAHorse then
                     Citizen.InvokeNative(0x028F76B6E78246EB, ped, freecamVeh, -1) --SetPedOntoMount
                 else
-                    SetEntityAlpha(freecamVeh, 125)
+                    SetEntityAlpha(freecamVeh, 125, false)
                     SetPedIntoVehicle(ped, freecamVeh, -1)
                     local persistVeh = freecamVeh --since freecamVeh is erased down below
                     CreateThread(function()
@@ -249,7 +249,7 @@ RegisterCommand('txAdmin:menu:noClipToggle', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     askChangePlayerMode(noClipEnabled and 'none' or 'noclip')
-end)
+end, false)
 
 -- Menu callback to change the player mode
 RegisterSecureNuiCallback('playerModeChanged', function(mode, cb)

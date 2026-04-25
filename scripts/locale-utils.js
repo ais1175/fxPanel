@@ -5,7 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // Prepping
-const defaultLang = JSON.parse(fs.readFileSync('./locale/en.json', 'utf8'));
+let defaultLang;
+try {
+    defaultLang = JSON.parse(fs.readFileSync('./locale/en.json', 'utf8'));
+} catch (error) {
+    console.log(chalk.red('Error loading default locale ./locale/en.json:'));
+    console.log(error.message);
+    process.exit(1);
+}
 const langFiles = fs
     .readdirSync('./locale/', { withFileTypes: true })
     .filter((dirent) => !dirent.isDirectory() && dirent.name.endsWith('.json') && dirent.name !== 'en.json')
@@ -46,22 +53,16 @@ const loadedLocales = langFiles.map((fName) => {
  */
 const rebaseCommand = () => {
     console.log("Rebasing language files on 'en.json' for missing keys");
-    for (const { name, path, data } of loadedLocales) {
+    for (const { name, path: localePath, data } of loadedLocales) {
         const synced = defaultsDeep(data, defaultLang);
-        try {
-            // synced.ban_messages.reject_temporary = undefined;
-            // synced.ban_messages.reject_permanent = undefined;
-            // synced.nui_menu.player_modal.info.notes_placeholder = "Notes about this player...";
-            // synced.nui_menu.player_modal.history.action_types = undefined;
-        } catch (error) {
-            console.log(name);
-            console.dir(error);
-            process.exit();
-        }
+        // synced.ban_messages.reject_temporary = undefined;
+        // synced.ban_messages.reject_permanent = undefined;
+        // synced.nui_menu.player_modal.info.notes_placeholder = "Notes about this player...";
+        // synced.nui_menu.player_modal.history.action_types = undefined;
 
         // synced.nui_menu = defaultLang.nui_menu;
         const out = JSON.stringify(synced, null, 4) + '\n';
-        fs.writeFileSync(path, out);
+        fs.writeFileSync(localePath, out);
         console.log(`Edited file: ${name}`);
     }
     console.log(`Process finished: ${langFiles.length} files.`);
@@ -159,13 +160,19 @@ const taskReviewResponse = `type PromptResponse = {
     };
 }`;
 
-//FIXME: Edit these two below
 const promptSourceString = 'the server needs to be restarted, please reconnect';
 const promptPortugueseString = 'o servidor precisa ser reiniciado, por favor conecte novamente';
 const promptContext = [
     'This string is going to take place into the placeholder `%{reason}` in the `wrapper` field.',
     'This string is displayed to players on a game server as the reason why the player is being kicked out of the server.',
 ];
+
+// Dot-path of the locale key that `applyGptResults` will overwrite with the
+// translated string. Override via env var `LOCALE_TARGET_KEY` (e.g.
+// `LOCALE_TARGET_KEY=foo.bar bun run scripts/locale-utils.js applyGptResults`)
+// to retarget without editing this file. Falls back to the original key.
+const DEFAULT_TARGET_KEY = 'restarter.server_unhealthy_kick_reason';
+const targetLocaleKey = process.env.LOCALE_TARGET_KEY || DEFAULT_TARGET_KEY;
 
 //If wrapper
 const promptSourceWrapper = (lang) => lang.kick_messages.everyone;
@@ -223,7 +230,7 @@ const buildGptPrompts = () => {
 
     //Make JSON source file
     const promptObj = {};
-    for (const { name, path, data } of loadedLocales) {
+    for (const { name, data } of loadedLocales) {
         const [langCode] = name.split('.', 1);
         promptObj[langCode] = {
             language: data.$meta.label,
@@ -248,12 +255,26 @@ const applyGptResults = () => {
     console.log(`Applying GPT results to ${loadedLocales.length} languages.`);
 
     // Load the results
-    const resultFile = fs.readFileSync('./locale-translate.result.json', 'utf8');
-    const results = JSON.parse(resultFile);
+    let resultFile, results;
+    try {
+        resultFile = fs.readFileSync('./locale-translate.result.json', 'utf8');
+        results = JSON.parse(resultFile);
+    } catch (error) {
+        console.log(chalk.red(`Failed to load ./locale-translate.result.json:`));
+        console.log(error.message);
+        process.exit(1);
+    }
 
     // Load evaluation results
-    const reviewsFile = fs.readFileSync('./locale-review.result.json', 'utf8');
-    const reviews = JSON.parse(reviewsFile);
+    let reviewsFile, reviews;
+    try {
+        reviewsFile = fs.readFileSync('./locale-review.result.json', 'utf8');
+        reviews = JSON.parse(reviewsFile);
+    } catch (error) {
+        console.log(chalk.red(`Failed to load ./locale-review.result.json:`));
+        console.log(error.message);
+        process.exit(1);
+    }
 
     // Print translations with color-coded review
     console.log('\nTranslation Results:');
@@ -278,13 +299,35 @@ const applyGptResults = () => {
         console.log('');
     }
 
+    // Validate the configurable target key once before applying results.
+    const normalizedTargetKey = typeof targetLocaleKey === 'string' ? targetLocaleKey.trim() : '';
+    if (
+        !normalizedTargetKey
+        || normalizedTargetKey.startsWith('.')
+        || normalizedTargetKey.endsWith('.')
+        || normalizedTargetKey.split('.').includes('')
+    ) {
+        console.log(chalk.red(`Invalid LOCALE_TARGET_KEY: '${targetLocaleKey}'. Must be a non-empty dot-path with no empty segments.`));
+        process.exit(1);
+    }
+
     // Apply the results
     for (const [langCode, { translation }] of Object.entries(results)) {
         const locale = loadedLocales.find((l) => l.name.startsWith(`${langCode}.`));
         if (!locale) {
             throw new Error(`Locale not found for ${langCode}`);
         }
-        locale.data.restarter.server_unhealthy_kick_reason = translation; //FIXME: change target here
+        // Walk the configurable dot-path and assign the translation at the leaf.
+        const segments = normalizedTargetKey.split('.');
+        const leaf = segments.pop();
+        let target = locale.data;
+        for (const seg of segments) {
+            if (target[seg] == null || typeof target[seg] !== 'object') {
+                target[seg] = {};
+            }
+            target = target[seg];
+        }
+        target[leaf] = translation;
         const out = JSON.stringify(locale.data, null, 4) + '\n';
         fs.writeFileSync(locale.path, out);
     }
@@ -309,7 +352,7 @@ const processStuff = () => {
     // fs.writeFileSync('./locale-joined.json', out);
     // console.log(`Saved joined file`);
 
-    for (const { name, path, data } of loadedLocales) {
+    for (const { name, path: localePath, data } of loadedLocales) {
         // rename
         // data.restarter.boot_timeout = data.restarter.start_timeout;
         // remove
@@ -318,7 +361,7 @@ const processStuff = () => {
         // data.restarter.crash_detected = 'xxx';
         // Save file - FIXME: commented out just to make sure i don't fuck it up by accident
         // const out = JSON.stringify(data, null, 4) + '\n';
-        // fs.writeFileSync(path, out);
+        // fs.writeFileSync(localePath, out);
         // console.log(`Edited file: ${name}`);
     }
 };
@@ -355,7 +398,14 @@ function parseLocale(input, prefix = '') {
  * Get a list of all mapped locales on shared/localeMap.ts
  */
 const getMappedLocales = () => {
-    const mapFileData = fs.readFileSync('./shared/localeMap.ts', 'utf8');
+    let mapFileData;
+    try {
+        mapFileData = fs.readFileSync('./shared/localeMap.ts', 'utf8');
+    } catch (error) {
+        console.log(chalk.red('Error loading ./shared/localeMap.ts:'));
+        console.log(error.message);
+        process.exit(1);
+    }
     const importRegex = /import lang_(?<fname>[\w\-]+) from "@locale\/(\k<fname>)\.json";/gm;
     const mappedImports = [...mapFileData.matchAll(importRegex)].map((m) => m.groups.fname);
 

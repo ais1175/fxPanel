@@ -8,17 +8,18 @@ import {
     IconButton,
     InputLabel,
     MenuItem,
+    Modal,
+    Rating,
     Select,
     TextField,
     Typography,
 } from '@mui/material';
 import {
-    BugReport,
     Chat,
     Close,
-    HelpOutline,
-    Person,
+    Image,
     Send,
+    Star,
 } from '@mui/icons-material';
 import { useNuiEvent } from '../../hooks/useNuiEvent';
 import { fetchNui } from '../../utils/fetchNui';
@@ -29,23 +30,26 @@ import { theme } from '../../styles/theme';
 // Types
 // =============================================
 
-type ReportType = 'playerReport' | 'bugReport' | 'question';
-type ReportStatus = 'open' | 'inReview' | 'resolved';
+type TicketStatus = 'open' | 'inReview' | 'resolved' | 'closed';
 
-interface ReportMessage {
+interface TicketMessage {
+    id?: string;
     author: string;
-    authorType: 'player' | 'admin';
+    authorType: 'player' | 'admin' | 'discord';
     content: string;
+    imageUrls?: string[];
     ts: number;
 }
 
-interface PlayerReportSummary {
+interface PlayerTicketSummary {
     id: string;
-    type: ReportType;
-    status: ReportStatus;
-    reason: string;
-    messages: ReportMessage[];
+    status: TicketStatus;
+    category: string;
+    descriptionPreview: string;
+    messageCount: number;
+    unreadCount: number;
     tsCreated: number;
+    awaitingFeedback?: boolean;
 }
 
 interface PlayerTarget {
@@ -53,7 +57,7 @@ interface PlayerTarget {
     name: string;
 }
 
-type View = 'menu' | 'create' | 'list' | 'detail';
+type View = 'menu' | 'create' | 'list' | 'detail' | 'feedback';
 
 // =============================================
 // Styles
@@ -110,32 +114,17 @@ const Footer = styled(Box)({
 // Helpers
 // =============================================
 
-const TYPE_LABELS: Record<ReportType, string> = {
-    playerReport: 'Player Report',
-    bugReport: 'Bug Report',
-    question: 'Question / Help',
-};
-
-const TYPE_COLORS: Record<ReportType, string> = {
-    playerReport: theme.destructive,
-    bugReport: theme.warning,
-    question: theme.info,
-};
-
-const TYPE_ICONS: Record<ReportType, React.ReactNode> = {
-    playerReport: <Person fontSize="small" />,
-    bugReport: <BugReport fontSize="small" />,
-    question: <HelpOutline fontSize="small" />,
-};
-
-const STATUS_MAP: Record<ReportStatus, { label: string; color: string }> = {
+const STATUS_MAP: Record<TicketStatus, { label: string; color: string }> = {
     open: { label: 'Open', color: theme.warning },
     inReview: { label: 'In Review', color: theme.info },
     resolved: { label: 'Resolved', color: theme.success },
+    closed: { label: 'Closed', color: theme.muted },
 };
 
 function timeAgo(ts: number): string {
-    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    const tsSeconds = ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const diff = Math.max(0, nowSeconds - tsSeconds);
     if (diff < 60) return 'just now';
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -165,8 +154,8 @@ const menuPaperSx = {
 // Sub-components
 // =============================================
 
-const StatusChip: React.FC<{ status: ReportStatus; size?: 'small' | 'medium' }> = ({ status, size = 'small' }) => {
-    const { label, color } = STATUS_MAP[status];
+const StatusChip: React.FC<{ status: TicketStatus; size?: 'small' | 'medium' }> = ({ status, size = 'small' }) => {
+    const { label, color } = STATUS_MAP[status] ?? { label: status, color: theme.muted };
     return (
         <Chip
             label={label}
@@ -184,15 +173,14 @@ const StatusChip: React.FC<{ status: ReportStatus; size?: 'small' | 'medium' }> 
 
 const MenuView: React.FC<{
     onSelect: (view: View) => void;
-    reportCount: number;
-}> = ({ onSelect, reportCount }) => (
+    ticketCount: number;
+}> = ({ onSelect, ticketCount }) => (
     <Box display="flex" flexDirection="column" gap={1.5}>
         <Typography variant="body2" sx={{ color: theme.muted, mb: 1 }}>
             What would you like to do?
         </Typography>
         <Button
             variant="outlined"
-            startIcon={<Person />}
             onClick={() => onSelect('create')}
             sx={{
                 justifyContent: 'flex-start',
@@ -203,7 +191,7 @@ const MenuView: React.FC<{
                 '&:hover': { borderColor: theme.muted, bgcolor: 'rgba(255,255,255,0.04)' },
             }}
         >
-            File a New Report
+            Submit a New Ticket
         </Button>
         <Button
             variant="outlined"
@@ -218,57 +206,61 @@ const MenuView: React.FC<{
                 '&:hover': { borderColor: theme.muted, bgcolor: 'rgba(255,255,255,0.04)' },
             }}
         >
-            My Reports {reportCount > 0 && `(${reportCount})`}
+            My Tickets {ticketCount > 0 && `(${ticketCount})`}
         </Button>
     </Box>
 );
 
 const CreateView: React.FC<{
     players: PlayerTarget[];
-    onSubmit: (type: ReportType, reason: string, targetIds: number[]) => void;
+    categories: string[];
+    priorityEnabled: boolean;
+    onSubmit: (category: string, description: string, targetIds: number[], priority?: string) => void;
     submitting: boolean;
-}> = ({ players, onSubmit, submitting }) => {
-    const [type, setType] = useState<ReportType>('playerReport');
-    const [reason, setReason] = useState('');
+}> = ({ players, categories, priorityEnabled, onSubmit, submitting }) => {
+    const defaultCategory = categories[0] ?? '';
+    const [category, setCategory] = useState(defaultCategory);
+    const [description, setDescription] = useState('');
     const [selectedTargets, setSelectedTargets] = useState<number[]>([]);
+    const [priority, setPriority] = useState('');
+
+    // Sync category when categories prop changes
+    useEffect(() => {
+        setCategory((prev) => (categories.includes(prev) ? prev : categories[0] ?? ''));
+    }, [categories]);
+
+    // Detect if this category sounds like a player report
+    const isPlayerCategory = /player/i.test(category);
 
     const handleSubmit = () => {
-        if (!reason.trim()) return;
-        onSubmit(type, reason.trim(), selectedTargets);
+        if (!description.trim()) return;
+        onSubmit(category, description.trim(), selectedTargets, priority || undefined);
     };
 
     return (
         <Box display="flex" flexDirection="column" gap={2}>
-            <FormControl size="small" fullWidth sx={inputSx}>
-                <InputLabel>Report Type</InputLabel>
-                <Select
-                    value={type}
-                    label="Report Type"
-                    onChange={(e) => {
-                        setType(e.target.value as ReportType);
-                        if (e.target.value !== 'playerReport') setSelectedTargets([]);
-                    }}
-                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                >
-                    <MenuItem value="playerReport" sx={{ color: theme.fg }}>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Person fontSize="small" sx={{ color: TYPE_COLORS.playerReport }} /> Player Report
-                        </Box>
-                    </MenuItem>
-                    <MenuItem value="bugReport" sx={{ color: theme.fg }}>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <BugReport fontSize="small" sx={{ color: TYPE_COLORS.bugReport }} /> Bug Report
-                        </Box>
-                    </MenuItem>
-                    <MenuItem value="question" sx={{ color: theme.fg }}>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <HelpOutline fontSize="small" sx={{ color: TYPE_COLORS.question }} /> Question / Help
-                        </Box>
-                    </MenuItem>
-                </Select>
-            </FormControl>
+            {categories.length > 0 && (
+                <FormControl size="small" fullWidth sx={inputSx}>
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                        value={category}
+                        label="Category"
+                        onChange={(e) => {
+                            setCategory(e.target.value);
+                            if (!/player/i.test(e.target.value)) setSelectedTargets([]);
+                        }}
+                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                    >
+                        {categories.map((cat) => (
+                            <MenuItem key={cat} value={cat} sx={{ color: theme.fg }}>
+                                {cat}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            )}
 
-            {type === 'playerReport' && players.length > 0 && (
+            {isPlayerCategory && players.length > 0 && (
                 <FormControl size="small" fullWidth sx={inputSx}>
                     <InputLabel>Target Player(s)</InputLabel>
                     <Select
@@ -277,7 +269,7 @@ const CreateView: React.FC<{
                         label="Target Player(s)"
                         onChange={(e) => setSelectedTargets(e.target.value as number[])}
                         renderValue={(selected) =>
-                            selected.map((id) => {
+                            (selected as number[]).map((id) => {
                                 const p = players.find((player) => player.id === id);
                                 return p ? p.name : `#${id}`;
                             }).join(', ')
@@ -293,24 +285,44 @@ const CreateView: React.FC<{
                 </FormControl>
             )}
 
+            {priorityEnabled && (
+                <FormControl size="small" fullWidth sx={inputSx}>
+                    <InputLabel>Priority (Optional)</InputLabel>
+                    <Select
+                        value={priority}
+                        label="Priority (Optional)"
+                        onChange={(e) => setPriority(e.target.value)}
+                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                    >
+                        <MenuItem value="" sx={{ color: theme.muted }}>
+                            None
+                        </MenuItem>
+                        <MenuItem value="low" sx={{ color: theme.fg }}>Low</MenuItem>
+                        <MenuItem value="medium" sx={{ color: theme.fg }}>Medium</MenuItem>
+                        <MenuItem value="high" sx={{ color: theme.fg }}>High</MenuItem>
+                        <MenuItem value="critical" sx={{ color: theme.destructive }}>Critical</MenuItem>
+                    </Select>
+                </FormControl>
+            )}
+
             <TextField
                 label="Description"
                 multiline
                 minRows={3}
                 maxRows={6}
-                value={reason}
-                onChange={(e) => setReason(e.target.value.slice(0, 512))}
-                placeholder="Describe your report..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 2048))}
+                placeholder="Describe your issue in detail..."
                 size="small"
                 fullWidth
-                helperText={`${reason.length}/512`}
+                helperText={`${description.length}/2048`}
                 sx={inputSx}
             />
 
             <Button
                 variant="contained"
                 onClick={handleSubmit}
-                disabled={submitting || !reason.trim()}
+                disabled={submitting || !description.trim()}
                 sx={{
                     textTransform: 'none',
                     bgcolor: theme.accent,
@@ -319,21 +331,20 @@ const CreateView: React.FC<{
                     '&.Mui-disabled': { bgcolor: theme.border, color: theme.muted },
                 }}
             >
-                {submitting ? 'Submitting...' : 'Submit Report'}
+                {submitting ? 'Submitting...' : 'Submit Ticket'}
             </Button>
         </Box>
     );
 };
-
 const ListView: React.FC<{
-    reports: PlayerReportSummary[];
-    onSelect: (report: PlayerReportSummary) => void;
-}> = ({ reports, onSelect }) => {
-    if (reports.length === 0) {
+    tickets: PlayerTicketSummary[];
+    onSelect: (ticket: PlayerTicketSummary) => void;
+}> = ({ tickets, onSelect }) => {
+    if (tickets.length === 0) {
         return (
             <Box textAlign="center" py={4}>
                 <Typography variant="body2" sx={{ color: theme.muted }}>
-                    You have no reports.
+                    You have no tickets.
                 </Typography>
             </Box>
         );
@@ -341,14 +352,14 @@ const ListView: React.FC<{
 
     return (
         <Box display="flex" flexDirection="column" gap={1}>
-            {reports.map((r) => (
+            {tickets.map((t) => (
                 <Box
-                    key={r.id}
-                    onClick={() => onSelect(r)}
+                    key={t.id}
+                    onClick={() => onSelect(t)}
                     sx={{
                         p: 1.5,
                         borderRadius: 1,
-                        border: `1px solid ${theme.border}`,
+                        border: `1px solid ${t.awaitingFeedback ? theme.warning : theme.border}`,
                         bgcolor: theme.card,
                         cursor: 'pointer',
                         '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
@@ -358,19 +369,27 @@ const ListView: React.FC<{
                     }}
                 >
                     <Box display="flex" alignItems="center" justifyContent="space-between">
+                        <Typography variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
+                            {t.category}
+                        </Typography>
                         <Box display="flex" alignItems="center" gap={1}>
-                            <Box sx={{ color: TYPE_COLORS[r.type], display: 'flex' }}>{TYPE_ICONS[r.type]}</Box>
-                            <Typography variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
-                                {TYPE_LABELS[r.type]}
-                            </Typography>
+                            {t.unreadCount > 0 && (
+                                <Chip
+                                    label={`${t.unreadCount} new`}
+                                    size="small"
+                                    sx={{ height: 16, fontSize: '0.65rem', bgcolor: theme.info, color: '#fff' }}
+                                />
+                            )}
+                            <StatusChip status={t.status} />
                         </Box>
-                        <StatusChip status={r.status} />
                     </Box>
                     <Typography variant="body2" noWrap sx={{ color: theme.muted }}>
-                        {r.reason}
+                        {t.descriptionPreview}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: theme.muted }}>
-                        {timeAgo(r.tsCreated)} · {r.messages.length} message{r.messages.length !== 1 ? 's' : ''}
+                    <Typography variant="caption" sx={{ color: t.awaitingFeedback ? theme.warning : theme.muted }}>
+                        {t.awaitingFeedback
+                            ? '⭐ Please rate your experience'
+                            : `${timeAgo(t.tsCreated)} · ${t.messageCount} message${t.messageCount !== 1 ? 's' : ''}`}
                     </Typography>
                 </Box>
             ))}
@@ -378,17 +397,67 @@ const ListView: React.FC<{
     );
 };
 
+const ImageLightbox: React.FC<{ url: string | null; onClose: () => void }> = ({ url, onClose }) => {
+    const [hasError, setHasError] = useState(false);
+
+    // Reset error state when URL changes
+    React.useEffect(() => setHasError(false), [url]);
+
+    return (
+        <Modal open={!!url} onClose={onClose}>
+            <Box
+                onClick={onClose}
+                sx={{
+                    position: 'fixed', inset: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    bgcolor: 'rgba(0,0,0,0.85)', cursor: 'zoom-out',
+                }}
+            >
+                {url && (hasError ? (
+                    <Box
+                        onClick={(e) => e.stopPropagation()}
+                        sx={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                            p: 4, borderRadius: 2, bgcolor: 'background.paper', cursor: 'default',
+                        }}
+                    >
+                        <Typography color="text.secondary">Image failed to load</Typography>
+                        <Button variant="outlined" size="small" onClick={onClose}>Close</Button>
+                    </Box>
+                ) : (
+                    <img
+                        src={url}
+                        alt="enlarged attachment"
+                        referrerPolicy="no-referrer"
+                        onClick={(e) => e.stopPropagation()}
+                        onError={() => setHasError(true)}
+                        style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, cursor: 'default' }}
+                    />
+                ))}
+            </Box>
+        </Modal>
+    );
+};
+
 const DetailView: React.FC<{
-    report: PlayerReportSummary;
-    onSendMessage: (reportId: string, content: string) => void;
+    ticket: PlayerTicketSummary;
+    messages: TicketMessage[];
+    onSendMessage: (ticketId: string, content: string, imageUrls?: string[]) => void;
     sending: boolean;
-}> = ({ report, onSendMessage, sending }) => {
+}> = ({ ticket, messages, onSendMessage, sending }) => {
     const [msg, setMsg] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+    const URL_MAX = 2048;
+    const canSend = (msg.trim().length > 0 || imageUrl.trim().length > 0) && imageUrl.trim().length <= URL_MAX;
 
     const handleSend = () => {
-        if (!msg.trim()) return;
-        onSendMessage(report.id, msg.trim());
+        if (!canSend) return;
+        const urls = imageUrl.trim() ? [imageUrl.trim()] : undefined;
+        onSendMessage(ticket.id, msg.trim(), urls);
         setMsg('');
+        setImageUrl('');
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -398,45 +467,41 @@ const DetailView: React.FC<{
         }
     };
 
+    const isClosed = ticket.status === 'resolved' || ticket.status === 'closed';
+
     return (
         <Box display="flex" flexDirection="column" height="100%">
-            {/* Report header info */}
             <Box mb={2}>
                 <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                    <Box sx={{ color: TYPE_COLORS[report.type], display: 'flex' }}>{TYPE_ICONS[report.type]}</Box>
                     <Typography variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
-                        {TYPE_LABELS[report.type]}
+                        {ticket.category}
                     </Typography>
-                    <StatusChip status={report.status} />
+                    <StatusChip status={ticket.status} />
                 </Box>
                 <Typography variant="body2" sx={{ color: theme.muted, wordBreak: 'break-word' }}>
-                    {report.reason}
+                    {ticket.descriptionPreview}
                 </Typography>
             </Box>
 
-            {/* Messages */}
-            <Box
-                flex={1}
-                overflow="auto"
-                display="flex"
-                flexDirection="column"
-                gap={1}
-                mb={2}
-                sx={{ maxHeight: 300 }}
-            >
-                {report.messages.length === 0 ? (
+            <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+
+            <Box flex={1} overflow="auto" display="flex" flexDirection="column" gap={1} mb={2} sx={{ maxHeight: 300 }}>
+                {messages.length === 0 ? (
                     <Typography variant="body2" sx={{ color: theme.muted, textAlign: 'center', py: 2 }}>
-                        No messages yet. An admin will respond to your report.
+                        No messages yet. An admin will respond to your ticket.
                     </Typography>
                 ) : (
-                    report.messages.map((m, i) => (
+                    messages.map((m, i) => (
                         <Box
-                            key={`${m.ts}-${i}`}
+                            key={m.id ?? `${m.ts}-${i}`}
                             sx={{
                                 p: 1,
                                 borderRadius: 1,
-                                bgcolor: m.authorType === 'admin' ? 'rgba(43, 155, 197, 0.1)' : 'rgba(255,255,255,0.04)',
-                                borderLeft: m.authorType === 'admin' ? `3px solid ${theme.info}` : '3px solid transparent',
+                                bgcolor: m.authorType === 'admin' ? 'rgba(43,155,197,0.1)' : 'rgba(255,255,255,0.04)',
+                                borderLeft:
+                                    m.authorType === 'admin'
+                                        ? `3px solid ${theme.info}`
+                                        : '3px solid transparent',
                             }}
                         >
                             <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.25}>
@@ -452,7 +517,7 @@ const DetailView: React.FC<{
                                                 fontSize: '0.65rem',
                                                 color: theme.info,
                                                 borderColor: theme.info,
-                                                bgcolor: 'rgba(43, 155, 197, 0.15)',
+                                                bgcolor: 'rgba(43,155,197,0.15)',
                                                 '& .MuiChip-label': { color: theme.info },
                                             }}
                                         />
@@ -462,56 +527,142 @@ const DetailView: React.FC<{
                                     {timeAgo(m.ts)}
                                 </Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ color: theme.fg, wordBreak: 'break-word' }}>
-                                {m.content}
-                            </Typography>
+                            {m.content && (
+                                <Typography variant="body2" sx={{ color: theme.fg, wordBreak: 'break-word' }}>
+                                    {m.content}
+                                </Typography>
+                            )}
+                            {m.imageUrls && m.imageUrls.length > 0 && (
+                                <Box mt={0.5} display="flex" flexWrap="wrap" gap={0.5}>
+                                    {m.imageUrls.map((url, j) => (
+                                        <img
+                                            key={j}
+                                            src={url}
+                                            alt="attachment"
+                                            loading="lazy"
+                                            referrerPolicy="no-referrer"
+                                            onClick={() => setLightboxUrl(url)}
+                                            style={{
+                                                maxHeight: 80, borderRadius: 4,
+                                                border: `1px solid ${theme.border}`,
+                                                cursor: 'zoom-in',
+                                            }}
+                                        />
+                                    ))}
+                                </Box>
+                            )}
                         </Box>
                     ))
                 )}
             </Box>
 
-            {/* Message input */}
-            {report.status !== 'resolved' && (
-                <Box display="flex" gap={1}>
-                    <TextField
-                        size="small"
-                        fullWidth
-                        placeholder="Type a message..."
-                        value={msg}
-                        onChange={(e) => setMsg(e.target.value.slice(0, 512))}
-                        onKeyDown={handleKeyDown}
-                        disabled={sending}
-                        sx={inputSx}
-                    />
-                    <IconButton
-                        onClick={handleSend}
-                        disabled={sending || !msg.trim()}
-                        size="small"
-                        sx={{ color: theme.info }}
-                    >
-                        <Send />
-                    </IconButton>
+            {!isClosed && (
+                <Box display="flex" flexDirection="column" gap={0.75}>
+                    <Box display="flex" gap={1}>
+                        <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Type a message..."
+                            value={msg}
+                            onChange={(e) => setMsg(e.target.value.slice(0, 2048))}
+                            onKeyDown={handleKeyDown}
+                            disabled={sending}
+                            sx={inputSx}
+                        />
+                        <IconButton
+                            onClick={handleSend}
+                            disabled={sending || !canSend}
+                            size="small"
+                            sx={{ color: theme.info }}
+                        >
+                            <Send />
+                        </IconButton>
+                    </Box>
+                    <Box display="flex" alignItems="center" gap={0.75}>
+                        <Image sx={{ fontSize: 16, color: theme.muted, flexShrink: 0 }} />
+                        <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Image URL (optional)"
+                            value={imageUrl}
+                            onChange={(e) => setImageUrl(e.target.value.slice(0, URL_MAX))}
+                            disabled={sending}
+                            inputProps={{ style: { fontSize: '0.75rem' }, maxLength: URL_MAX }}
+                            sx={{ ...inputSx, '& .MuiOutlinedInput-root': { ...inputSx['& .MuiOutlinedInput-root'], py: 0.25 } }}
+                        />
+                    </Box>
                 </Box>
             )}
-            {report.status === 'resolved' && (
+            {isClosed && (
                 <Typography variant="body2" sx={{ color: theme.success, textAlign: 'center' }}>
-                    This report has been resolved.
+                    This ticket has been {ticket.status}.
                 </Typography>
             )}
         </Box>
     );
 };
 
+const FeedbackView: React.FC<{
+    ticketId: string;
+    onSubmit: (ticketId: string, rating: number, comment?: string) => void;
+    submitting: boolean;
+}> = ({ ticketId, onSubmit, submitting }) => {
+    const [rating, setRating] = useState<number | null>(null);
+    const [comment, setComment] = useState('');
+
+    return (
+        <Box display="flex" flexDirection="column" gap={2} alignItems="center" py={2}>
+            <Star sx={{ fontSize: 40, color: theme.warning }} />
+            <Typography variant="body1" fontWeight={600} sx={{ color: theme.fg, textAlign: 'center' }}>
+                How was your support experience?
+            </Typography>
+            <Rating
+                size="large"
+                value={rating}
+                onChange={(_, val) => setRating(val)}
+                sx={{ color: theme.warning }}
+            />
+            <TextField
+                label="Comments (optional)"
+                multiline
+                rows={2}
+                value={comment}
+                onChange={(e) => setComment(e.target.value.slice(0, 512))}
+                fullWidth
+                size="small"
+                sx={inputSx}
+            />
+            <Button
+                variant="contained"
+                onClick={() => rating && onSubmit(ticketId, rating, comment || undefined)}
+                disabled={!rating || submitting}
+                sx={{
+                    textTransform: 'none',
+                    bgcolor: theme.accent,
+                    color: '#fff',
+                    '&:hover': { bgcolor: theme.accent, filter: 'brightness(1.15)' },
+                    '&.Mui-disabled': { bgcolor: theme.border, color: theme.muted },
+                }}
+            >
+                {submitting ? 'Submitting...' : 'Submit Feedback'}
+            </Button>
+        </Box>
+    );
+};
+
 // =============================================
-// Main Report Page
+// Main Ticket Page
 // =============================================
 
 export const ReportPage: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [view, setView] = useState<View>('menu');
     const [players, setPlayers] = useState<PlayerTarget[]>([]);
-    const [reports, setReports] = useState<PlayerReportSummary[]>([]);
-    const [selectedReport, setSelectedReport] = useState<PlayerReportSummary | null>(null);
+    const [categories, setCategories] = useState<string[]>([]);
+    const [priorityEnabled, setPriorityEnabled] = useState(false);
+    const [tickets, setTickets] = useState<PlayerTicketSummary[]>([]);
+    const [selectedTicket, setSelectedTicket] = useState<PlayerTicketSummary | null>(null);
+    const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -520,37 +671,43 @@ export const ReportPage: React.FC = () => {
     const handleClose = useCallback(() => {
         setIsOpen(false);
         setView('menu');
-        setSelectedReport(null);
+        setSelectedTicket(null);
+        setTicketMessages([]);
         setErrorMessage(null);
         setListenForExit(true);
-        fetchNui('reportClose').catch(() => {});
+        fetchNui('ticketClose').catch(() => {});
     }, [setListenForExit]);
 
     // Listen for open event from Lua
-    useNuiEvent<{ players: PlayerTarget[] }>('openReportUI', (data) => {
-        setPlayers(data.players || []);
-        setIsOpen(true);
-        setView('menu');
-        setListenForExit(false);
-    });
+    useNuiEvent<{ players: PlayerTarget[]; tickets: PlayerTicketSummary[]; categories: string[]; priorityEnabled: boolean }>(
+        'openTicketUI',
+        (data) => {
+            setPlayers(data.players || []);
+            setCategories(data.categories || []);
+            setPriorityEnabled(data.priorityEnabled ?? false);
+            setIsOpen(true);
+            setView('menu');
+            setListenForExit(false);
+        },
+    );
 
-    // Listen for report list updates
-    useNuiEvent<{ reports: PlayerReportSummary[] }>('reportMyList', (data) => {
-        setReports(data.reports || []);
-        // If we're viewing a report, update its data
-        if (selectedReport) {
-            const updated = (data.reports || []).find((r) => r.id === selectedReport.id);
-            if (updated) setSelectedReport(updated);
+    // Listen for ticket list updates
+    useNuiEvent<{ tickets?: PlayerTicketSummary[]; error?: string }>('ticketMyList', (data) => {
+        if (data.tickets) {
+            setTickets(data.tickets);
+            if (selectedTicket) {
+                const updated = data.tickets.find((t) => t.id === selectedTicket.id);
+                if (updated) setSelectedTicket(updated);
+            }
         }
     });
 
-    // Listen for report creation result
-    useNuiEvent<{ success?: boolean; reportId?: string; error?: string }>('reportCreateResult', (data) => {
+    // Listen for ticket creation result
+    useNuiEvent<{ success?: boolean; ticketId?: string; error?: string }>('ticketCreateResult', (data) => {
         setSubmitting(false);
         if (data.success) {
             setErrorMessage(null);
-            // Go to list view and refresh
-            fetchNui('reportFetchMine').catch(() => {});
+            fetchNui('ticketFetchMine').catch(() => {});
             setView('list');
         } else if (data.error) {
             setErrorMessage(data.error);
@@ -558,24 +715,40 @@ export const ReportPage: React.FC = () => {
     });
 
     // Listen for message send result
-    useNuiEvent<{ success?: boolean; error?: string }>('reportMessageResult', (data) => {
+    useNuiEvent<{ success?: boolean; error?: string }>('ticketMessageResult', (data) => {
         setSendingMessage(false);
         if (data.success) {
             setErrorMessage(null);
-            fetchNui('reportFetchMine').catch(() => {});
+            fetchNui('ticketFetchMine').catch(() => {});
         } else if (data.error) {
             setErrorMessage(data.error);
         }
     });
 
-    // ESC to close (when not in a sub-view)
+    // Listen for full message list (fetched on ticket open)
+    useNuiEvent<{ messages?: TicketMessage[]; error?: string }>('ticketMessages', (data) => {
+        if (data.messages) setTicketMessages(data.messages);
+    });
+
+    // Listen for a real-time message push (from admin panel, in-game admin, or Discord)
+    useNuiEvent<{ ticketId: string; message: TicketMessage }>('ticketNewMessage', (data) => {
+        if (selectedTicket?.id === data.ticketId) {
+            setTicketMessages((prev) => [...prev, data.message]);
+        }
+    });
+
+    // ESC to close
     useEffect(() => {
         if (!isOpen) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                if (view === 'detail') {
+                if (view === 'feedback') {
                     setView('list');
-                    setSelectedReport(null);
+                    setSelectedTicket(null);
+                } else if (view === 'detail') {
+                    setView('list');
+                    setSelectedTicket(null);
+                    setTicketMessages([]);
                 } else if (view === 'create' || view === 'list') {
                     setView('menu');
                 } else {
@@ -587,19 +760,19 @@ export const ReportPage: React.FC = () => {
         return () => window.removeEventListener('keydown', handler);
     }, [isOpen, view, handleClose]);
 
-    const handleSubmit = (type: ReportType, reason: string, targetIds: number[]) => {
+    const handleSubmit = (category: string, description: string, targetIds: number[], priority?: string) => {
         setSubmitting(true);
         setErrorMessage(null);
-        fetchNui('reportSubmit', { type, reason, targetIds }).catch((err) => {
+        fetchNui('ticketSubmit', { category, description, targetIds, priority }).catch((err) => {
             setSubmitting(false);
-            setErrorMessage(`Failed to submit report: ${(err as Error).message || 'Unknown error'}`);
+            setErrorMessage(`Failed to submit ticket: ${(err as Error).message || 'Unknown error'}`);
         });
     };
 
-    const handleSendMessage = (reportId: string, content: string) => {
+    const handleSendMessage = (ticketId: string, content: string, imageUrls?: string[]) => {
         setSendingMessage(true);
         setErrorMessage(null);
-        fetchNui('reportSendMessage', { reportId, content }).catch((err) => {
+        fetchNui('ticketSendMessage', { ticketId, content, imageUrls }).catch((err) => {
             setSendingMessage(false);
             setErrorMessage(`Failed to send message: ${(err as Error).message || 'Unknown error'}`);
         });
@@ -607,28 +780,53 @@ export const ReportPage: React.FC = () => {
 
     const handleViewList = () => {
         setView('list');
-        fetchNui('reportFetchMine').catch(() => {});
+        fetchNui('ticketFetchMine').catch(() => {});
     };
 
-    const handleSelectReport = (report: PlayerReportSummary) => {
-        setSelectedReport(report);
-        setView('detail');
+    const handleSelectTicket = (ticket: PlayerTicketSummary) => {
+        setSelectedTicket(ticket);
+        setTicketMessages([]);
+        if (ticket.awaitingFeedback) {
+            setView('feedback');
+        } else {
+            setView('detail');
+            fetchNui('ticketFetchMessages', { ticketId: ticket.id }).catch(() => {});
+        }
+    };
+
+    const handleFeedbackSubmit = (ticketId: string, rating: number, comment?: string) => {
+        setSubmitting(true);
+        fetchNui('ticketFeedback', { ticketId, rating, comment })
+            .then(() => {
+                setView('list');
+                setSelectedTicket(null);
+                fetchNui('ticketFetchMine').catch(() => {});
+            })
+            .catch((err) => {
+                console.error('Failed to submit ticket feedback:', err);
+                setErrorMessage((err as Error)?.message || 'Failed to submit feedback');
+            })
+            .finally(() => {
+                setSubmitting(false);
+            });
     };
 
     const getTitle = (): string => {
         switch (view) {
-            case 'menu': return 'Reports';
-            case 'create': return 'New Report';
-            case 'list': return 'My Reports';
-            case 'detail': return 'Report Detail';
+            case 'menu': return 'Support Tickets';
+            case 'create': return 'New Ticket';
+            case 'list': return 'My Tickets';
+            case 'detail': return 'Ticket Detail';
+            case 'feedback': return 'Rate Your Experience';
         }
     };
 
     const handleBack = () => {
         setErrorMessage(null);
-        if (view === 'detail') {
+        if (view === 'feedback' || view === 'detail') {
             setView('list');
-            setSelectedReport(null);
+            setSelectedTicket(null);
+            setTicketMessages([]);
         } else if (view === 'create' || view === 'list') {
             setView('menu');
         }
@@ -636,66 +834,76 @@ export const ReportPage: React.FC = () => {
 
     return isOpen ? (
         <Overlay>
-            <Panel role="dialog" aria-modal="true" aria-labelledby="report-dialog-title">
-                    <Header>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            {view !== 'menu' && (
-                                <Button
-                                    size="small"
-                                    onClick={handleBack}
-                                    sx={{ minWidth: 0, textTransform: 'none', mr: 0.5, color: theme.muted }}
-                                >
-                                    Back
-                                </Button>
-                            )}
-                            <Typography id="report-dialog-title" variant="subtitle1" fontWeight={600} sx={{ color: theme.fg }}>
-                                {getTitle()}
+            <Panel role="dialog" aria-modal="true" aria-labelledby="ticket-dialog-title">
+                <Header>
+                    <Box display="flex" alignItems="center" gap={1}>
+                        {view !== 'menu' && (
+                            <Button
+                                size="small"
+                                onClick={handleBack}
+                                sx={{ minWidth: 0, textTransform: 'none', mr: 0.5, color: theme.muted }}
+                            >
+                                Back
+                            </Button>
+                        )}
+                        <Typography id="ticket-dialog-title" variant="subtitle1" fontWeight={600} sx={{ color: theme.fg }}>
+                            {getTitle()}
+                        </Typography>
+                    </Box>
+                    <IconButton size="small" onClick={handleClose} sx={{ color: theme.muted }}>
+                        <Close fontSize="small" />
+                    </IconButton>
+                </Header>
+
+                <Content>
+                    {errorMessage && (
+                        <Box role="alert" sx={{ px: 2, py: 1, mb: 1, bgcolor: `${theme.destructive}26`, borderRadius: 1 }}>
+                            <Typography variant="body2" sx={{ color: theme.destructive }}>
+                                {errorMessage}
                             </Typography>
                         </Box>
-                        <IconButton size="small" onClick={handleClose} sx={{ color: theme.muted }}>
-                            <Close fontSize="small" />
-                        </IconButton>
-                    </Header>
-
-                    <Content>
-                        {errorMessage && (
-                            <Box role="alert" sx={{ px: 2, py: 1, mb: 1, bgcolor: `${theme.destructive}26`, borderRadius: 1 }}>
-                                <Typography variant="body2" sx={{ color: theme.destructive }}>
-                                    {errorMessage}
-                                </Typography>
-                            </Box>
-                        )}
-                        {view === 'menu' && (
-                            <MenuView
-                                onSelect={(v) => {
-                                    if (v === 'list') handleViewList();
-                                    else setView(v);
-                                }}
-                                reportCount={reports.length}
-                            />
-                        )}
-                        {view === 'create' && (
-                            <CreateView
-                                players={players}
-                                onSubmit={handleSubmit}
-                                submitting={submitting}
-                            />
-                        )}
-                        {view === 'list' && (
-                            <ListView
-                                reports={reports}
-                                onSelect={handleSelectReport}
-                            />
-                        )}
-                        {view === 'detail' && selectedReport && (
-                            <DetailView
-                                report={selectedReport}
-                                onSendMessage={handleSendMessage}
-                                sending={sendingMessage}
-                            />
-                        )}
-                    </Content>
-                </Panel>
-            </Overlay>
-        ) : null;
+                    )}
+                    {view === 'menu' && (
+                        <MenuView
+                            onSelect={(v) => {
+                                if (v === 'list') handleViewList();
+                                else setView(v);
+                            }}
+                            ticketCount={tickets.length}
+                        />
+                    )}
+                    {view === 'create' && (
+                        <CreateView
+                            players={players}
+                            categories={categories}
+                            priorityEnabled={priorityEnabled}
+                            onSubmit={handleSubmit}
+                            submitting={submitting}
+                        />
+                    )}
+                    {view === 'list' && (
+                        <ListView
+                            tickets={tickets}
+                            onSelect={handleSelectTicket}
+                        />
+                    )}
+                    {view === 'detail' && selectedTicket && (
+                        <DetailView
+                            ticket={selectedTicket}
+                            messages={ticketMessages}
+                            onSendMessage={handleSendMessage}
+                            sending={sendingMessage}
+                        />
+                    )}
+                    {view === 'feedback' && selectedTicket && (
+                        <FeedbackView
+                            ticketId={selectedTicket.id}
+                            onSubmit={handleFeedbackSubmit}
+                            submitting={submitting}
+                        />
+                    )}
+                </Content>
+            </Panel>
+        </Overlay>
+    ) : null;
 };

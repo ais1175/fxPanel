@@ -90,10 +90,11 @@ const securityHeadersMw = async (ctx: RawKoaCtx, next: Next) => {
     }
     ctx.set('Content-Security-Policy', buildCSP(isDevMode, nonce));
 
-    //Indicate that the site should only be accessed using HTTPS
-    //Note: This is only set in production to prevent issues during development
-    if (process.env.NODE_ENV === 'production') {
-        ctx.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    //HSTS is only meaningful over TLS. Gate on ctx.secure so dev (usually http)
+    //isn't broken, but prod behind a TLS-terminating proxy still gets it as long
+    //as the proxy sets X-Forwarded-Proto (Koa reads this when app.proxy=true).
+    if (ctx.secure) {
+        ctx.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
     }
 
     //Disable caching for sensitive pages that might contain player data
