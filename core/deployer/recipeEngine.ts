@@ -2,6 +2,8 @@ const modulename = 'RecipeEngine';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import net from 'node:net';
+import dns from 'node:dns/promises';
 import { pipeline } from 'node:stream/promises';
 import StreamZip from 'node-stream-zip';
 import { escapeRegExp } from 'lodash-es';
@@ -11,6 +13,86 @@ import consoleFactory from '@lib/console';
 import { outputFile, movePath } from '@lib/fs';
 import type { RecipeTask, DeployerContext, RecipeEngineMap } from './recipeTypes';
 const console = consoleFactory(modulename);
+
+//=============================================================
+//== SSRF guard
+//=============================================================
+/**
+ * Returns true if the IPv4 address is globally routable (not loopback,
+ * private, link-local, CGNAT, multicast, reserved, or cloud-metadata).
+ */
+const isPublicIPv4 = (ip: string): boolean => {
+    const parts = ip.split('.').map((o) => Number(o));
+    if (parts.length !== 4 || parts.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return false;
+    const [a, b, c] = parts;
+    if (a === 0) return false;                                // 0.0.0.0/8
+    if (a === 10) return false;                               // 10/8 private
+    if (a === 127) return false;                              // loopback
+    if (a === 169 && b === 254) return false;                 // link-local + 169.254.169.254 metadata
+    if (a === 172 && b >= 16 && b <= 31) return false;        // 172.16/12 private
+    if (a === 192 && b === 168) return false;                 // 192.168/16 private
+    if (a === 100 && b >= 64 && b <= 127) return false;       // CGNAT 100.64/10
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return false; // reserved / TEST-NET-1
+    if (a === 198 && b === 51 && c === 100) return false;     // TEST-NET-2
+    if (a === 203 && b === 0 && c === 113) return false;      // TEST-NET-3
+    if (a === 198 && (b === 18 || b === 19)) return false;    // benchmark
+    if (a >= 224) return false;                               // multicast (224/4) + reserved + broadcast
+    return true;
+};
+
+/**
+ * Returns true if the IPv6 address is globally routable (not loopback,
+ * link-local, unique-local, multicast, or IPv4-mapped-private).
+ */
+const isPublicIPv6 = (ipRaw: string): boolean => {
+    const ip = ipRaw.toLowerCase();
+    if (ip === '::' || ip === '::1') return false;
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+    if (mapped) return isPublicIPv4(mapped[1]);
+    if (/^fe[89ab]/.test(ip)) return false;                   // fe80::/10 link-local
+    if (/^f[cd]/.test(ip)) return false;                      // fc00::/7 unique-local
+    if (/^ff/.test(ip)) return false;                         // ff00::/8 multicast
+    if (ip.startsWith('2001:db8:')) return false;             // documentation
+    if (/^2001:(0{1,4}:)/.test(ip)) return false;             // 2001:0::/32 Teredo
+    return true;
+};
+
+const isPublicIp = (ip: string): boolean => {
+    const fam = net.isIP(ip);
+    if (fam === 4) return isPublicIPv4(ip);
+    if (fam === 6) return isPublicIPv6(ip);
+    return false;
+};
+
+/**
+ * Rejects URLs that would produce SSRF: non-http(s) schemes, or hostnames that
+ * resolve to loopback / RFC1918 / link-local / CGNAT / multicast / cloud-metadata.
+ * Resolves ALL DNS answers and rejects if any are non-public (defeats a first-answer
+ * DNS-rebind attempt on the initial lookup).
+ */
+const assertPublicUrl = async (urlStr: string): Promise<void> => {
+    let parsed: URL;
+    try {
+        parsed = new URL(urlStr);
+    } catch {
+        throw new Error('invalid URL');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`unsupported URL scheme: ${parsed.protocol}`);
+    }
+    const host = parsed.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+    if (net.isIP(host)) {
+        if (!isPublicIp(host)) throw new Error(`URL points to non-public address: ${host}`);
+        return;
+    }
+    const results = await dns.lookup(host, { all: true, verbatim: true });
+    if (!results.length) throw new Error(`DNS resolution failed for ${host}`);
+    for (const r of results) {
+        if (!isPublicIp(r.address)) {
+            throw new Error(`URL resolves to non-public address: ${host} -> ${r.address}`);
+        }
+    }
+};
 
 //=============================================================
 //== Path helper functions
@@ -23,6 +105,45 @@ const safePath = (base: string, suffix: string) => {
         throw new Error(`Path traversal blocked: "${suffix}" escapes base directory`);
     }
     return resolved;
+};
+
+/**
+ * ZIP-slip guard. Validates every entry in the archive resolves inside `destRoot`
+ * before delegating extraction. node-stream-zip's `extract` does NOT validate
+ * entry names against traversal — a malicious recipe-controlled archive could
+ * otherwise write to `..\\..\\windows\\system32\\...` or an absolute path.
+ *
+ * We reject:
+ *   - absolute paths (Unix "/x" or Windows "C:\\x")
+ *   - null bytes (can truncate paths in downstream consumers)
+ *   - any entry whose resolved path is outside destRoot (including exact equality,
+ *     so "." can't clobber the root dir itself)
+ *   - any entry under a zipPrefix restriction when one is supplied
+ */
+const assertZipEntriesSafe = (
+    entries: { name: string; isDirectory: boolean }[],
+    destRoot: string,
+    zipPrefix?: string,
+) => {
+    const normalizedRoot = path.resolve(destRoot);
+    const prefix = zipPrefix ? zipPrefix.replace(/\\/g, '/').replace(/\/+$/, '') + '/' : '';
+    for (const entry of entries) {
+        const name = entry.name;
+        if (name.includes('\0')) throw new Error(`zip entry has null byte: ${name}`);
+        if (path.isAbsolute(name) || /^[a-zA-Z]:[/\\]/.test(name)) {
+            throw new Error(`zip entry has absolute path: ${name}`);
+        }
+        //Only validate entries under the requested prefix — others are ignored
+        //by the downstream extract() call anyway.
+        const normalizedName = name.replace(/\\/g, '/');
+        if (prefix && !normalizedName.startsWith(prefix)) continue;
+        const relative = prefix ? normalizedName.slice(prefix.length) : normalizedName;
+        if (!relative) continue;
+        const resolved = path.resolve(normalizedRoot, relative);
+        if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + path.sep)) {
+            throw new Error(`zip entry escapes extract root: ${name}`);
+        }
+    }
 };
 
 const isPathLinear = (pathInput: string) => {
@@ -71,6 +192,7 @@ const taskDownloadFile = async (task: RecipeTask, basePath: string, ctx: Deploye
     await outputFile(destPath, 'file save attempt, please ignore or remove');
 
     ctx.$step = 'before stream';
+    await assertPublicUrl(task.url as string);
     const gotOptions = {
         timeout: { request: 150e3 },
         retry: { limit: 5 },
@@ -116,8 +238,10 @@ const taskDownloadGithub = async (task: RecipeTask, basePath: string, ctx: Deplo
     if (task.ref) {
         reference = task.ref as string;
     } else {
+        const refLookupUrl = `https://api.github.com/repos/${repoOwner}/${repoName}`;
+        await assertPublicUrl(refLookupUrl);
         const data = await got
-            .get(`https://api.github.com/repos/${repoOwner}/${repoName}`, {
+            .get(refLookupUrl, {
                 timeout: { request: 15e3 },
                 headers: githubHeaders,
             })
@@ -136,6 +260,7 @@ const taskDownloadGithub = async (task: RecipeTask, basePath: string, ctx: Deplo
 
     //Download
     ctx.$step = 'before stream';
+    await assertPublicUrl(downURL);
     const gotOptions = {
         timeout: { request: 150e3 },
         retry: { limit: 5 },
@@ -150,20 +275,30 @@ const taskDownloadGithub = async (task: RecipeTask, basePath: string, ctx: Deplo
 
     //Extract
     const zip = new StreamZip.async({ file: tmpFilePath });
-    const entries = Object.values(await zip.entries());
-    if (!entries.length || !entries[0].isDirectory) throw new Error('unexpected zip structure');
-    const zipSubPath = path.posix.join(entries[0].name, (task.subpath as string) || '');
-    ctx.$step = 'zip parsed';
-    await fsp.mkdir(destPath, { recursive: true });
-    ctx.$step = 'dest path created';
-    await zip.extract(zipSubPath, destPath);
-    ctx.$step = 'zip extracted';
-    await zip.close();
-    ctx.$step = 'zip closed';
-
-    //Cleanup temp file
-    await fsp.rm(tmpFilePath, { recursive: true, force: true });
-    ctx.$step = 'task finished';
+    try {
+        const entries = Object.values(await zip.entries());
+        if (!entries.length || !entries[0].isDirectory) throw new Error('unexpected zip structure');
+        const zipSubPath = path.posix.join(entries[0].name, (task.subpath as string) || '');
+        ctx.$step = 'zip parsed';
+        await fsp.mkdir(destPath, { recursive: true });
+        ctx.$step = 'dest path created';
+        assertZipEntriesSafe(entries, destPath, zipSubPath);
+        await zip.extract(zipSubPath, destPath);
+        ctx.$step = 'zip extracted';
+    } finally {
+        try {
+            await zip.close();
+            ctx.$step = 'zip closed';
+        } catch {
+            // Ignore zip close errors so temp-file cleanup always runs
+        }
+        try {
+            await fsp.rm(tmpFilePath, { recursive: true, force: true });
+            ctx.$step = 'task finished';
+        } catch {
+            // Ignore temp-file removal errors
+        }
+    }
 };
 
 //=============================================================
@@ -211,9 +346,14 @@ const taskUnzip = async (task: RecipeTask, basePath: string, _ctx: DeployerConte
     await fsp.mkdir(destPath, { recursive: true });
 
     const zip = new StreamZip.async({ file: srcPath });
-    const count = await zip.extract(null, destPath);
-    console.log(`Extracted ${count} entries`);
-    await zip.close();
+    try {
+        const entries = Object.values(await zip.entries());
+        assertZipEntriesSafe(entries, destPath);
+        const count = await zip.extract(null, destPath);
+        console.log(`Extracted ${count} entries`);
+    } finally {
+        await zip.close();
+    }
 };
 
 //=============================================================

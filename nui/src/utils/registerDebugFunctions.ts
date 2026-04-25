@@ -101,8 +101,9 @@ const MenuObject = {
                         type: 'Infinity',
                     },
                     switchPageKey: 'Tab',
-                    txAdminVersion: '9.9.9',
+                    fxPanelVersion: '9.9.9',
                     tagDefinitions: [],
+                    reportsEnabled: true,
                 },
             },
         ]);
@@ -132,9 +133,9 @@ export const registerDebugFunctions = () => {
     if (isBrowserEnv()) {
         (window as any).menuDebug = MenuObject;
 
-        console.log('%ctxAdmin Menu Development', 'font-weight: bold; font-size: 25px; color: red;');
+        console.log('%cfxPanel Debug Utilities', 'font-weight: bold; font-size: 25px; color: red;');
         console.log(
-            '%cDebug Utilities have been injected for browser use. Inspect `window.menuDebug` object for further details.',
+            '%cfxPanel debug utilities have been injected for browser use. Inspect `window.menuDebug` object for further details.',
             'font-size: 15px; color: green;',
         );
     }

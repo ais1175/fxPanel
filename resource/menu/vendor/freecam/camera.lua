@@ -61,6 +61,7 @@ function SetFreecamPosition(x, y, z)
   -- local int = GetInteriorAtCoords(pos)
   -- LoadInterior(int)
   SetFocusPosAndVel(x, y, z, 0.0, 0.0, 0.0)
+  ---@diagnostic disable-next-line: param-type-mismatch
   SetCamCoord(_internal_camera, x, y, z)
   if IS_FIVEM then
     LockMinimapPosition(x, y)
@@ -82,6 +83,7 @@ function SetFreecamRotation(x, y, z)
   local rot = vector3(rotX, rotY, rotZ)
 
   LockMinimapAngle(floor(rotZ))
+  ---@diagnostic disable-next-line: param-type-mismatch
   SetCamRot(_internal_camera, rotX, rotY, rotZ, 2)
 
   _internal_rot  = rot
@@ -97,9 +99,10 @@ function GetFreecamFov()
 end
 
 function SetFreecamFov(fov)
-  local fov = Clamp(fov, 0.0, 90.0)
-  SetCamFov(_internal_camera, fov)
-  _internal_fov = fov
+  local clampedFov = Clamp(fov, 20.0, 90.0)
+  ---@diagnostic disable-next-line: param-type-mismatch
+  SetCamFov(_internal_camera, clampedFov)
+  _internal_fov = clampedFov
 end
 
 --------------------------------------------------------------------------------
@@ -119,6 +122,7 @@ end
 --------------------------------------------------------------------------------
 
 function IsFreecamActive()
+  ---@diagnostic disable-next-line: param-type-mismatch
   return IsCamActive(_internal_camera) == 1
 end
 
@@ -141,7 +145,8 @@ function SetFreecamActive(active)
     SetFreecamRotation(rot.x, rot.y, rot.z)
     TriggerEvent('freecam:onEnter')
   else
-    DestroyCam(_internal_camera)
+    ---@diagnostic disable-next-line: param-type-mismatch
+    DestroyCam(_internal_camera, false)
     ClearFocus()
     UnlockMinimapAngle()
     if IS_FIVEM then

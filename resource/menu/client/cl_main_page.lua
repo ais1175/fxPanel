@@ -26,7 +26,7 @@ RegisterCommand('txAdmin:menu:tpToCoords', function()
     toggleMenuVisibility(true)
     SetNuiFocus(true, true)
     SendMenuMessage('openTeleportCoordsDialog', {})
-end)
+end, false)
 
 local function reqTpToWaypoint(_, cb)
     TriggerServerEvent('txsv:req:tpToWaypoint')
@@ -43,7 +43,7 @@ RegisterCommand('txAdmin:menu:tpToWaypoint', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpToWaypoint()
-end)
+end, false)
 
 local function reqTpBack(_, cb)
     if TX_LAST_TP_COORDS then
@@ -64,7 +64,7 @@ RegisterCommand('txAdmin:menu:tpBack', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpBack()
-end)
+end, false)
 
 RegisterSecureNuiCallback('tpToPlayer', function(data, cb)
     TriggerServerEvent('txsv:req:tpToPlayer', tonumber(data.id))
@@ -87,7 +87,7 @@ RegisterCommand('goto', function(_, args)
         return SendSnackbarMessage('error', 'nui_menu.page_main.teleport.goto.invalid_id', true)
     end
     TriggerServerEvent('txsv:req:tpToPlayer', tgtId)
-end)
+end, false)
 
 -- /tpm - teleport to marker (waypoint)
 RegisterCommand('tpm', function()
@@ -98,7 +98,7 @@ RegisterCommand('tpm', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqTpToWaypoint()
-end)
+end, false)
 
 RegisterSecureNuiCallback('summonPlayer', function(data, cb)
     TriggerServerEvent('txsv:req:bringPlayer', tonumber(data.id))
@@ -128,7 +128,7 @@ RegisterCommand('txAdmin:menu:clearArea', function()
     toggleMenuVisibility(true)
     SetNuiFocus(true, true)
     SendMenuMessage('openClearAreaDialog', {})
-end)
+end, false)
 
 -- [[ Spawn weapon (only in dev, for now) ]]
 RegisterSecureNuiCallback('spawnWeapon', function(weapon, cb)
@@ -167,7 +167,7 @@ RegisterCommand('txAdmin:menu:healMyself', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     reqHealMyself()
-end)
+end, false)
 
 RegisterSecureNuiCallback('healAllPlayers', function(_, cb)
     TriggerServerEvent('txsv:req:healEveryone')
@@ -255,7 +255,7 @@ local function handleTpNormally(x, y, z)
     -- handle vehicle teleport
     if veh > 0 then
         veh = GetVehiclePedIsIn(ped, false) --update veh id
-        SetEntityAlpha(veh, 125)
+        SetEntityAlpha(veh, 125, false)
         SetEntityCoords(veh, x, y, z + 0.5, false, false, false, false)
         SetPedIntoVehicle(ped, veh, -1)
         SetVehicleOnGroundProperly(veh)
@@ -287,7 +287,7 @@ local function handleTpForFreecam(x, y, z)
     local veh = GetVehiclePedIsIn(ped, false)
     DebugPrint('Freecam has vehicle attached: ' .. tostring(veh))
     if veh and veh > 0 then
-        SetEntityCoords(veh, x, y, z)
+        SetEntityCoords(veh, x, y, z, false, false, false, false)
     end
     SetFreecamPosition(x, y, z)
 end
@@ -338,6 +338,7 @@ RegisterNetEvent('txcl:tpToWaypoint', function()
         local waypoint = GetFirstBlipInfoId(GetWaypointBlipEnumId())
         destCoords = GetBlipInfoIdCoord(waypoint)
     else
+        ---@diagnostic disable-next-line: undefined-global
         destCoords = GetWaypointCoords()
     end
 
@@ -356,5 +357,5 @@ RegisterNetEvent('txcl:clearArea', function(radius)
     -- WTF?: User reports that this native actually clears dead peds compared to
     -- ClearArea? Weird considering Gottfried updated this native from _CLEAR_AREA_OF_EVERYTHING
     -- after found nativedb info. Maybe needs research lmao?
-    ClearAreaLeaveVehicleHealth(curCoords.x, curCoords.y, curCoords.z, radiusToFloat, false, false, false, false, false)
+    ClearAreaLeaveVehicleHealth(curCoords.x, curCoords.y, curCoords.z, radiusToFloat, false, false, false, false)
 end)

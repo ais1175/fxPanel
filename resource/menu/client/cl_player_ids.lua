@@ -126,11 +126,13 @@ end
 --- Draws a single gamer tag (fivem)
 local function setGamerTagFivem(targetTag, pid)
     -- Setup name
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetMpGamerTagVisibility(targetTag, fivemGamerTagCompsEnum.GamerName, 1)
 
     -- Setup Health
     SetMpGamerTagHealthBarColor(targetTag, 129)
     SetMpGamerTagAlpha(targetTag, fivemGamerTagCompsEnum.HealthArmour, 255)
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetMpGamerTagVisibility(targetTag, fivemGamerTagCompsEnum.HealthArmour, 1)
 
     -- Determine name color based on tag or talking state
@@ -154,10 +156,13 @@ end
 --- Clears a single gamer tag (fivem)
 local function clearGamerTagFivem(targetTag)
     -- Cleanup name
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetMpGamerTagVisibility(targetTag, fivemGamerTagCompsEnum.GamerName, 0)
     -- Cleanup Health
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetMpGamerTagVisibility(targetTag, fivemGamerTagCompsEnum.HealthArmour, 0)
     -- Cleanup AudioIcon
+    ---@diagnostic disable-next-line: param-type-mismatch
     SetMpGamerTagVisibility(targetTag, fivemGamerTagCompsEnum.AudioIcon, 0)
 end
 
@@ -214,7 +219,8 @@ local function showGamerTags()
             local playerName = string.sub(GetPlayerName(pid) or 'unknown', 1, 75)
             local playerStr = tagPrefix .. '[' .. serverId .. ']' .. ' ' .. playerName
             playerGamerTags[pid] = {
-                gamerTag = CreateFakeMpGamerTag(targetPed, playerStr, false, false, 0),
+                ---@diagnostic disable-next-line: param-type-mismatch
+                gamerTag = CreateFakeMpGamerTag(targetPed, playerStr, false, false, nil, 0),
                 ped = targetPed,
                 topTag = topTag,
             }
@@ -248,6 +254,7 @@ local function createGamerTagThread()
 end
 
 --- Function to enable or disable the player ids
+---@diagnostic disable-next-line: lowercase-global
 function toggleShowPlayerIDs(enabled, showNotification)
     if not TX_MENU_ACCESSIBLE then
         return
@@ -292,4 +299,4 @@ RegisterCommand('txAdmin:menu:togglePlayerIDs', function()
         return SendSnackbarMessage('error', 'nui_menu.misc.no_perms', true)
     end
     togglePlayerIDsHandler()
-end)
+end, false)

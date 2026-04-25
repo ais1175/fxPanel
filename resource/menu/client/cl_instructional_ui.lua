@@ -13,6 +13,7 @@ local redmGroupCounter = 0
 --- Generates a prompt group for instructional buttons
 ---@param keysTable table
 ---@return table {groupId, prompts}
+---@diagnostic disable-next-line: lowercase-global
 function makeRedmInstructionalGroup(keysTable)
     redmGroupCounter = redmGroupCounter + 1
     local groupId = 40120 + redmGroupCounter
@@ -20,12 +21,19 @@ function makeRedmInstructionalGroup(keysTable)
 
     --NOTE: ordering doesn't seem to work in prompts
     for _, keyData in pairs(keysTable) do
+        ---@diagnostic disable-next-line: undefined-global
         local prompt = PromptRegisterBegin()
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetText(prompt, CreateVarString(10, 'LITERAL_STRING', keyData[1]))
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetControlAction(prompt, keyData[2])
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetGroup(prompt, groupId, 0)
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetEnabled(prompt, true)
+        ---@diagnostic disable-next-line: undefined-global
         PromptSetStandardMode(prompt, false)
+        ---@diagnostic disable-next-line: undefined-global
         PromptRegisterEnd(prompt)
         prompts[keyData[1]] = prompt
     end
@@ -39,6 +47,7 @@ end
 --- Generates a instructional scaleform
 ---@param keysTable table
 ---@return integer scaleform
+---@diagnostic disable-next-line: lowercase-global
 function makeFivemInstructionalScaleform(keysTable)
     local scaleform = RequestScaleformMovie('instructional_buttons')
     while not HasScaleformMovieLoaded(scaleform) do

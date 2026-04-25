@@ -1,5 +1,9 @@
-//Helper function to get convars WITHOUT a fallback value
-const undefinedKey = 'UNDEFINED:CONVAR:' + Math.random().toString(36).substring(2, 15);
+import { randomBytes } from 'node:crypto';
+
+//Helper function to get convars WITHOUT a fallback value.
+//Sentinel must be unpredictable — if a convar can be crafted to equal the
+//sentinel, the getter will falsely report it as unset.
+const undefinedKey = 'UNDEFINED:CONVAR:' + randomBytes(16).toString('base64url');
 const getConvarString = (convarName: string) => {
     const cvar = GetConvar(convarName, undefinedKey);
     return cvar !== undefinedKey ? cvar.trim() : undefined;

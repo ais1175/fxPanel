@@ -70,12 +70,14 @@ const PlayerModal: React.FC<PlayerModalProps> = ({ onClose }) => {
 
     if (!assocPlayer) return null;
 
-    const error = (playerDetails as any).error;
+    const error = playerDetails && 'error' in playerDetails ? playerDetails.error : undefined;
+    const playerName =
+        playerDetails && 'player' in playerDetails ? playerDetails.player.displayName : assocPlayer.displayName;
 
     return (
         <>
             <DialogTitle style={{ borderBottom: '1px solid rgba(221,221,221,0.54)' }}>
-                [{assocPlayer.id}] {playerDetails?.player?.displayName ?? assocPlayer.displayName}
+                [{assocPlayer.id}] {playerName}
                 <StyledCloseButton onClick={onClose} size="large">
                     <Close />
                 </StyledCloseButton>

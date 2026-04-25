@@ -34,9 +34,9 @@ function CrashTypeRow({ datum, isLast, isOdd }: CrashTypeRowProps) {
         <tr
             className={cn(
                 'group font-mono text-sm',
-                !isLast && 'border-b',
+                !isLast && 'border-b border-border/30',
                 isOdd && 'bg-secondary/15',
-                'hover:bg-secondary/35',
+                'hover:bg-secondary/25 transition-colors',
             )}
         >
             <td className="min-w-[4ch] border-r px-2 py-1 text-right" title="Percent of all crashes">
@@ -108,9 +108,9 @@ export default function DrilldownCrashesSubcard({
 
     return (
         <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-lg px-4 pt-2">
+            <table className="w-full min-w-lg">
                 <thead>
-                    <tr className="text-muted-foreground/75 border-b">
+                    <tr className="text-muted-foreground/75 border-b border-border/40">
                         <th className="min-w-[4ch] border-r px-2 py-1 text-right">%</th>
                         <th className="min-w-[4ch] border-r px-2 py-1 text-right">Count</th>
                         <th className="px-2 py-1">Crash Reason</th>
@@ -132,7 +132,7 @@ export default function DrilldownCrashesSubcard({
                                 className={cn(
                                     'text-muted-foreground px-4 py-2 text-center',
                                     crashesData.display.length % 2 === 0 && 'bg-secondary/15',
-                                    'hover:bg-secondary/35',
+                                    'hover:bg-secondary/25 transition-colors',
                                 )}
                             >
                                 Showing the top {crashesData.display.length} out of{' '}

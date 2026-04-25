@@ -11,47 +11,49 @@ import DrilldownOverviewSubcard from './DrilldownOverviewSubcard';
 import { DisplayLodType, DrilldownRangeSelectionType } from './PlayerDropsPage';
 import InlineCode from '@/components/InlineCode';
 import DrilldownResourcesSubcard from './DrilldownResourcesSubcard';
+import { Card, CardContent } from '@/components/ui/card';
+import type { ReactNode } from 'react';
+
+function DrilldownSection({ icon, title, action, children, className }: { icon: ReactNode; title: string; action?: ReactNode; children: ReactNode; className?: string }) {
+    return (
+        <Card className={cn('overflow-hidden', className)}>
+            <div className="flex flex-col gap-2 border-b border-border/40 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4">
+                <div className="flex min-w-0 items-center gap-3">
+                    <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border [&>svg]:size-4">
+                        {icon}
+                    </div>
+                    <h3 className="text-sm font-semibold leading-tight tracking-tight">{title}</h3>
+                </div>
+                {action ? (
+                    <div className="flex flex-wrap items-center gap-2 pl-12 sm:ml-auto sm:pl-0">
+                        {action}
+                    </div>
+                ) : null}
+            </div>
+            <CardContent className="p-3 sm:p-4">{children}</CardContent>
+        </Card>
+    );
+}
 
 export function DrilldownCardLoading({ isError }: { isError?: boolean }) {
     return (
-        <div className="space-y-1">
+        <div className="space-y-4">
             <div className="text-muted-foreground space-x-2 text-center text-sm">
                 <span>Loading...</span>
             </div>
-            <div className="flex flex-col border-b pb-2 md:rounded-xl">
-                <div className="flex shrink flex-col space-y-4 border-b px-1 py-2 sm:px-4 md:rounded-t-[inherit]">
-                    <div className="flex items-center space-x-2">
-                        <div className="xs:block hidden">
-                            <FolderOpenIcon className="size-4" />
-                        </div>
-                        <h2 className="font-mono text-sm">Overview</h2>
-                    </div>
-                </div>
-                <div className="text-muted-foreground flex flex-wrap justify-evenly gap-4 px-4 py-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <DrilldownSection icon={<FolderOpenIcon />} title="Period Overview" className="col-span-full">
                     <PlayerDropsLoadingSpinner isError={isError} />
-                </div>
-                <div className="flex shrink flex-col space-y-4 border-t border-b px-1 py-2 sm:px-4">
-                    <div className="flex items-center space-x-2">
-                        <div className="xs:block hidden">
-                            <SkullIcon className="size-4" />
-                        </div>
-                        <h2 className="font-mono text-sm">Crash Reasons</h2>
-                    </div>
-                </div>
-                <div className="px-4 pt-2 pb-4">
+                </DrilldownSection>
+                <DrilldownSection icon={<BoxIcon />} title="Resource Kicks">
                     <PlayerDropsLoadingSpinner isError={isError} />
-                </div>
-                <div className="flex shrink flex-col space-y-4 border-t border-b px-1 py-2 sm:px-4">
-                    <div className="flex items-center space-x-2">
-                        <div className="xs:block hidden">
-                            <ShapesIcon className="size-4" />
-                        </div>
-                        <h2 className="font-mono text-sm">Environment Changes</h2>
-                    </div>
-                </div>
-                <div className="space-y-4 px-4 pt-2 pb-4">
+                </DrilldownSection>
+                <DrilldownSection icon={<ShapesIcon />} title="Environment Changes">
                     <PlayerDropsLoadingSpinner isError={isError} />
-                </div>
+                </DrilldownSection>
+                <DrilldownSection icon={<SkullIcon />} title="Crash Reasons" className="col-span-full">
+                    <PlayerDropsLoadingSpinner isError={isError} />
+                </DrilldownSection>
             </div>
         </div>
     );
@@ -75,7 +77,7 @@ const DrilldownCardInner = function DrilldownCard({
     //Window indicator
     const windowStartDate = new Date(windowStart);
     const windowEndDate = new Date(windowEnd);
-    const showDate = !isDateToday(windowStartDate) || !isDateToday(windowStartDate);
+    const showDate = !isDateToday(windowStartDate) || !isDateToday(windowEndDate);
 
     const windowStartTimeStr = dateToLocaleTimeString(windowStartDate, '2-digit', '2-digit');
     const windowStartDateStr = dateToLocaleDateString(windowStartDate, 'short');
@@ -85,7 +87,7 @@ const DrilldownCardInner = function DrilldownCard({
     const windowEndStr = showDate ? `${windowEndTimeStr} - ${windowEndDateStr}` : windowEndTimeStr;
 
     return (
-        <div className="space-y-1">
+        <div className="space-y-4">
             <div
                 className={cn(
                     'text-muted-foreground space-x-2 text-center text-sm',
@@ -97,61 +99,34 @@ const DrilldownCardInner = function DrilldownCard({
                     <InlineCode title={windowEndDate.toISOString()}>{windowEndStr}</InlineCode>.
                 </span>
             </div>
-            <div className="flex flex-col border-b md:rounded-xl">
-                <div className="rounded-t-[inherit]">
-                    <div className="flex shrink flex-col space-y-4 rounded-t-[inherit] border-b px-1 py-2 sm:px-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="xs:block hidden">
-                                <FolderOpenIcon className="size-4" />
-                            </div>
-                            <h2 className="font-mono text-sm">Period Overview</h2>
-                        </div>
-                    </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <DrilldownSection icon={<FolderOpenIcon />} title="Period Overview" className="col-span-full">
                     <DrilldownOverviewSubcard
                         dropTypes={windowData.dropTypes}
                         avgSessionSeconds={windowData.avgSessionSeconds}
                     />
-                </div>
+                </DrilldownSection>
 
-                <div className="pb-4">
-                    <div className="flex shrink flex-col space-y-4 border-t border-b px-1 py-2 sm:px-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="xs:block hidden">
-                                <BoxIcon className="size-4" />
-                            </div>
-                            <h2 className="font-mono text-sm">Resource Kicks</h2>
-                        </div>
-                    </div>
+                <DrilldownSection icon={<BoxIcon />} title="Resource Kicks">
                     <DrilldownResourcesSubcard resKicks={windowData.resKicks} />
-                </div>
+                </DrilldownSection>
 
-                <div className="pb-4">
-                    <div className="flex shrink flex-col space-y-4 border-t border-b px-1 py-2 sm:px-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="xs:block hidden">
-                                <ShapesIcon className="size-4" />
-                            </div>
-                            <h2 className="font-mono text-sm">Environment Changes</h2>
-                        </div>
-                    </div>
+                <DrilldownSection icon={<ShapesIcon />} title="Environment Changes">
                     <DrilldownChangesSubcard changes={windowData.changes} />
-                </div>
+                </DrilldownSection>
 
-                <div className="">
-                    <div className="flex shrink flex-row items-center justify-between border-t border-b px-1 sm:px-4">
-                        <div className="flex items-center space-x-2 py-2">
-                            <div className="xs:block hidden">
-                                <SkullIcon className="size-4" />
-                            </div>
-                            <h2 className="font-mono text-sm">Crash Reasons</h2>
-                        </div>
+                <DrilldownSection
+                    icon={<SkullIcon />}
+                    title="Crash Reasons"
+                    className="col-span-full"
+                    action={
                         <div className="flex gap-2">
                             <Select
                                 value={crashesTargetLimit.toString()}
                                 onValueChange={(value) => setCrashesTargetLimit(parseInt(value))}
                             >
-                                <SelectTrigger className="h-6 w-32 px-3 py-1 text-sm">
-                                    <SelectValue placeholder="Filter by admin" />
+                                <SelectTrigger className="h-7 w-32 px-3 py-1 text-xs">
+                                    <SelectValue placeholder="Limit" />
                                 </SelectTrigger>
                                 <SelectContent className="px-0">
                                     <SelectItem value={'50'} className="cursor-pointer">
@@ -169,8 +144,8 @@ const DrilldownCardInner = function DrilldownCard({
                                 value={crashesGroupReasons.toString()}
                                 onValueChange={(value) => setCrashesGroupReasons(value === 'true')}
                             >
-                                <SelectTrigger className="h-6 w-36 px-3 py-1 text-sm">
-                                    <SelectValue placeholder="Filter by admin" />
+                                <SelectTrigger className="h-7 w-36 px-3 py-1 text-xs">
+                                    <SelectValue placeholder="Sort" />
                                 </SelectTrigger>
                                 <SelectContent className="px-0">
                                     <SelectItem value={'false'} className="cursor-pointer">
@@ -182,14 +157,15 @@ const DrilldownCardInner = function DrilldownCard({
                                 </SelectContent>
                             </Select>
                         </div>
-                    </div>
+                    }
+                >
                     <DrilldownCrashesSubcard
                         crashTypes={windowData.crashTypes}
                         crashesGroupReasons={crashesGroupReasons}
                         crashesTargetLimit={crashesTargetLimit}
                         setCrashesTargetLimit={setCrashesTargetLimit}
                     />
-                </div>
+                </DrilldownSection>
             </div>
         </div>
     );

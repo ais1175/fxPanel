@@ -35,10 +35,11 @@ const selectedPlayerDataAtom = atom<Promise<PlayerModalResp | undefined>>(async 
     }
 });
 
-export const usePlayerDetailsValue = () => useAtomValue<PlayerModalResp>(selectedPlayerDataAtom);
+export const usePlayerDetailsValue = () =>
+    (useAtomValue(selectedPlayerDataAtom) ?? { error: 'No player selected.' }) as PlayerModalResp;
 
 export const useForcePlayerRefresh = () => useSetAtom(forcePlayerRefreshAtom);
 
-export const useAssociatedPlayerValue = () => useAtomValue<PlayerData>(associatedPlayerAtom);
+export const useAssociatedPlayerValue = () => useAtomValue(associatedPlayerAtom) as PlayerData;
 
-export const useSetAssociatedPlayer = () => useSetAtom<PlayerData>(associatedPlayerAtom);
+export const useSetAssociatedPlayer = () => useSetAtom(associatedPlayerAtom);

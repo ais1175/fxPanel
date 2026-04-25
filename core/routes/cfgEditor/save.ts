@@ -52,10 +52,14 @@ export default async function CFGEditorSave(ctx: AuthedCtx) {
 
         const cfgAbsolutePath = resolveCFGFilePath(requestedFile!, txConfig.server.dataPath!);
 
-        //Ensure the resolved path is inside the data directory
+        //Ensure the resolved path is inside the data directory. Using
+        //path.relative avoids Windows case-insensitivity and separator
+        //edge cases that a string `startsWith` check misses (e.g.
+        //"C:\\Data" vs "C:\\data\\evil" or a sibling like "C:\\Datab").
         const normalizedDataPath = path.resolve(txConfig.server.dataPath!);
         const normalizedCfgPath = path.resolve(cfgAbsolutePath);
-        if (!normalizedCfgPath.startsWith(normalizedDataPath + path.sep)) {
+        const relative = path.relative(normalizedDataPath, normalizedCfgPath);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
             return ctx.send({ type: 'error', message: 'Invalid file path.' });
         }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { useBackendApi } from '@/hooks/fetch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,75 +6,97 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileTextIcon, Loader2Icon, SearchIcon, FilterIcon, ArchiveIcon, InboxIcon } from 'lucide-react';
-import type { ApiGetReportsListResp, ReportListItem, ReportType, ReportStatus } from '@shared/reportApiTypes';
-import ReportDetailModal from './ReportDetailModal';
+import { PageHeader } from '@/components/page-header';
+import {
+    FlagIcon,
+    Loader2Icon,
+    SearchIcon,
+    BarChart2Icon,
+    UserCheckIcon,
+} from 'lucide-react';
+import type {
+    ApiGetTicketListResp,
+    TicketListItem,
+    TicketStatus,
+    TicketPriority,
+} from '@shared/ticketApiTypes';
+import TicketDetailModal from './TicketDetailModal';
+import { navigate } from 'wouter/use-browser-location';
 
-const typeLabels: Record<ReportType, string> = {
-    playerReport: 'Player Report',
-    bugReport: 'Bug Report',
-    question: 'Question / Help',
-};
-
-const statusLabels: Record<ReportStatus, string> = {
+const statusLabels: Record<TicketStatus, string> = {
     open: 'Open',
     inReview: 'In Review',
     resolved: 'Resolved',
+    closed: 'Closed',
 };
 
-const statusVariants: Record<ReportStatus, 'default' | 'secondary' | 'outline-solid' | 'destructive'> = {
+const statusVariants: Record<TicketStatus, 'default' | 'secondary' | 'outline-solid' | 'destructive'> = {
     open: 'destructive',
     inReview: 'default',
     resolved: 'secondary',
+    closed: 'outline-solid',
 };
 
-const typeColors: Record<ReportType, string> = {
-    playerReport: 'text-red-400',
-    bugReport: 'text-amber-400',
-    question: 'text-blue-400',
+const priorityColors: Record<TicketPriority, string> = {
+    low: 'text-green-400',
+    medium: 'text-yellow-400',
+    high: 'text-orange-400',
+    critical: 'text-red-500',
 };
 
 export default function ReportsPage() {
     const [searchQuery, setSearchQuery] = useState('');
-    const [typeFilter, setTypeFilter] = useState<string>('all');
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-    const [showArchive, setShowArchive] = useState(false);
+    const [priorityFilter, setPriorityFilter] = useState<string>('all');
+    const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
-    const listApi = useBackendApi<ApiGetReportsListResp>({
+    useEffect(() => {
+        const pageUrl = new URL(window.location.toString());
+        const ticketId = pageUrl.searchParams.get('ticket');
+        if (!ticketId?.length) return;
+
+        setSelectedTicketId(ticketId);
+
+        // Consume deep-link param after opening so refresh/back doesn't keep reopening.
+        pageUrl.searchParams.delete('ticket');
+        window.history.replaceState({}, '', pageUrl);
+    }, []);
+
+    const listApi = useBackendApi<ApiGetTicketListResp>({
         method: 'GET',
         path: '/reports/list',
         throwGenericErrors: true,
     });
 
-    const reportsSwr = useSWR(
+    const ticketsSwr = useSWR(
         '/reports/list',
         async () => {
             const data = await listApi({});
-            if (!data || 'error' in data) throw new Error('error' in data ? data.error : 'Failed to load');
-            return data.reports;
+            if (!data) throw new Error('Failed to load tickets: no data received');
+            if ('error' in data) throw new Error(`Failed to load tickets: ${data.error}`);
+            return data.tickets;
         },
         { dedupingInterval: 5_000 },
     );
 
-    const reports = reportsSwr.data ?? [];
+    const tickets = ticketsSwr.data ?? [];
 
-    // Split into active and archived
-    const activeReports = reports.filter((r) => r.status !== 'resolved');
-    const archivedReports = reports.filter((r) => r.status === 'resolved');
-    const baseList = showArchive ? archivedReports : activeReports;
+    // Gather unique categories from loaded tickets for the filter dropdown
+    const knownCategories = Array.from(new Set(tickets.map((t) => t.category)));
 
-    // Filter reports
-    const filtered = baseList.filter((r) => {
-        if (typeFilter !== 'all' && r.type !== typeFilter) return false;
-        if (!showArchive && statusFilter !== 'all' && r.status !== statusFilter) return false;
+    const filtered = tickets.filter((t) => {
+        if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+        if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+        if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             return (
-                r.id.toLowerCase().includes(q) ||
-                r.reporter.name.toLowerCase().includes(q) ||
-                r.reason.toLowerCase().includes(q) ||
-                r.targets.some((t) => t.name.toLowerCase().includes(q))
+                t.id.toLowerCase().includes(q) ||
+                t.reporterName.toLowerCase().includes(q) ||
+                t.descriptionPreview.toLowerCase().includes(q) ||
+                t.targetNames.some((n) => n.toLowerCase().includes(q)) ||
+                (t.claimedBy?.toLowerCase().includes(q) ?? false)
             );
         }
         return true;
@@ -85,131 +107,124 @@ export default function ReportsPage() {
         return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+    const openCount = tickets.filter((t) => t.status === 'open').length;
+    const inReviewCount = tickets.filter((t) => t.status === 'inReview').length;
+
     return (
-        <div className="flex w-full flex-col gap-4">
-            <Card>
-                <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="flex items-center gap-2">
-                            <FileTextIcon className="h-5 w-5" />
-                            {showArchive ? 'Archived Reports' : 'Reports'}
-                            {!showArchive && activeReports.length > 0 && (
-                                <Badge variant="secondary" className="ml-1">
-                                    {activeReports.length} active
-                                </Badge>
-                            )}
-                            {showArchive && archivedReports.length > 0 && (
-                                <Badge variant="secondary" className="ml-1">
-                                    {archivedReports.length} archived
-                                </Badge>
-                            )}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant={showArchive ? 'default' : 'outline-solid'}
-                                size="sm"
-                                onClick={() => {
-                                    setShowArchive(!showArchive);
-                                    setStatusFilter('all');
-                                }}
-                            >
-                                {showArchive ? (
-                                    <>
-                                        <InboxIcon className="mr-1 h-4 w-4" /> Active
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArchiveIcon className="mr-1 h-4 w-4" /> Archive
-                                    </>
-                                )}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => reportsSwr.mutate()}
-                                disabled={reportsSwr.isLoading}
-                            >
-                                {reportsSwr.isLoading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : 'Refresh'}
-                            </Button>
-                        </div>
+        <div className="h-contentvh flex w-full flex-col">
+            <PageHeader icon={<FlagIcon className="size-5" />} title="Reports">
+                <div className="flex items-center gap-2">
+                    {openCount > 0 && (
+                        <Badge variant="destructive">{openCount} open</Badge>
+                    )}
+                    {inReviewCount > 0 && (
+                        <Badge variant="default">{inReviewCount} in review</Badge>
+                    )}
+                    <Button
+                        variant="outline-solid"
+                        size="sm"
+                        onClick={() => navigate('/reports/analytics')}
+                    >
+                        <BarChart2Icon className="mr-1 h-4 w-4" /> Analytics
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => ticketsSwr.mutate()}
+                        disabled={ticketsSwr.isLoading}
+                    >
+                        {ticketsSwr.isLoading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : 'Refresh'}
+                    </Button>
+                </div>
+            </PageHeader>
+
+            <div className="bg-card flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/60 shadow-sm">
+                {/* Filters */}
+                <div className="shrink-0 flex flex-wrap gap-2 border-b border-border/40 p-3">
+                    <div className="relative min-w-[180px] flex-1">
+                        <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
+                        <Input
+                            placeholder="Search tickets..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-8"
+                        />
                     </div>
-                </CardHeader>
-                <CardContent>
-                    {/* Filters */}
-                    <div className="mb-4 flex gap-2">
-                        <div className="relative flex-1">
-                            <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
-                            <Input
-                                placeholder="Search reports..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-8"
-                            />
-                        </div>
-                        <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Status</SelectItem>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="inReview">In Review</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {knownCategories.length > 0 && (
+                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                             <SelectTrigger className="w-[160px]">
-                                <SelectValue placeholder="Type" />
+                                <SelectValue placeholder="Category" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Types</SelectItem>
-                                <SelectItem value="playerReport">Player Report</SelectItem>
-                                <SelectItem value="bugReport">Bug Report</SelectItem>
-                                <SelectItem value="question">Question / Help</SelectItem>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                {knownCategories.map((cat) => (
+                                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
-                        {!showArchive && (
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[140px]">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="open">Open</SelectItem>
-                                    <SelectItem value="inReview">In Review</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        )}
-                    </div>
+                    )}
+                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                        <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Priority" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Priorities</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="critical">Critical</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
 
-                    {/* Reports list */}
-                    {reportsSwr.isLoading ? (
+                {/* Ticket list */}
+                <div className="flex-1 overflow-auto">
+                    {ticketsSwr.isLoading ? (
                         <div className="flex justify-center py-8">
                             <Loader2Icon className="text-muted-foreground h-6 w-6 animate-spin" />
                         </div>
-                    ) : reportsSwr.error ? (
+                    ) : ticketsSwr.error ? (
                         <p className="text-destructive py-8 text-center">Reports route not available.</p>
                     ) : filtered.length === 0 ? (
                         <p className="text-muted-foreground py-8 text-center">
-                            {baseList.length === 0
-                                ? showArchive
-                                    ? 'No archived reports.'
-                                    : 'No reports found.'
-                                : 'No reports match your filters.'}
+                            {tickets.length === 0 ? 'No tickets found.' : 'No tickets match your filters.'}
                         </p>
                     ) : (
-                        <div className="space-y-2">
-                            {filtered.map((report) => (
-                                <ReportRow
-                                    key={report.id}
-                                    report={report}
+                        <div className="flex flex-col gap-2 p-3">
+                            {filtered.map((ticket) => (
+                                <TicketRow
+                                    key={ticket.id}
+                                    ticket={ticket}
                                     formatDate={formatDate}
-                                    onClick={() => setSelectedReportId(report.id)}
+                                    onClick={() => setSelectedTicketId(ticket.id)}
                                 />
                             ))}
                         </div>
                     )}
-                </CardContent>
-            </Card>
+                </div>
+            </div>
 
             {/* Detail modal */}
-            {selectedReportId && (
-                <ReportDetailModal
-                    reportId={selectedReportId}
-                    open={!!selectedReportId}
+            {selectedTicketId && (
+                <TicketDetailModal
+                    ticketId={selectedTicketId}
+                    open
                     onOpenChange={(open) => {
                         if (!open) {
-                            setSelectedReportId(null);
-                            reportsSwr.mutate();
+                            setSelectedTicketId(null);
+                            ticketsSwr.mutate();
                         }
                     }}
                 />
@@ -218,49 +233,56 @@ export default function ReportsPage() {
     );
 }
 
-function ReportRow({
-    report,
+function TicketRow({
+    ticket,
     formatDate,
     onClick,
 }: {
-    report: ReportListItem;
+    ticket: TicketListItem;
     formatDate: (ts: number) => string;
     onClick: () => void;
 }) {
     return (
         <button
-            className="bg-card hover:bg-muted/50 w-full cursor-pointer rounded-lg border p-3 text-left transition-colors"
+            className="group bg-secondary/20 hover:bg-secondary/40 w-full cursor-pointer rounded-xl border border-border/60 hover:border-border p-4 text-left transition-all shadow-sm"
             onClick={onClick}
         >
-            <div className="mb-1 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium">{report.id}</span>
-                    <Badge variant={statusVariants[report.status]}>{statusLabels[report.status]}</Badge>
-                    <span className={`text-xs ${typeColors[report.type]}`}>{typeLabels[report.type]}</span>
+                    <span className="font-mono text-sm font-semibold tracking-wide">{ticket.id}</span>
+                    <Badge variant={statusVariants[ticket.status]}>{statusLabels[ticket.status]}</Badge>
+                    <span className="text-muted-foreground text-xs">{ticket.category}</span>
+                    {ticket.priority && (
+                        <span className={`text-xs font-semibold ${priorityColors[ticket.priority]}`}>
+                            [{ticket.priority.toUpperCase()}]
+                        </span>
+                    )}
+                    {ticket.claimedBy && (
+                        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                            <UserCheckIcon className="h-3 w-3" /> {ticket.claimedBy}
+                        </span>
+                    )}
                 </div>
-                <span className="text-muted-foreground text-xs">{formatDate(report.tsCreated)}</span>
+                <span className="text-muted-foreground text-xs">{formatDate(ticket.tsLastActivity)}</span>
             </div>
             <div className="flex items-center justify-between">
                 <div className="text-sm">
                     <span className="text-muted-foreground">by </span>
-                    <span className="font-medium">{report.reporter.name}</span>
-                    {report.targets.length > 0 && (
+                    <span className="font-medium">{ticket.reporterName}</span>
+                    {ticket.targetNames.length > 0 && (
                         <>
                             <span className="text-muted-foreground"> → </span>
-                            <span className="font-medium">{report.targets.map((t) => t.name).join(', ')}</span>
+                            <span className="font-medium">{ticket.targetNames.join(', ')}</span>
                         </>
                     )}
                 </div>
                 <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                    {report.messageCount > 0 && (
-                        <span>
-                            {report.messageCount} message{report.messageCount !== 1 ? 's' : ''}
-                        </span>
+                    {ticket.messageCount > 0 && (
+                        <span>{ticket.messageCount} msg{ticket.messageCount !== 1 ? 's' : ''}</span>
                     )}
-                    {report.resolvedBy && <span>Resolved by {report.resolvedBy}</span>}
                 </div>
             </div>
-            <p className="text-muted-foreground mt-1 line-clamp-1 text-sm">{report.reason}</p>
+            <p className="text-muted-foreground mt-1.5 line-clamp-1 text-sm">{ticket.descriptionPreview}</p>
         </button>
     );
 }

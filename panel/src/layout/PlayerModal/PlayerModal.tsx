@@ -4,7 +4,7 @@ import { setPlayerModalUrlParam, usePlayerModalStateValue } from '@/hooks/player
 import { InfoIcon, ListIcon, HistoryIcon, GavelIcon, SearchIcon, ActivityIcon, BlocksIcon } from 'lucide-react';
 import PlayerInfoTab from './PlayerInfoTab';
 import PlayerInsightsTab from './PlayerInsightsTab';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PlayerIdsTab from './PlayerIdsTab';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import PlayerHistoryTab from './PlayerHistoryTab';
@@ -64,10 +64,11 @@ export default function PlayerModal() {
 
     //Helper for tabs to be able to refresh the modal data
     const refreshModalData = () => {
-        setCurrRefreshKey(currRefreshKey + 1);
+        setCurrRefreshKey((prev) => prev + 1);
     };
 
     //Querying player data when reference is available
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- playerQueryApi identity changes each render; effect is intentionally keyed only on playerRef and currRefreshKey
     useEffect(() => {
         if (!playerRef) return;
         setModalData(undefined);
@@ -95,11 +96,26 @@ export default function PlayerModal() {
     //Resetting selected tab when modal is closed
     useEffect(() => {
         if (!isModalOpen) {
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 setSelectedTab(modalTabs[0].title);
             }, 200);
+            return () => clearTimeout(timer);
         }
     }, [isModalOpen]);
+
+    const combinedTabs = useMemo(() => [
+        ...modalTabs.map((t) => ({
+            value: t.title,
+            id: `player-modal-tab-${t.title.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+        })),
+        ...addonTabs.map((w, i) => {
+            const sanitized = `${w.addonId}-${w.title}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+            return {
+                value: `addon:${w.addonId}:${w.title}:${i}`,
+                id: `player-modal-tab-addon-${sanitized}-${i}`,
+            };
+        }),
+    ], [addonTabs]);
 
     const handleOpenClose = (newOpenState: boolean) => {
         if (isModalOpen && !newOpenState) {
@@ -111,12 +127,12 @@ export default function PlayerModal() {
     const handleTabButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
-            const currentIndex = modalTabs.findIndex((tab) => tab.title === selectedTab);
+            const currentIndex = combinedTabs.findIndex((t) => t.value === selectedTab);
             const nextIndex = e.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
-            const nextTab = modalTabs[nextIndex];
-            if (nextTab) {
-                setSelectedTab(nextTab.title);
-                const nextButton = document.getElementById(`player-modal-tab-${nextTab.title}`);
+            const next = combinedTabs[nextIndex];
+            if (next) {
+                setSelectedTab(next.value);
+                const nextButton = document.getElementById(next.id);
                 if (nextButton) {
                     nextButton.focus();
                 }
@@ -147,6 +163,22 @@ export default function PlayerModal() {
         pageTitle = <span className="text-muted-foreground italic">Loading...</span>;
     }
 
+    if (!playerRef) {
+        return (
+            <Dialog open={isModalOpen} onOpenChange={handleOpenClose}>
+                <DialogContent className="flex h-full max-h-full max-w-2xl flex-col gap-1 p-0 sm:h-auto sm:gap-4">
+                    <DialogHeader className="border-b px-4 py-3">
+                        <DialogTitle className="sr-only">Player Modal</DialogTitle>
+                        <DialogDescription className="sr-only">Player details and actions</DialogDescription>
+                    </DialogHeader>
+                    <ModalCentralMessage>
+                        <GenericSpinner msg="Loading..." />
+                    </ModalCentralMessage>
+                </DialogContent>
+            </Dialog>
+        );
+    }
+
     return (
         <Dialog open={isModalOpen} onOpenChange={handleOpenClose}>
             <DialogContent
@@ -162,9 +194,15 @@ export default function PlayerModal() {
 
                 <div className="flex h-full flex-col md:flex-row md:px-4">
                     <div className="bg-muted mx-2 flex flex-row gap-1 rounded-md p-1 md:mx-0 md:flex-col md:bg-transparent md:p-0">
-                        {modalTabs.map((tab) => (
+                        {modalTabs.map((tab) => {
+                            const tabEntry = combinedTabs.find((t) => t.value === tab.title);
+                            if (!tabEntry) {
+                                console.warn('[PlayerModal] No combinedTabs entry for tab:', tab.title, 'available:', combinedTabs.map((t) => t.value));
+                                return null;
+                            }
+                            return (
                             <Button
-                                id={`player-modal-tab-${tab.title}`}
+                                id={tabEntry.id}
                                 key={tab.title}
                                 variant={selectedTab === tab.title ? 'secondary' : 'ghost'}
                                 className={cn(
@@ -178,24 +216,34 @@ export default function PlayerModal() {
                             >
                                 {tab.icon} {tab.title}
                             </Button>
-                        ))}
+                            );
+                        })}
                         {addonTabs.length > 0 && (
                             <>
                                 <hr className="my-1 hidden border-border md:block" />
-                                {addonTabs.map((w) => (
-                                    <Button
-                                        key={`addon-${w.addonId}-${w.title}`}
-                                        variant={selectedTab === `addon:${w.addonId}:${w.title}` ? 'secondary' : 'ghost'}
-                                        className={cn(
-                                            'w-full justify-center tracking-wider md:justify-start',
-                                            'h-7 rounded-sm px-2 text-sm',
-                                            'md:h-10 md:text-base',
-                                        )}
-                                        onClick={() => setSelectedTab(`addon:${w.addonId}:${w.title}`)}
-                                    >
-                                        <BlocksIcon className="xs:block mr-2 hidden h-5 w-5" /> {w.title}
-                                    </Button>
-                                ))}
+                                {addonTabs.map((w, i) => {
+                                    const tabEntry = combinedTabs.find((t) => t.value === `addon:${w.addonId}:${w.title}:${i}`);
+                                    if (!tabEntry) {
+                                        console.warn('[PlayerModal] No combinedTabs entry for addon tab:', `addon:${w.addonId}:${w.title}:${i}`, 'available:', combinedTabs.map((t) => t.value));
+                                        return null;
+                                    }
+                                    return (
+                                        <Button
+                                            key={tabEntry.id}
+                                            id={tabEntry.id}
+                                            variant={selectedTab === tabEntry.value ? 'secondary' : 'ghost'}
+                                            className={cn(
+                                                'w-full justify-center tracking-wider md:justify-start',
+                                                'h-7 rounded-sm px-2 text-sm',
+                                                'md:h-10 md:text-base',
+                                            )}
+                                            onClick={() => setSelectedTab(tabEntry.value)}
+                                            onKeyDown={handleTabButtonKeyDown}
+                                        >
+                                            <BlocksIcon className="xs:block mr-2 hidden h-5 w-5" /> {w.title}
+                                        </Button>
+                                    );
+                                })}
                             </>
                         )}
                     </div>
@@ -213,7 +261,7 @@ export default function PlayerModal() {
                             <>
                                 {selectedTab === 'Info' && (
                                     <PlayerInfoTab
-                                        playerRef={playerRef!}
+                                        playerRef={playerRef}
                                         player={modalData.player}
                                         serverTime={modalData.serverTime}
                                         tsFetch={tsFetch}
@@ -238,24 +286,27 @@ export default function PlayerModal() {
                                 {selectedTab === 'IDs' && (
                                     <PlayerIdsTab player={modalData.player} refreshModalData={refreshModalData} />
                                 )}
-                                {selectedTab === 'Ban' && <PlayerBanTab playerRef={playerRef!} />}
-                                {addonTabs.map((w) => (
-                                    selectedTab === `addon:${w.addonId}:${w.title}` && (
-                                        <ErrorBoundary key={`${w.addonId}-${w.title}`} fallback={<div className="p-4 text-sm text-destructive">Addon tab error: {w.title}</div>}>
-                                            <w.Component
+                                {selectedTab === 'Ban' && <PlayerBanTab playerRef={playerRef} />}
+                                {selectedTab.startsWith('addon:') && (() => {
+                                    const matchIndex = addonTabs.findIndex((w, i) => selectedTab === `addon:${w.addonId}:${w.title}:${i}`);
+                                    if (matchIndex === -1) return null;
+                                    const match = addonTabs[matchIndex];
+                                    return (
+                                        <ErrorBoundary key={`${match.addonId}-${match.title}-${matchIndex}`} fallback={<div className="p-4 text-sm text-destructive">Addon tab error: {match.title}</div>}>
+                                            <match.Component
                                                 license={modalData.player.license}
                                                 displayName={modalData.player.displayName}
                                                 netid={modalData.player.netid}
                                                 playerRef={playerRef}
                                             />
                                         </ErrorBoundary>
-                                    )
-                                ))}
+                                    );
+                                })()}
                             </>
                         )}
                     </ScrollArea>
                 </div>
-                <PlayerModalFooter playerRef={playerRef!} player={modalData?.player} addonActions={addonActions} />
+                <PlayerModalFooter playerRef={playerRef} player={modalData?.player} addonActions={addonActions} />
             </DialogContent>
         </Dialog>
     );

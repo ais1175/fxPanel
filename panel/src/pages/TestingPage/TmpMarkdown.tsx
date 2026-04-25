@@ -1,5 +1,5 @@
 import MarkdownProse from '@/components/MarkdownProse';
-import { CustomToast } from '@/components/txToaster';
+import { CustomToast } from '@/components/TxToaster';
 import type { Toast } from 'react-hot-toast';
 
 const testMarkdown = `

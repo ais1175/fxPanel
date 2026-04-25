@@ -1,5 +1,5 @@
 import { tsToLocaleDateString, tsToLocaleDateTimeString } from '@/lib/dateTime';
-import { txToast } from './txToaster';
+import { txToast } from './TxToaster';
 import { useClockDrift } from '@/hooks/status';
 
 const clockSkewTolerance = 5 * 60; //5 minutes

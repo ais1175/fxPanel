@@ -289,7 +289,6 @@ export const MenuListItemMulti: React.FC<MenuListItemMultiProps> = memo(
                                     }}
                                 >
                                     {actions[curState]?.name ?? '???'}
-                                    {!isCurrentActionAllowed}
                                 </Typography>
                             </>
                         }

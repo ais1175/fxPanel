@@ -5,7 +5,7 @@ import { accountModalOpenAtom, confirmDialogOpenAtom, promptDialogOpenAtom } fro
 import { isGlobalMenuSheetOpenAtom, isPlayerlistSheetOpenAtom, isServerSheetOpenAtom } from './sheets';
 import { playerModalOpenAtom } from './playerModal';
 import { globalStatusAtom } from './status';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { actionModalOpenAtom } from './actionModal';
 import {
     dashDataTsAtom,

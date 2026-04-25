@@ -36,7 +36,7 @@ function ActionsTimelineChart({ daily }: Props) {
         kicks: d.kicks,
     }));
 
-    const colors = isDarkMode ? ['#ef4444', '#f59e0b', '#3b82f6'] : ['#dc2626', '#d97706', '#2563eb'];
+    const colors = isDarkMode ? ['#fb7185', '#f59e0b', '#38bdf8'] : ['#e11d48', '#d97706', '#0284c7'];
 
     return (
         <div style={{ height: 260 }}>
@@ -48,7 +48,9 @@ function ActionsTimelineChart({ daily }: Props) {
                 padding={0.3}
                 groupMode="stacked"
                 colors={colors}
-                borderWidth={0}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.55]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -94,6 +96,8 @@ function ActionsTimelineChart({ daily }: Props) {
                         itemTextColor: isDarkMode ? '#a1a1aa' : '#71717a',
                     },
                 ]}
+                animate={true}
+                motionConfig="gentle"
             />
         </div>
     );

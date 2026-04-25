@@ -32,23 +32,59 @@ export default class AddonFileWatcher {
     private start(): void {
         if (!fs.existsSync(this.addonsDir)) return;
 
+        // fs.watch with { recursive: true } requires Node.js >= 19.1.0 on Linux.
+        // Abort hot-reload (rather than crashing later) on older Linux runtimes.
+        if (process.platform === 'linux') {
+            const parts = process.versions.node.split('.').map((n) => Number(n));
+            const major = parts[0] ?? 0;
+            const minor = parts[1] ?? 0;
+            if (major < 19 || (major === 19 && minor < 1)) {
+                console.warn(
+                    `Addon file watcher disabled: recursive fs.watch requires Node.js >= 19.1.0 on Linux (current: ${process.version}).`,
+                );
+                return;
+            }
+        }
+
         // Watch root addons/ for new/removed directories
         try {
             this.rootWatcher = fs.watch(this.addonsDir, (eventType, filename) => {
-                if (this.closed || !filename) return;
-                const fullPath = path.join(this.addonsDir, filename);
+                try {
+                    if (this.closed || !filename) return;
+                    const fullPath = path.join(this.addonsDir, filename);
 
-                // New directory added — start watching it
-                if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
-                    if (!this.watchers.has(filename)) {
-                        this.watchAddonDir(filename);
+                    // Stat the path; treat any error (e.g. ENOENT due to a race) as "not present"
+                    let isDirectory = false;
+                    let statOk = false;
+                    try {
+                        const st = fs.statSync(fullPath);
+                        statOk = true;
+                        isDirectory = st.isDirectory();
+                    } catch {
+                        statOk = false;
+                    }
+
+                    // New directory added — start watching it
+                    if (statOk && isDirectory) {
+                        if (!this.watchers.has(filename)) {
+                            this.watchAddonDir(filename);
+                            this.scheduleReload(filename);
+                        }
+                    } else if (!statOk && this.watchers.has(filename)) {
+                        // Directory removed — stop watching
+                        this.unwatchAddonDir(filename);
                         this.scheduleReload(filename);
                     }
-                } else if (!fs.existsSync(fullPath) && this.watchers.has(filename)) {
-                    // Directory removed — stop watching
-                    this.unwatchAddonDir(filename);
-                    this.scheduleReload(filename);
+                } catch (err) {
+                    console.warn(`Root addons watcher callback error: ${(err as Error).message}`);
                 }
+            });
+            this.rootWatcher.on('error', (err) => {
+                console.warn(`Root addons watcher error: ${err.message}`);
+                try {
+                    this.rootWatcher?.close();
+                    this.rootWatcher = null;
+                } catch { /* already closed */ }
             });
         } catch (err) {
             console.warn(`Failed to watch addons root directory: ${(err as Error).message}`);
@@ -59,9 +95,11 @@ export default class AddonFileWatcher {
             const entries = fs.readdirSync(this.addonsDir);
             for (const entry of entries) {
                 const fullPath = path.join(this.addonsDir, entry);
-                if (fs.statSync(fullPath).isDirectory()) {
-                    this.watchAddonDir(entry);
-                }
+                try {
+                    if (fs.statSync(fullPath).isDirectory()) {
+                        this.watchAddonDir(entry);
+                    }
+                } catch { /* skip entries removed concurrently or otherwise unstattable */ }
             }
         } catch (err) {
             console.warn(`Failed to enumerate addon directories: ${(err as Error).message}`);
@@ -98,8 +136,9 @@ export default class AddonFileWatcher {
             });
 
             watcher.on('error', (err) => {
-                console.verbose.warn(`Watcher error for addon ${addonId}: ${err.message}`);
-                this.unwatchAddonDir(addonId);
+                console.warn(`Watcher error for addon ${addonId}: ${err.message}`);
+                // Gracefully close — do not let EPERM bubble to uncaughtException
+                try { this.unwatchAddonDir(addonId); } catch { /* already closed */ }
             });
 
             this.watchers.set(addonId, watcher);
@@ -111,8 +150,13 @@ export default class AddonFileWatcher {
     private unwatchAddonDir(addonId: string): void {
         const watcher = this.watchers.get(addonId);
         if (watcher) {
-            watcher.close();
-            this.watchers.delete(addonId);
+            try {
+                watcher.close();
+            } catch (err) {
+                console.warn(`Failed to close watcher for addon ${addonId}: ${(err as Error).message}`);
+            } finally {
+                this.watchers.delete(addonId);
+            }
         }
     }
 
@@ -144,15 +188,24 @@ export default class AddonFileWatcher {
         this.staticOnlyFlags.clear();
 
         // Close all addon watchers
-        for (const watcher of this.watchers.values()) {
-            watcher.close();
+        for (const [addonId, watcher] of this.watchers.entries()) {
+            try {
+                watcher.close();
+            } catch (err) {
+                console.warn(`Failed to close watcher for addon ${addonId}: ${(err as Error).message}`);
+            }
         }
         this.watchers.clear();
 
         // Close root watcher
         if (this.rootWatcher) {
-            this.rootWatcher.close();
-            this.rootWatcher = null;
+            try {
+                this.rootWatcher.close();
+            } catch (err) {
+                console.warn(`Failed to close root watcher: ${(err as Error).message}`);
+            } finally {
+                this.rootWatcher = null;
+            }
         }
 
         console.log('File watcher stopped');

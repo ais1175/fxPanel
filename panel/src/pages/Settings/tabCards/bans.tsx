@@ -15,7 +15,7 @@ import {
     getConfigDiff,
 } from '../utils';
 import SettingsCardShell from '../SettingsCardShell';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 
 export const pageConfigs = {
     checkingEnabled: getPageConfig('banlist', 'enabled', undefined, true),

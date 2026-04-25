@@ -11,16 +11,16 @@ import {
     MenuItem,
     Select,
     TextField,
+    Tooltip,
     Typography,
 } from '@mui/material';
 import {
     ArrowBack,
     Archive,
-    BugReport,
     CheckCircle,
-    HelpOutline,
+    Close,
     Inbox,
-    Person,
+    LockOutlined,
     PlayArrow,
     RadioButtonUnchecked,
     Refresh,
@@ -36,46 +36,62 @@ import { theme } from '../../styles/theme';
 // Types
 // =============================================
 
-type ReportType = 'playerReport' | 'bugReport' | 'question';
-type ReportStatus = 'open' | 'inReview' | 'resolved';
+/** Only allow https:// image URLs from trusted sources to prevent XSS/tracking via arbitrary URLs. */
+const ALLOWED_IMAGE_ORIGINS = ['https://i.imgur.com', 'https://cdn.discordapp.com', 'https://media.discordapp.net'];
+function validateImageUrl(url: string): boolean {
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'https:' && ALLOWED_IMAGE_ORIGINS.some((o) => parsed.origin === o);
+    } catch {
+        return false;
+    }
+}
 
-interface ReportPlayerRef {
+type TicketStatus = 'open' | 'inReview' | 'resolved' | 'closed';
+
+interface TicketPlayerRef {
     license: string;
     name: string;
     netid: number;
 }
 
-interface ReportMessage {
+interface TicketMessage {
+    id?: string;
     author: string;
-    authorType: 'player' | 'admin';
+    authorType: 'player' | 'admin' | 'discord';
     content: string;
     ts: number;
+    imageUrls?: string[];
 }
 
-interface ReportListItem {
+interface TicketListItem {
     id: string;
-    type: ReportType;
-    status: ReportStatus;
-    reporter: ReportPlayerRef;
-    targets: ReportPlayerRef[];
-    reason: string;
+    category: string;
+    priority?: string;
+    status: TicketStatus;
+    reporterName: string;
+    targetNames: string[];
+    descriptionPreview: string;
     messageCount: number;
+    unreadCount?: number;
     tsCreated: number;
-    tsResolved: number | null;
-    resolvedBy: string | null;
+    tsLastActivity: number;
+    claimedBy?: string | null;
 }
 
-interface ReportDetail {
+interface TicketDetail {
     id: string;
-    type: ReportType;
-    status: ReportStatus;
-    reporter: ReportPlayerRef;
-    targets: ReportPlayerRef[];
-    reason: string;
-    messages: ReportMessage[];
+    category: string;
+    priority?: string;
+    status: TicketStatus;
+    reporter: TicketPlayerRef;
+    targets: TicketPlayerRef[];
+    description: string;
+    messages: TicketMessage[];
     tsCreated: number;
-    tsResolved: number | null;
-    resolvedBy: string | null;
+    tsResolved?: number | null;
+    resolvedBy?: string | null;
+    claimedBy?: string | null;
 }
 
 // =============================================
@@ -103,28 +119,18 @@ const ListContainer = styled(Box)({
 // Helpers
 // =============================================
 
-const TYPE_LABELS: Record<ReportType, string> = {
-    playerReport: 'Player Report',
-    bugReport: 'Bug Report',
-    question: 'Question / Help',
-};
-
-const TYPE_COLORS: Record<ReportType, string> = {
-    playerReport: theme.destructive,
-    bugReport: theme.warning,
-    question: theme.info,
-};
-
-const STATUS_CHIP_COLORS: Record<ReportStatus, { bg: string; border: string; text: string }> = {
+const STATUS_CHIP_COLORS: Record<TicketStatus, { bg: string; border: string; text: string }> = {
     open: { bg: 'rgba(255, 174, 0, 0.12)', border: theme.warning, text: theme.warning },
     inReview: { bg: 'rgba(43, 155, 197, 0.12)', border: theme.info, text: theme.info },
     resolved: { bg: 'rgba(1, 163, 112, 0.12)', border: theme.success, text: theme.success },
+    closed: { bg: 'rgba(130, 130, 130, 0.12)', border: theme.muted, text: theme.muted },
 };
 
-const STATUS_LABELS: Record<ReportStatus, string> = {
+const STATUS_LABELS: Record<TicketStatus, string> = {
     open: 'Open',
     inReview: 'In Review',
     resolved: 'Resolved',
+    closed: 'Closed',
 };
 
 function formatDate(ts: number): string {
@@ -136,7 +142,7 @@ function formatDate(ts: number): string {
 // Status Chip
 // =============================================
 
-const StatusChip: React.FC<{ status: ReportStatus }> = ({ status }) => {
+const StatusChip: React.FC<{ status: TicketStatus }> = ({ status }) => {
     const colors = STATUS_CHIP_COLORS[status];
     return (
         <Chip
@@ -158,14 +164,14 @@ const StatusChip: React.FC<{ status: ReportStatus }> = ({ status }) => {
 // Detail View
 // =============================================
 
-const ReportDetailView: React.FC<{
-    report: ReportDetail;
+const TicketDetailView: React.FC<{
+    ticket: TicketDetail;
     onBack: () => void;
     onSendMessage: (content: string) => void;
-    onStatusChange: (status: ReportStatus) => void;
+    onStatusChange: (status: TicketStatus) => void;
     sendingMessage: boolean;
     changingStatus: boolean;
-}> = ({ report, onBack, onSendMessage, onStatusChange, sendingMessage, changingStatus }) => {
+}> = ({ ticket, onBack, onSendMessage, onStatusChange, sendingMessage, changingStatus }) => {
     const [msgText, setMsgText] = useState('');
 
     const handleSend = () => {
@@ -173,6 +179,8 @@ const ReportDetailView: React.FC<{
         onSendMessage(msgText.trim());
         setMsgText('');
     };
+
+    const isTerminal = ticket.status === 'resolved' || ticket.status === 'closed';
 
     return (
         <Box display="flex" flexDirection="column" height="100%" color={theme.fg}>
@@ -182,60 +190,75 @@ const ReportDetailView: React.FC<{
                     <ArrowBack fontSize="small" />
                 </IconButton>
                 <Typography variant="subtitle2" fontWeight={600} sx={{ color: theme.fg }}>
-                    Report {report.id}
+                    Ticket {ticket.id}
                 </Typography>
-                <StatusChip status={report.status} />
+                <StatusChip status={ticket.status} />
+                {ticket.claimedBy && (
+                    <Chip
+                        label={`Claimed by ${ticket.claimedBy}`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: '0.7rem', color: theme.info, borderColor: theme.info }}
+                    />
+                )}
             </Box>
 
             {/* Info bar */}
             <Box mb={1} p={1} sx={{ border: `1px solid ${theme.border}`, borderRadius: 1, bgcolor: theme.card }}>
                 <Box display="flex" flexWrap="wrap" gap={1} alignItems="center" mb={0.5}>
-                    <Typography variant="caption" sx={{ color: TYPE_COLORS[report.type] }}>
-                        {TYPE_LABELS[report.type]}
-                    </Typography>
+                    <Chip
+                        label={ticket.category}
+                        size="small"
+                        variant="outlined"
+                        sx={{ height: 18, fontSize: '0.7rem', color: theme.muted, borderColor: theme.border }}
+                    />
+                    {ticket.priority && (
+                        <Chip
+                            label={ticket.priority}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                                height: 18,
+                                fontSize: '0.7rem',
+                                color: ticket.priority === 'high' ? theme.destructive : ticket.priority === 'medium' ? theme.warning : theme.muted,
+                                borderColor: ticket.priority === 'high' ? theme.destructive : ticket.priority === 'medium' ? theme.warning : theme.border,
+                            }}
+                        />
+                    )}
                     <Typography variant="caption" sx={{ color: theme.muted }}>·</Typography>
                     <Typography variant="caption" sx={{ color: theme.muted }}>
-                        by <strong style={{ color: theme.fg }}>{report.reporter.name}</strong> (#{report.reporter.netid})
+                        by <strong style={{ color: theme.fg }}>{ticket.reporter.name}</strong> (#{ticket.reporter.netid})
                     </Typography>
-                    {report.targets.length > 0 && (
+                    {ticket.targets.length > 0 && (
                         <>
                             <Typography variant="caption" sx={{ color: theme.muted }}>→</Typography>
                             <Typography variant="caption" sx={{ color: theme.muted }}>
-                                {report.targets.map((t) => `${t.name} (#${t.netid})`).join(', ')}
+                                {ticket.targets.map((t) => `${t.name} (#${t.netid})`).join(', ')}
                             </Typography>
                         </>
                     )}
                 </Box>
                 <Typography variant="body2" sx={{ wordBreak: 'break-word', color: theme.fg }}>
-                    {report.reason}
+                    {ticket.description}
                 </Typography>
                 <Typography variant="caption" sx={{ color: theme.muted }} mt={0.5} display="block">
-                    Created {formatDate(report.tsCreated)}
-                    {report.tsResolved ? ` · Resolved ${formatDate(report.tsResolved)}` : ''}
-                    {report.resolvedBy ? ` by ${report.resolvedBy}` : ''}
+                    Created {formatDate(ticket.tsCreated)}
+                    {ticket.tsResolved ? ` · Resolved ${formatDate(ticket.tsResolved)}` : ''}
+                    {ticket.resolvedBy ? ` by ${ticket.resolvedBy}` : ''}
                 </Typography>
             </Box>
 
             {/* Messages */}
             <Box flex={1} overflow="auto" display="flex" flexDirection="column" gap={0.75} mb={1}>
-                {/* Initial report as first message */}
-                <Box sx={{ p: 1, borderRadius: 1, bgcolor: theme.card }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.25}>
-                        <Typography variant="caption" fontWeight={600} sx={{ color: theme.fg }}>
-                            {report.reporter.name}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: theme.muted }}>
-                            {formatDate(report.tsCreated)}
-                        </Typography>
-                    </Box>
-                    <Typography variant="body2" sx={{ wordBreak: 'break-word', color: theme.fg }}>
-                        {report.reason}
+                {ticket.messages.length === 0 && (
+                    <Typography variant="body2" sx={{ color: theme.muted }} textAlign="center" py={2}>
+                        No messages yet. Send a reply below.
                     </Typography>
-                </Box>
+                )}
 
-                {report.messages.map((m, i) => (
+                {ticket.messages.map((m, i) => (
                     <Box
-                        key={i}
+                        key={m.id ?? i}
                         sx={{
                             p: 1,
                             borderRadius: 1,
@@ -271,25 +294,33 @@ const ReportDetailView: React.FC<{
                         <Typography variant="body2" sx={{ wordBreak: 'break-word', color: theme.fg }}>
                             {m.content}
                         </Typography>
+                        {m.imageUrls && m.imageUrls.length > 0 && (
+                            <Box display="flex" flexWrap="wrap" gap={0.5} mt={0.5}>
+                                {m.imageUrls.filter(validateImageUrl).map((url, idx) => (
+                                    <Box
+                                        key={idx}
+                                        component="img"
+                                        src={url}
+                                        alt="attachment"
+                                        sx={{ maxHeight: 80, maxWidth: 120, borderRadius: 0.5, border: `1px solid ${theme.border}` }}
+                                    />
+                                ))}
+                            </Box>
+                        )}
                     </Box>
                 ))}
-
-                {report.messages.length === 0 && (
-                    <Typography variant="body2" sx={{ color: theme.muted }} textAlign="center" py={2}>
-                        No messages yet. Send a reply below.
-                    </Typography>
-                )}
             </Box>
 
-            {/* Reply box */}
-            {report.status !== 'resolved' && (
+            {/* Reply box — hidden for terminal statuses */}
+            {!isTerminal && (
                 <Box display="flex" gap={1} mb={1}>
                     <TextField
                         size="small"
                         fullWidth
                         placeholder="Type a reply..."
                         value={msgText}
-                        onChange={(e) => setMsgText(e.target.value.slice(0, 512))}                        onKeyDown={(e) => {
+                        onChange={(e) => setMsgText(e.target.value.slice(0, 512))}
+                        onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 handleSend();
@@ -312,7 +343,7 @@ const ReportDetailView: React.FC<{
 
             {/* Status controls */}
             <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                {report.status === 'open' && (
+                {ticket.status === 'open' && (
                     <Button
                         size="small"
                         variant="outlined"
@@ -324,7 +355,7 @@ const ReportDetailView: React.FC<{
                         Start Review
                     </Button>
                 )}
-                {report.status !== 'resolved' && (
+                {(ticket.status === 'open' || ticket.status === 'inReview') && (
                     <Button
                         size="small"
                         variant="contained"
@@ -336,7 +367,21 @@ const ReportDetailView: React.FC<{
                         Resolve
                     </Button>
                 )}
-                {report.status === 'resolved' && (
+                {(ticket.status === 'open' || ticket.status === 'inReview') && (
+                    <Tooltip title="Close without resolving">
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<LockOutlined />}
+                            onClick={() => onStatusChange('closed')}
+                            disabled={changingStatus}
+                            sx={{ textTransform: 'none', color: theme.muted, borderColor: theme.border }}
+                        >
+                            Close
+                        </Button>
+                    </Tooltip>
+                )}
+                {(ticket.status === 'resolved' || ticket.status === 'closed') && (
                     <Button
                         size="small"
                         variant="outlined"
@@ -352,132 +397,141 @@ const ReportDetailView: React.FC<{
         </Box>
     );
 };
-
 // =============================================
-// Main Reports Tab (Admin View)
+// Main Tickets Tab (Admin View)
 // =============================================
 
 export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
     const curPage = usePageValue();
 
     // List state
-    const [reports, setReports] = useState<ReportListItem[]>([]);
+    const [tickets, setTickets] = useState<TicketListItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [typeFilter, setTypeFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [showArchive, setShowArchive] = useState(false);
 
     // Detail state
-    const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-    const [reportDetail, setReportDetail] = useState<ReportDetail | null>(null);
+    const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+    const [ticketDetail, setTicketDetail] = useState<TicketDetail | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
     const [changingStatus, setChangingStatus] = useState(false);
-    const [reportError, setReportError] = useState<string | null>(null);
+    const [ticketError, setTicketError] = useState<string | null>(null);
+
+    // Notification state
+    const [notification, setNotification] = useState<{ ticketId: string; reporterName: string } | null>(null);
 
     const handleRefresh = useCallback(() => {
         setLoading(true);
-        fetchNui('reportAdminList').catch(() => setLoading(false));
+        fetchNui('ticketAdminList').catch((err) => {
+            setLoading(false);
+            setTicketError(`Failed to fetch tickets: ${err instanceof Error ? err.message : String(err)}`);
+        });
     }, []);
 
-    // Fetch all reports when tab becomes visible
+    // Fetch when tab becomes visible
     useEffect(() => {
         if (curPage !== txAdminMenuPage.Reports) return;
         handleRefresh();
     }, [curPage, handleRefresh]);
 
-    // Listen for admin report list
-    useNuiEvent<{ reports?: ReportListItem[]; error?: string }>('reportAdminListData', (data) => {
+    // Listen for admin ticket list
+    useNuiEvent<{ tickets?: TicketListItem[]; error?: string }>('ticketAdminListData', (data) => {
         setLoading(false);
         if (data.error) {
-            setReportError(data.error);
+            setTicketError(data.error);
             return;
         }
-        setReportError(null);
-        if (data.reports) setReports(data.reports);
+        setTicketError(null);
+        if (data.tickets) setTickets(data.tickets);
     });
 
-    // Listen for admin report detail
-    useNuiEvent<{ report?: ReportDetail; error?: string }>('reportAdminDetailData', (data) => {
+    // Listen for admin ticket detail
+    useNuiEvent<{ ticket?: TicketDetail; error?: string }>('ticketAdminDetailData', (data) => {
         setDetailLoading(false);
         if (data.error) {
-            setReportError(data.error);
+            setTicketError(data.error);
             return;
         }
-        setReportError(null);
-        if (data.report) setReportDetail(data.report);
+        setTicketError(null);
+        if (data.ticket) setTicketDetail(data.ticket);
     });
 
     // Listen for admin message result
-    useNuiEvent<{ success?: boolean; error?: string }>('reportAdminMessageResult', (data) => {
+    useNuiEvent<{ success?: boolean; error?: string }>('ticketAdminMessageResult', (data) => {
         setSendingMessage(false);
         if (data.error) {
-            setReportError(data.error);
+            setTicketError(data.error);
             return;
         }
-        setReportError(null);
-        if (data.success && selectedReportId) {
+        setTicketError(null);
+        if (data.success && selectedTicketId) {
             setDetailLoading(true);
-            fetchNui('reportAdminDetail', { reportId: selectedReportId }).catch(() => setDetailLoading(false));
+            fetchNui('ticketAdminDetail', { ticketId: selectedTicketId }).catch(() => setDetailLoading(false));
         }
     });
 
     // Listen for admin status result
-    useNuiEvent<{ success?: boolean; error?: string }>('reportAdminStatusResult', (data) => {
+    useNuiEvent<{ success?: boolean; error?: string }>('ticketAdminStatusResult', (data) => {
         setChangingStatus(false);
         if (data.error) {
-            setReportError(data.error);
+            setTicketError(data.error);
             return;
         }
-        setReportError(null);
-        if (data.success && selectedReportId) {
+        setTicketError(null);
+        if (data.success && selectedTicketId) {
             setDetailLoading(true);
-            fetchNui('reportAdminDetail', { reportId: selectedReportId }).catch(() => setDetailLoading(false));
-            fetchNui('reportAdminList').catch(() => {});
+            fetchNui('ticketAdminDetail', { ticketId: selectedTicketId }).catch(() => setDetailLoading(false));
+            fetchNui('ticketAdminList').catch(() => {});
         }
     });
 
-    const handleOpenDetail = (reportId: string) => {
-        setSelectedReportId(reportId);
-        setReportDetail(null);
+    // Listen for new ticket notifications
+    useNuiEvent<{ ticketId: string; reporterName: string }>('ticketNotification', (data) => {
+        setNotification(data);
+    });
+
+    const handleOpenDetail = (ticketId: string) => {
+        setSelectedTicketId(ticketId);
+        setTicketDetail(null);
         setDetailLoading(true);
-        fetchNui('reportAdminDetail', { reportId }).catch(() => setDetailLoading(false));
+        fetchNui('ticketAdminDetail', { ticketId }).catch(() => setDetailLoading(false));
     };
 
     const handleBack = () => {
-        setSelectedReportId(null);
-        setReportDetail(null);
+        setSelectedTicketId(null);
+        setTicketDetail(null);
         handleRefresh();
     };
 
     const handleSendMessage = (content: string) => {
-        if (!selectedReportId) return;
+        if (!selectedTicketId) return;
         setSendingMessage(true);
-        fetchNui('reportAdminMessage', { reportId: selectedReportId, content }).catch(() => setSendingMessage(false));
+        fetchNui('ticketAdminMessage', { ticketId: selectedTicketId, content }).catch(() => setSendingMessage(false));
     };
 
-    const handleStatusChange = (status: ReportStatus) => {
-        if (!selectedReportId) return;
+    const handleStatusChange = (status: TicketStatus) => {
+        if (!selectedTicketId) return;
         setChangingStatus(true);
-        fetchNui('reportAdminStatus', { reportId: selectedReportId, status }).catch(() => setChangingStatus(false));
+        fetchNui('ticketAdminStatus', { ticketId: selectedTicketId, status }).catch(() => setChangingStatus(false));
     };
 
-    // Filter logic
-    const activeReports = reports.filter((r) => r.status !== 'resolved');
-    const archivedReports = reports.filter((r) => r.status === 'resolved');
-    const baseList = showArchive ? archivedReports : activeReports;
+    // Filter logic — archive = resolved + closed, active = open + inReview
+    const activeTickets = tickets.filter((t) => t.status === 'open' || t.status === 'inReview');
+    const archivedTickets = tickets.filter((t) => t.status === 'resolved' || t.status === 'closed');
+    const baseList = showArchive ? archivedTickets : activeTickets;
 
-    const filtered = baseList.filter((r) => {
-        if (typeFilter !== 'all' && r.type !== typeFilter) return false;
-        if (!showArchive && statusFilter !== 'all' && r.status !== statusFilter) return false;
+    const filtered = baseList.filter((t) => {
+        if (!showArchive && statusFilter !== 'all' && t.status !== statusFilter) return false;
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             return (
-                r.id.toLowerCase().includes(q) ||
-                r.reporter.name.toLowerCase().includes(q) ||
-                r.reason.toLowerCase().includes(q) ||
-                r.targets.some((t) => t.name.toLowerCase().includes(q))
+                t.id.toLowerCase().includes(q) ||
+                t.category.toLowerCase().includes(q) ||
+                t.reporterName.toLowerCase().includes(q) ||
+                t.descriptionPreview.toLowerCase().includes(q) ||
+                t.targetNames.some((name) => name.toLowerCase().includes(q))
             );
         }
         return true;
@@ -486,7 +540,7 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
     return (
         <RootStyled mt={2} mb={10} pt={2} px={2} display={visible ? 'flex' : 'none'}>
             {/* Error banner */}
-            {reportError && (
+            {ticketError && (
                 <Box
                     sx={{
                         backgroundColor: theme.destructive + '22',
@@ -501,22 +555,52 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
                     }}
                 >
                     <Typography variant="body2" sx={{ color: theme.destructive }}>
-                        {reportError}
+                        {ticketError}
                     </Typography>
-                    <IconButton size="small" onClick={() => setReportError(null)} sx={{ color: theme.destructive }}>
+                    <IconButton size="small" onClick={() => setTicketError(null)} sx={{ color: theme.destructive }}>
                         &times;
                     </IconButton>
                 </Box>
             )}
+
+            {/* New ticket notification banner */}
+            {notification && (
+                <Box
+                    sx={{
+                        backgroundColor: theme.info + '22',
+                        border: `1px solid ${theme.info}`,
+                        borderRadius: 1,
+                        px: 2,
+                        py: 0.75,
+                        mb: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                        handleOpenDetail(notification.ticketId);
+                        setNotification(null);
+                    }}
+                >
+                    <Typography variant="body2" sx={{ color: theme.info }}>
+                        New ticket from <strong>{notification.reporterName}</strong> — click to view
+                    </Typography>
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); setNotification(null); }} sx={{ color: theme.info }}>
+                        <Close fontSize="small" />
+                    </IconButton>
+                </Box>
+            )}
+
             {/* Detail view */}
-            {selectedReportId !== null ? (
-                detailLoading || !reportDetail ? (
+            {selectedTicketId !== null ? (
+                detailLoading || !ticketDetail ? (
                     <Box display="flex" justifyContent="center" alignItems="center" flex={1}>
-                        <Typography variant="body2" sx={{ color: theme.muted }}>Loading report...</Typography>
+                        <Typography variant="body2" sx={{ color: theme.muted }}>Loading ticket...</Typography>
                     </Box>
                 ) : (
-                    <ReportDetailView
-                        report={reportDetail}
+                    <TicketDetailView
+                        ticket={ticketDetail}
                         onBack={handleBack}
                         onSendMessage={handleSendMessage}
                         onStatusChange={handleStatusChange}
@@ -531,10 +615,10 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
                     <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                         <Box display="flex" alignItems="center" gap={1}>
                             <Typography variant="subtitle2" fontWeight={600} sx={{ color: theme.fg }}>
-                                {showArchive ? 'Archived Reports' : 'Reports'}
+                                {showArchive ? 'Archived Tickets' : 'Tickets'}
                             </Typography>
                             <Chip
-                                label={`${showArchive ? archivedReports.length : activeReports.length} ${showArchive ? 'archived' : 'active'}`}
+                                label={`${showArchive ? archivedTickets.length : activeTickets.length} ${showArchive ? 'archived' : 'active'}`}
                                 size="small"
                                 variant="outlined"
                                 sx={{ color: theme.muted, borderColor: theme.border }}
@@ -559,7 +643,7 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
                     <Box display="flex" gap={1} mb={1}>
                         <TextField
                             size="small"
-                            placeholder="Search..."
+                            placeholder="Search tickets..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             sx={{
@@ -579,27 +663,8 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
                                 ),
                             }}
                         />
-                        <FormControl size="small" sx={{ minWidth: 110 }}>
-                            <InputLabel sx={{ color: theme.muted }}>Type</InputLabel>
-                            <Select
-                                value={typeFilter}
-                                label="Type"
-                                onChange={(e) => setTypeFilter(e.target.value)}
-                                sx={{
-                                    color: theme.fg,
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: theme.border },
-                                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: theme.muted },
-                                    '& .MuiSvgIcon-root': { color: theme.muted },
-                                }}
-                            >
-                                <MenuItem value="all">All Types</MenuItem>
-                                <MenuItem value="playerReport">Player Report</MenuItem>
-                                <MenuItem value="bugReport">Bug Report</MenuItem>
-                                <MenuItem value="question">Question</MenuItem>
-                            </Select>
-                        </FormControl>
                         {!showArchive && (
-                            <FormControl size="small" sx={{ minWidth: 100 }}>
+                            <FormControl size="small" sx={{ minWidth: 110 }}>
                                 <InputLabel sx={{ color: theme.muted }}>Status</InputLabel>
                                 <Select
                                     value={statusFilter}
@@ -620,79 +685,89 @@ export const ReportsTab: React.FC<{ visible: boolean }> = ({ visible }) => {
                         )}
                     </Box>
 
-                    {/* Report list */}
+                    {/* Ticket list */}
                     <ListContainer>
                         {loading ? (
                             <Box textAlign="center" py={4}>
-                                <Typography variant="body2" sx={{ color: theme.muted }}>Loading reports...</Typography>
+                                <Typography variant="body2" sx={{ color: theme.muted }}>Loading tickets...</Typography>
                             </Box>
                         ) : filtered.length === 0 ? (
                             <Box textAlign="center" py={4}>
                                 <Typography variant="body2" sx={{ color: theme.muted }}>
                                     {baseList.length === 0
-                                        ? showArchive ? 'No archived reports.' : 'No reports found.'
-                                        : 'No reports match your filters.'}
+                                        ? showArchive ? 'No archived tickets.' : 'No open tickets.'
+                                        : 'No tickets match your filters.'}
                                 </Typography>
                             </Box>
                         ) : (
-                            filtered.map((r) => (
+                            filtered.map((t) => (
                                 <Box
-                                    key={r.id}
-                                    onClick={() => handleOpenDetail(r.id)}
+                                    key={t.id}
+                                    onClick={() => handleOpenDetail(t.id)}
                                     sx={{
                                         p: 1.5,
                                         borderRadius: 1,
-                                        border: `1px solid ${theme.border}`,
+                                        border: `1px solid ${t.unreadCount ? theme.info : theme.border}`,
                                         bgcolor: theme.card,
                                         cursor: 'pointer',
                                         '&:hover': { bgcolor: '#232738' },
                                     }}
                                 >
-                                    {/* Row 1: id, status, type, date */}
+                                    {/* Row 1: id, status, category, date */}
                                     <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.25}>
                                         <Box display="flex" alignItems="center" gap={1}>
                                             <Typography variant="caption" fontFamily="monospace" fontWeight={600} sx={{ color: theme.fg }}>
-                                                {r.id}
+                                                {t.id}
                                             </Typography>
-                                            <StatusChip status={r.status} />
-                                            <Typography variant="caption" sx={{ color: TYPE_COLORS[r.type] }}>
-                                                {TYPE_LABELS[r.type]}
-                                            </Typography>
+                                            <StatusChip status={t.status} />
+                                            <Chip
+                                                label={t.category}
+                                                size="small"
+                                                variant="outlined"
+                                                sx={{ height: 18, fontSize: '0.65rem', color: theme.muted, borderColor: theme.border }}
+                                            />
+                                            {(t.unreadCount ?? 0) > 0 && (
+                                                <Chip
+                                                    label={`${t.unreadCount} new`}
+                                                    size="small"
+                                                    sx={{ height: 18, fontSize: '0.65rem', bgcolor: theme.info, color: '#fff' }}
+                                                />
+                                            )}
                                         </Box>
                                         <Typography variant="caption" sx={{ color: theme.muted }}>
-                                            {formatDate(r.tsCreated)}
+                                            {formatDate(t.tsCreated)}
                                         </Typography>
                                     </Box>
-                                    {/* Row 2: reporter → targets */}
+                                    {/* Row 2: reporter → targets + claim info */}
                                     <Box display="flex" alignItems="center" justifyContent="space-between">
                                         <Box>
                                             <Typography component="span" variant="body2" sx={{ color: theme.muted }}>by </Typography>
-                                            <Typography component="span" variant="body2" fontWeight={600} sx={{ color: theme.fg }}>{r.reporter.name}</Typography>
-                                            {r.targets.length > 0 && (
+                                            <Typography component="span" variant="body2" fontWeight={600} sx={{ color: theme.fg }}>{t.reporterName}</Typography>
+                                            {t.targetNames.length > 0 && (
                                                 <>
                                                     <Typography component="span" variant="body2" sx={{ color: theme.muted }}> → </Typography>
                                                     <Typography component="span" variant="body2" fontWeight={600} sx={{ color: theme.fg }}>
-                                                        {r.targets.map((t) => t.name).join(', ')}
+                                                        {t.targetNames.join(', ')}
                                                     </Typography>
                                                 </>
                                             )}
                                         </Box>
                                         <Box display="flex" gap={1}>
-                                            {r.messageCount > 0 && (
+                                            {t.messageCount > 0 && (
                                                 <Typography variant="caption" sx={{ color: theme.muted }}>
-                                                    {r.messageCount} msg{r.messageCount !== 1 ? 's' : ''}
+                                                    {t.messageCount} msg{t.messageCount !== 1 ? 's' : ''}
                                                 </Typography>
                                             )}
-                                            {r.resolvedBy && (
-                                                <Typography variant="caption" sx={{ color: theme.muted }}>
-                                                    by {r.resolvedBy}
+                                            {t.claimedBy && (
+                                                <Typography variant="caption" sx={{ color: theme.info }}>
+                                                    {t.claimedBy}
                                                 </Typography>
                                             )}
                                         </Box>
                                     </Box>
-                                    {/* Row 3: reason */}
+                                    {/* Row 3: description preview */}
                                     <Typography variant="body2" noWrap mt={0.25} sx={{ color: theme.muted }}>
-                                        {r.reason}
+                                        {t.descriptionPreview ?? ''}
                                     </Typography>
                                 </Box>
                             ))

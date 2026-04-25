@@ -6,6 +6,8 @@ import TimelineCard from './TimelineCard';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/page-header';
+import { CalendarRangeIcon, TrendingDownIcon, XIcon } from 'lucide-react';
 
 export type DrilldownRangeSelectionType = {
     startDate: Date;
@@ -46,8 +48,16 @@ const drilldownIntervals = [
     { label: '14d', days: 14 },
 ] as const;
 
+const dateFmt = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+});
+
 /**
- * The player drops page
+ * The player drops page — timeline + per-range drilldown.
+ * Dashboard shows only a real-time drop pie; this page is the full historical analysis.
  */
 export default function PlayerDropsPage() {
     const [displayLod, setDisplayLod] = useState<DisplayLodType>('hour');
@@ -95,8 +105,29 @@ export default function PlayerDropsPage() {
         return null;
     })();
 
+    const defaultWindowLabel = displayLod === 'day' ? 'Last 14 days' : 'Last 7 days';
+
     return (
-        <div className="w-full space-y-8">
+        <div className="flex w-full min-w-0 flex-col gap-5">
+            <PageHeader
+                icon={<TrendingDownIcon />}
+                title="Player Drops"
+                description="Historical drops timeline & drilldown · what, when, and why players left"
+            >
+                <span className="text-muted-foreground/70 border-border/50 bg-card/60 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                    <CalendarRangeIcon className="size-3" />
+                    <span className="font-medium">
+                        {drilldownRange
+                            ? `${dateFmt.format(drilldownRange.startDate)} → ${dateFmt.format(drilldownRange.endDate)}`
+                            : defaultWindowLabel}
+                    </span>
+                </span>
+                <span className="bg-secondary/40 border-border/50 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                    <span className="text-muted-foreground/70">Lens</span>
+                    <span className="font-mono font-semibold uppercase">{displayLod}</span>
+                </span>
+            </PageHeader>
+
             <TimelineCard
                 isError={!!swrDataApiResp.error}
                 dataTs={swrDataApiResp.data?.ts}
@@ -107,33 +138,53 @@ export default function PlayerDropsPage() {
                 setDisplayLod={displayLodSetter}
             />
 
-            <div className="flex items-center justify-center gap-2">
-                <span className="text-muted-foreground mr-1 text-sm">Drilldown:</span>
-                {drilldownIntervals.map(({ label, days }) => (
-                    <Button
-                        key={days}
-                        size="xs"
-                        variant={activeInterval === days ? 'default' : 'outline-solid'}
-                        className={cn('h-7 px-3 font-mono text-xs', activeInterval === days && 'pointer-events-none')}
-                        onClick={() => setIntervalRange(days)}
-                    >
-                        {label}
-                    </Button>
-                ))}
+            {/* Drilldown toolbar */}
+            <div className="bg-card/60 border-border/50 flex flex-col gap-2 rounded-xl border px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="flex items-center gap-2 pr-2">
+                    <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border">
+                        <CalendarRangeIcon className="size-3.5" />
+                    </div>
+                    <div className="text-xs">
+                        <div className="font-semibold leading-tight">Drilldown Range</div>
+                        <div className="text-muted-foreground/70 leading-tight">Pick a window to inspect</div>
+                    </div>
+                </div>
+                <div className="bg-secondary/30 border-border/40 flex w-full items-center gap-1 rounded-lg border p-1 sm:ml-auto sm:w-auto">
+                    {drilldownIntervals.map(({ label, days }) => (
+                        <Button
+                            key={days}
+                            size="xs"
+                            variant={activeInterval === days ? 'default' : 'ghost'}
+                            className={cn(
+                                'h-7 flex-1 px-3 font-mono text-xs sm:flex-initial',
+                                activeInterval === days && 'pointer-events-none',
+                            )}
+                            onClick={() => setIntervalRange(days)}
+                        >
+                            {label}
+                        </Button>
+                    ))}
+                </div>
                 {drilldownRange && (
                     <Button
                         size="xs"
                         variant="ghost"
-                        className="text-muted-foreground h-7 px-2 text-xs"
+                        className="text-muted-foreground hover:text-foreground h-7 w-full justify-center gap-1 px-2 text-xs sm:w-auto"
                         onClick={() => setDrilldownRange(null)}
                     >
+                        <XIcon className="size-3" />
                         Reset
                     </Button>
                 )}
             </div>
 
-            {swrDataApiResp.data && !swrDataApiResp.isValidating ? (
-                <div className="min-h-128">
+            {swrDataApiResp.data ? (
+                <div className="relative min-h-128">
+                    {swrDataApiResp.isValidating && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 rounded-xl">
+                            <DrilldownCardLoading isError={false} />
+                        </div>
+                    )}
                     <DrilldownCard
                         windowStart={swrDataApiResp.data.detailed.windowStart}
                         windowEnd={swrDataApiResp.data.detailed.windowEnd}

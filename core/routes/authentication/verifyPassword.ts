@@ -53,11 +53,11 @@ export default async function AuthVerifyPassword(ctx: InitializedCtx) {
                 username: vaultAdmin.name,
                 password_hash: vaultAdmin.passwordHash,
             } satisfies Pending2faSessAuthType;
-            ctx.sessTools.set({ auth: pendingSess });
+            ctx.sessTools.regenerate({ auth: pendingSess });
             return ctx.send<ApiVerifyPasswordResp>({ totp_required: true });
         }
 
-        //Setting up session
+        //Setting up session — regenerate id to prevent session-fixation
         const sessData = {
             type: 'password',
             username: vaultAdmin.name,
@@ -65,7 +65,7 @@ export default async function AuthVerifyPassword(ctx: InitializedCtx) {
             expiresAt: false,
             csrfToken: txCore.adminStore.genCsrfToken(),
         } satisfies PassSessAuthType;
-        ctx.sessTools.set({ auth: sessData });
+        ctx.sessTools.regenerate({ auth: sessData });
 
         txCore.logger.system.write(vaultAdmin.name, `logged in from ${ctx.ip} via password`, 'login');
         txManager.txRuntime.loginOrigins.count(ctx.txVars.hostType);

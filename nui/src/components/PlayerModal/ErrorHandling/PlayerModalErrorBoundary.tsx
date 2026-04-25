@@ -6,17 +6,21 @@ interface PlayerErrorBoundaryState {
     errorMessage: string;
 }
 
-export class PlayerModalErrorBoundary extends React.Component<any, PlayerErrorBoundaryState> {
+interface PlayerErrorBoundaryProps {
+    children?: React.ReactNode;
+}
+
+export class PlayerModalErrorBoundary extends React.Component<PlayerErrorBoundaryProps, PlayerErrorBoundaryState> {
     public state = {
         hasError: false,
         errorMessage: 'Unknown Error Occurred',
     };
 
-    public constructor(props) {
+    public constructor(props: PlayerErrorBoundaryProps) {
         super(props);
     }
 
-    static getDerivedStateFromError(error) {
+    static getDerivedStateFromError(error: Error) {
         return { hasError: true, errorMessage: error.message };
     }
 

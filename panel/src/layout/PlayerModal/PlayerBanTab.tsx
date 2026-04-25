@@ -7,7 +7,7 @@ import { useBackendApi } from '@/hooks/fetch';
 import { GenericApiOkResp } from '@shared/genericApiTypes';
 import ModalCentralMessage from '@/components/ModalCentralMessage';
 import BanForm, { BanFormType } from '@/components/BanForm';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 
 type PlayerBanTabProps = {
     playerRef: PlayerModalRefType;

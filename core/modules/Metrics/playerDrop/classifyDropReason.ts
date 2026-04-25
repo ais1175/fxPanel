@@ -17,7 +17,7 @@ const serverShutdownRules = [
     `server shutting down:`,
 
     //NOTE: Happens when txAdmin kicks players
-    `[fxPanel]`,
+    `[fxpanel]`,
 ];
 const timeoutRules = [
     `server->client connection timed out`,

@@ -71,20 +71,21 @@ export const parseTxDevEnv = () => {
     //@ts-ignore will be filled below
     const txDevEnv: TxDevEnvType = {};
     for (const key of Object.keys(envConfigs)) {
-        const keyConfig = envConfigs[key as keyof TxDevEnvType];
+        const typedKey = key as keyof TxDevEnvType;
+        const keyConfig = envConfigs[typedKey];
         const value = process.env[`TXDEV_` + key];
         if (value === undefined) {
             if ('default' in keyConfig) {
-                txDevEnv[key] = keyConfig.default;
+                (txDevEnv as any)[typedKey] = keyConfig.default;
             }
         } else {
             if ('parser' in keyConfig) {
                 const parsed = keyConfig.parser(value);
                 if (parsed !== undefined) {
-                    txDevEnv[key] = parsed;
+                    (txDevEnv as any)[typedKey] = parsed;
                 }
             } else {
-                txDevEnv[key] = value;
+                (txDevEnv as any)[typedKey] = value;
             }
         }
     }

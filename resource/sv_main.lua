@@ -28,7 +28,7 @@ TX_ADMINS = {}
 TX_PLAYERLIST = {}
 TX_LUACOMHOST = GetConvar('txAdmin-luaComHost', 'invalid')
 TX_LUACOMTOKEN = GetConvar('txAdmin-luaComToken', 'invalid')
-TX_VERSION = GetResourceMetadata('monitor', 'version') -- for now, only used in the start print
+TX_VERSION = GetResourceMetadata('monitor', 'version', 0) -- for now, only used in the start print
 TX_IS_SERVER_SHUTTING_DOWN = false
 
 -- Checking convars
@@ -110,9 +110,9 @@ local function txaReportResources(source, args)
         local currentRes = {
             name = resName,
             status = GetResourceState(resName),
-            author = GetResourceMetadata(resName, 'author'),
-            version = GetResourceMetadata(resName, 'version'),
-            description = GetResourceMetadata(resName, 'description'),
+            author = GetResourceMetadata(resName, 'author', 0),
+            version = GetResourceMetadata(resName, 'version', 0),
+            description = GetResourceMetadata(resName, 'description', 0),
             path = GetResourcePath(resName),
         }
 
@@ -639,8 +639,9 @@ TX_EVENT_HANDLERS.webSpectatePlayer = function(eventData)
     TriggerClientEvent('txcl:spectate:start', adminNetId, eventData.target, GetEntityCoords(targetPed))
 end
 
---- Pending screenshot requests mapping requestId -> target serverId
+--- Pending screenshot requests mapping requestId -> { target = serverId, timeoutId = number }
 local pendingScreenshots = {}
+local SCREENSHOT_TIMEOUT_MS = 30000
 
 --- Sends a screenshot result (success or error) to the core via intercom
 local function sendScreenshotResult(requestId, payload)
@@ -660,9 +661,18 @@ TX_EVENT_HANDLERS.webScreenshotPlayer = function(eventData)
         return TxPrintError('[webScreenshotPlayer] invalid eventData', eventData)
     end
 
+    local requestId = eventData.requestId
     TxPrint('[screenshot] Capturing screenshot of player #' .. eventData.target)
-    pendingScreenshots[eventData.requestId] = eventData.target
-    TriggerClientEvent('txcl:screenshot:request', eventData.target, eventData.requestId)
+    local timeoutId = SetTimeout(SCREENSHOT_TIMEOUT_MS, function()
+        local entry = pendingScreenshots[requestId]
+        if entry then
+            pendingScreenshots[requestId] = nil
+            TxPrintError('[screenshot] Timeout waiting for response for requestId: ' .. requestId)
+            sendScreenshotResult(requestId, { error = 'Timeout waiting for screenshot' })
+        end
+    end)
+    pendingScreenshots[requestId] = { target = eventData.target, timeoutId = timeoutId }
+    TriggerClientEvent('txcl:screenshot:request', eventData.target, requestId)
 end
 
 --- Receives screenshot data from the client via latent event
@@ -673,14 +683,17 @@ RegisterNetEvent('txsv:screenshot:result', function(requestId, data, errorMsg)
     end
 
     -- Validate that the source matches the expected target
-    local expectedTarget = pendingScreenshots[requestId]
-    if not expectedTarget then
+    local entry = pendingScreenshots[requestId]
+    if not entry then
         return TxPrintError('[screenshot] Received result for unknown requestId: ' .. requestId)
     end
     pendingScreenshots[requestId] = nil
+    if entry.timeoutId then
+        ClearTimeout(entry.timeoutId)
+    end
 
-    if expectedTarget ~= src then
-        return TxPrintError('[screenshot] Source mismatch: expected #' .. expectedTarget .. ' got #' .. src)
+    if entry.target ~= src then
+        return TxPrintError('[screenshot] Source mismatch: expected #' .. entry.target .. ' got #' .. src)
     end
 
     if errorMsg then
@@ -696,6 +709,26 @@ RegisterNetEvent('txsv:screenshot:result', function(requestId, data, errorMsg)
     sendScreenshotResult(requestId, { imageData = data })
 end)
 
+--- Cleanup any pending screenshot requests targeting a player that disconnects
+AddEventHandler('playerDropped', function()
+    local src = source
+    local toClear = {}
+    for requestId, entry in pairs(pendingScreenshots) do
+        if entry.target == src then
+            toClear[#toClear + 1] = requestId
+        end
+    end
+    for _, requestId in ipairs(toClear) do
+        local entry = pendingScreenshots[requestId]
+        pendingScreenshots[requestId] = nil
+        if entry and entry.timeoutId then
+            ClearTimeout(entry.timeoutId)
+        end
+        TxPrint('[screenshot] Target #' .. src .. ' disconnected before screenshot was captured (requestId: ' .. requestId .. ')')
+        sendScreenshotResult(requestId, { error = 'Player disconnected before screenshot was captured.' })
+    end
+end)
+
 
 -- =============================================
 -- MARK: Live Spectate
@@ -703,6 +736,9 @@ end)
 
 --- Active spectate sessions: sessionId -> target serverId
 local activeSpectates = {}
+--- Per-session frame buffers + transport state for batched intercom delivery.
+local spectateFrameBuffers = {}     -- sessionId -> array of frameData strings
+local spectateBackoffUntil = {}     -- sessionId -> os.time() until which we skip flushes
 
 --- Handler: start live spectate capture on a player
 TX_EVENT_HANDLERS.webLiveSpectateStart = function(eventData)
@@ -723,8 +759,70 @@ TX_EVENT_HANDLERS.webLiveSpectateStop = function(eventData)
 
     TxPrint('[spectate] Stopping live spectate of player #' .. eventData.target .. ' (session: ' .. eventData.sessionId .. ')')
     activeSpectates[eventData.sessionId] = nil
+    spectateFrameBuffers[eventData.sessionId] = nil
+    spectateBackoffUntil[eventData.sessionId] = nil
     TriggerClientEvent('txcl:spectate:stream:stop', eventData.target, eventData.sessionId)
 end
+
+--- Cleanup any spectate sessions targeting a player that disconnects
+AddEventHandler('playerDropped', function()
+    local src = source
+    local toClose = {}
+    for sessionId, target in pairs(activeSpectates) do
+        if target == src then
+            toClose[#toClose + 1] = sessionId
+        end
+    end
+    for _, sessionId in ipairs(toClose) do
+        TxPrint('[spectate] Target #' .. src .. ' disconnected, ending session ' .. sessionId)
+        activeSpectates[sessionId] = nil
+        spectateFrameBuffers[sessionId] = nil
+        spectateBackoffUntil[sessionId] = nil
+        TriggerClientEvent('txcl:spectate:stream:stop', src, sessionId)
+    end
+end)
+
+local spectateInflight = {}         -- sessionId -> bool (HTTP request in flight)
+local SPECTATE_BUFFER_MAX = 8       -- max frames buffered per session before drop-oldest
+local SPECTATE_FLUSH_THRESHOLD = 3  -- frames buffered before an immediate flush
+local SPECTATE_FLUSH_INTERVAL_MS = 100
+local SPECTATE_BACKOFF_SECS = 2
+
+local function flushSpectateBuffer(sessionId)
+    if spectateInflight[sessionId] then return end
+    local buffer = spectateFrameBuffers[sessionId]
+    if not buffer or #buffer == 0 then return end
+    if spectateBackoffUntil[sessionId] and os.time() < spectateBackoffUntil[sessionId] then return end
+
+    -- Detach the current buffer; new frames go into a fresh queue.
+    spectateFrameBuffers[sessionId] = {}
+    spectateInflight[sessionId] = true
+
+    local intercomUrl = 'http://' .. TX_LUACOMHOST .. '/intercom/spectateFrame'
+    PerformHttpRequest(intercomUrl, function(httpCode)
+        spectateInflight[sessionId] = nil
+        if httpCode ~= 200 then
+            TxPrintError('[spectate] intercom responded with HTTP ' .. tostring(httpCode) .. ' (session ' .. sessionId .. '), backing off')
+            spectateBackoffUntil[sessionId] = os.time() + SPECTATE_BACKOFF_SECS
+        else
+            spectateBackoffUntil[sessionId] = nil
+        end
+    end, 'POST', json.encode({
+        txAdminToken = TX_LUACOMTOKEN,
+        sessionId = sessionId,
+        frames = buffer,
+    }), { ['Content-Type'] = 'application/json' })
+end
+
+--- Periodic flusher to bound latency between buffered frames and intercom delivery.
+CreateThread(function()
+    while true do
+        Wait(SPECTATE_FLUSH_INTERVAL_MS)
+        for sessionId in pairs(spectateFrameBuffers) do
+            flushSpectateBuffer(sessionId)
+        end
+    end
+end)
 
 --- Receives captured frames from the client and relays to core via intercom
 RegisterNetEvent('txsv:spectate:frame', function(sessionId, frameData)
@@ -734,16 +832,21 @@ RegisterNetEvent('txsv:spectate:frame', function(sessionId, frameData)
     local expectedTarget = activeSpectates[sessionId]
     if not expectedTarget or expectedTarget ~= src then return end
 
-    local intercomUrl = 'http://' .. TX_LUACOMHOST .. '/intercom/spectateFrame'
-    PerformHttpRequest(intercomUrl, function(httpCode)
-        if httpCode ~= 200 then
-            TxPrintError('[spectate] intercom responded with HTTP ' .. tostring(httpCode))
-        end
-    end, 'POST', json.encode({
-        txAdminToken = TX_LUACOMTOKEN,
-        sessionId = sessionId,
-        frameData = frameData,
-    }), { ['Content-Type'] = 'application/json' })
+    local buffer = spectateFrameBuffers[sessionId]
+    if not buffer then
+        buffer = {}
+        spectateFrameBuffers[sessionId] = buffer
+    end
+
+    -- Overflow: drop oldest frame to keep latest content while bounding memory.
+    if #buffer >= SPECTATE_BUFFER_MAX then
+        table.remove(buffer, 1)
+    end
+    buffer[#buffer + 1] = frameData
+
+    if #buffer >= SPECTATE_FLUSH_THRESHOLD then
+        flushSpectateBuffer(sessionId)
+    end
 end)
 
 --- Command that receives all incoming tx events and dispatches
@@ -903,13 +1006,13 @@ CreateThread(function()
     Wait(30000)
     while true do
         local runtimeCounts = {}
-        local hasNative = pcall(GetResourceRuntimes, 'monitor')
+        local hasNative = pcall(GetResourceRuntimes, 'monitor') ---@diagnostic disable-line: undefined-global
         if hasNative then
             local max = GetNumResources() - 1
             for i = 0, max do
                 local resName = GetResourceByFindIndex(i)
                 if GetResourceState(resName) == 'started' then
-                    local runtimes = GetResourceRuntimes(resName)
+                    local runtimes = GetResourceRuntimes(resName) ---@diagnostic disable-line: undefined-global
                     if runtimes then
                         for _, runtime in pairs(runtimes) do
                             runtimeCounts[runtime] = (runtimeCounts[runtime] or 0) + 1

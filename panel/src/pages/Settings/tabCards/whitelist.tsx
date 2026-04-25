@@ -15,7 +15,7 @@ import {
 } from '../utils';
 import { AutosizeTextarea, AutosizeTextAreaRef } from '@/components/ui/autosize-textarea';
 import SettingsCardShell from '../SettingsCardShell';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import consts from '@shared/consts';
 
 export const pageConfigs = {
@@ -100,8 +100,8 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
         }
         if (Array.isArray(localConfigs.whitelist?.discordRoles)) {
             const invalidRoles = localConfigs.whitelist.discordRoles
-                .filter((x) => !consts.regexDiscordSnowflake.test(x))
-                .map((x) => `- \`${x.slice(0, 20)}\``);
+                .filter((x: string) => !consts.regexDiscordSnowflake.test(x))
+                .map((x: string) => `- \`${x.slice(0, 20)}\``);
             if (invalidRoles.length) {
                 return txToast.error({
                     title: 'Invalid Discord Role ID(s).',

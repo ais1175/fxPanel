@@ -1,6 +1,7 @@
 import { useBackendApi } from '@/hooks/fetch';
 import useSWR from 'swr';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { PageHeader } from '@/components/page-header';
 import {
     ActivityIcon,
     BarChart3Icon,
@@ -14,7 +15,9 @@ import {
     UsersIcon,
     WifiOffIcon,
     CrownIcon,
+    LineChartIcon,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type {
     InsightsPlayerCountResp,
     InsightsNewPlayersResp,
@@ -30,6 +33,7 @@ import type {
     InsightsDailyPlayersResp,
 } from '@shared/insightsApiTypes';
 import { useOpenPlayerModal } from '@/hooks/playerModal';
+import { cn } from '@/lib/utils';
 import PlayerCountChart from './PlayerCountChart';
 import NewPlayersChart from './NewPlayersChart';
 import PlaytimeDistChart from './PlaytimeDistChart';
@@ -40,6 +44,59 @@ import ActionsTimelineChart from './ActionsTimelineChart';
 import PlayerGrowthChart from './PlayerGrowthChart';
 import SessionLengthChart from './SessionLengthChart';
 import DailyPlayersChart from './DailyPlayersChart';
+import { getMockInsightsData } from './devMockInsights';
+
+// Lazy module-level cache so the (expensive) full mock dataset is generated
+// only once per page load instead of every time a card's SWR loader fires.
+let _cachedDevMockInsights: ReturnType<typeof getMockInsightsData> | null = null;
+const getDevMockInsights = () => {
+    if (!_cachedDevMockInsights) {
+        _cachedDevMockInsights = getMockInsightsData();
+    }
+    return _cachedDevMockInsights;
+};
+
+if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+        _cachedDevMockInsights = null;
+    });
+}
+
+type DevMockInsights = ReturnType<typeof getMockInsightsData>;
+type WithError = { error: string };
+
+/**
+ * Shared loader for Insights cards: wraps useBackendApi + useSWR + the dev-mock
+ * fallback, and normalizes the result into { isLoading, hasError, errorMsg,
+ * successData } so each card body can render the three branches uniformly.
+ */
+function useInsightData<T extends object>(
+    path: string,
+    devMockSelector: (mock: DevMockInsights) => T | WithError,
+) {
+    const api = useBackendApi<T | WithError>({ method: 'GET', path });
+    const { data, error, isLoading } = useSWR<T | WithError>(
+        path,
+        async (): Promise<T | WithError> => {
+            if (import.meta.env.DEV) return devMockSelector(getDevMockInsights());
+            const result = await api({});
+            if (result === undefined) return { error: 'Request failed' } as WithError;
+            return result;
+        },
+        { revalidateOnFocus: false, dedupingInterval: 60_000 },
+    );
+    const dataHasError = !!data && 'error' in data;
+    const hasError = !!error || dataHasError;
+    const errorMsg = hasError
+        ? (dataHasError ? (data as WithError).error : 'Failed to load')
+        : '';
+    const successData: T | null = data && !dataHasError ? (data as T) : null;
+    return { isLoading, hasError, errorMsg, successData };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Shared helpers
+// ──────────────────────────────────────────────────────────────────────────────
 
 function CardLoading() {
     return (
@@ -50,7 +107,11 @@ function CardLoading() {
 }
 
 function CardError({ message }: { message: string }) {
-    return <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">{message}</div>;
+    return (
+        <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
+            {message}
+        </div>
+    );
 }
 
 const formatPlayTime = (minutes: number) => {
@@ -61,584 +122,423 @@ const formatPlayTime = (minutes: number) => {
     return `${days}d ${hours % 24}h`;
 };
 
-// ── Player Count + Memory Chart ──
+type InsightsCardProps = {
+    icon: ReactNode;
+    title: string;
+    subtitle?: string;
+    action?: ReactNode;
+    className?: string;
+    children: ReactNode;
+};
 
-function PlayerCountCard() {
-    const api = useBackendApi<InsightsPlayerCountResp>({
-        method: 'GET',
-        path: '/insights/playerCount',
-    });
-    const { data, error, isLoading } = useSWR('/insights/playerCount', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-
+function InsightsCard({ icon, title, subtitle, action, className, children }: InsightsCardProps) {
     return (
-        <Card className="col-span-full">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <ActivityIcon className="h-4 w-4" />
-                    Player Count &amp; Memory
-                    {data && !('error' in data) && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Peak: <span className="text-foreground font-semibold">{data.peakCount}</span> players
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <PlayerCountChart series={(data as Exclude<InsightsPlayerCountResp, { error: string }>).series} />
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ── New Players Per Day ──
-
-function NewPlayersCard() {
-    const api = useBackendApi<InsightsNewPlayersResp>({
-        method: 'GET',
-        path: '/insights/newPlayers',
-    });
-    const { data, error, isLoading } = useSWR('/insights/newPlayers', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
-    return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <UserPlusIcon className="h-4 w-4" />
-                    New Players Per Day
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Total:{' '}
-                            <span className="text-foreground font-semibold">
-                                {successData.totalPlayers.toLocaleString()}
-                            </span>
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <NewPlayersChart daily={successData!.daily} />
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ── Playtime Distribution ──
-
-function PlaytimeDistCard() {
-    const api = useBackendApi<InsightsPlaytimeDistResp>({
-        method: 'GET',
-        path: '/insights/playtimeDist',
-    });
-    const { data, error, isLoading } = useSWR('/insights/playtimeDist', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
-    return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <BarChart3Icon className="h-4 w-4" />
-                    Playtime Distribution
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Median:{' '}
-                            <span className="text-foreground font-semibold">
-                                {formatPlayTime(successData.medianMinutes)}
-                            </span>
-                            {' · '}Avg:{' '}
-                            <span className="text-foreground font-semibold">
-                                {formatPlayTime(successData.averageMinutes)}
-                            </span>
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <PlaytimeDistChart buckets={successData!.buckets} />
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ── Top Players ──
-
-function TopPlayersCard() {
-    const api = useBackendApi<InsightsTopPlayersResp>({
-        method: 'GET',
-        path: '/insights/topPlayers',
-    });
-    const { data, error, isLoading } = useSWR('/insights/topPlayers', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-    const openPlayerModal = useOpenPlayerModal();
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
-    return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <CrownIcon className="h-4 w-4" />
-                    Top Players by Playtime
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <div className="max-h-84 space-y-1 overflow-y-auto">
-                        {successData!.players.map((player, i) => (
-                            <div
-                                key={player.license}
-                                className="hover:bg-muted/50 flex items-center gap-3 rounded-md px-2.5 py-1.5 text-sm transition-colors"
-                            >
-                                <span className="text-muted-foreground w-6 shrink-0 text-right font-mono">
-                                    {i + 1}.
-                                </span>
-                                <button
-                                    onClick={() => openPlayerModal({ license: player.license })}
-                                    className="min-w-0 cursor-pointer truncate text-left hover:underline"
-                                >
-                                    {player.displayName}
-                                </button>
-                                <span className="text-muted-foreground ml-auto shrink-0 font-mono text-xs">
-                                    {formatPlayTime(player.playTime)}
-                                </span>
-                            </div>
-                        ))}
+        <Card className={cn('overflow-hidden', className)}>
+            <div className="flex flex-col gap-2 border-b border-border/40 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4">
+                <div className="flex min-w-0 items-center gap-3">
+                    <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border [&>svg]:size-4">
+                        {icon}
                     </div>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ── Player Retention ──
-
-function RetentionCard() {
-    const api = useBackendApi<InsightsRetentionResp>({
-        method: 'GET',
-        path: '/insights/retention',
-    });
-    const { data, error, isLoading } = useSWR('/insights/retention', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
-    return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <TrendingUpIcon className="h-4 w-4" />
-                    Player Retention
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Sample: {successData.sampleSize.toLocaleString()} players
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <div className="space-y-4">
-                        {/* Return rates */}
-                        <div>
-                            <h4 className="text-muted-foreground mb-2 text-sm font-medium">
-                                Return Rate (joined 30+ days ago)
-                            </h4>
-                            <div className="grid grid-cols-3 gap-3">
-                                <RetentionStat label="After 1 day" value={successData!.returnRate1d} />
-                                <RetentionStat label="After 7 days" value={successData!.returnRate7d} />
-                                <RetentionStat label="After 30 days" value={successData!.returnRate30d} />
-                            </div>
-                        </div>
-                        {/* Activity rates */}
-                        <div>
-                            <h4 className="text-muted-foreground mb-2 text-sm font-medium">
-                                Current Activity (all players)
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <RetentionStat label="Active last 7d" value={successData!.activeLast7d} />
-                                <RetentionStat label="Active last 30d" value={successData!.activeLast30d} />
-                            </div>
-                        </div>
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold leading-tight tracking-tight">{title}</h3>
+                        {subtitle ? (
+                            <p className="text-muted-foreground/70 mt-0.5 truncate text-xs">{subtitle}</p>
+                        ) : null}
                     </div>
-                )}
-            </CardContent>
+                </div>
+                {action ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-12 text-xs sm:ml-auto sm:shrink-0 sm:pl-0">
+                        {action}
+                    </div>
+                ) : null}
+            </div>
+            <CardContent className="p-3 sm:p-4">{children}</CardContent>
         </Card>
     );
 }
 
-function RetentionStat({ label, value }: { label: string; value: number }) {
-    const color = value >= 50 ? 'text-green-500' : value >= 25 ? 'text-warning' : 'text-destructive';
+function SectionHeading({ icon, title, description }: { icon: ReactNode; title: string; description?: string }) {
     return (
-        <div className="bg-muted/50 rounded-lg p-3 text-center">
-            <div className={`text-2xl font-bold ${color}`}>{value}%</div>
-            <div className="text-muted-foreground text-xs">{label}</div>
+        <div className="flex items-center gap-2.5 pt-2">
+            <div className="bg-primary/60 h-7 w-0.5 shrink-0 rounded-full" />
+            <div className="text-muted-foreground/80 [&>svg]:size-4">{icon}</div>
+            <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/90">{title}</h2>
+                {description ? (
+                    <p className="text-muted-foreground/60 text-xs">{description}</p>
+                ) : null}
+            </div>
         </div>
     );
 }
 
-// ── Uptime Timeline ──
+function HeadlinePill({ label, value }: { label: string; value: ReactNode }) {
+    return (
+        <span className="text-muted-foreground/70 text-sm font-normal">
+            {label}: <span className="text-foreground font-semibold">{value}</span>
+        </span>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Chart cards
+// ──────────────────────────────────────────────────────────────────────────────
+
+function PlayerCountCard() {
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsPlayerCountResp, WithError>>(
+        '/insights/playerCount',
+        (mock) => mock.playerCount,
+    );
+    return (
+        <InsightsCard
+            className="col-span-full"
+            icon={<ActivityIcon />}
+            title="Player Count & Memory"
+            subtitle="Long-term population and host memory trend"
+            action={successData ? <HeadlinePill label="Peak" value={`${successData.peakCount} players`} /> : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <PlayerCountChart series={successData!.series} />
+            )}
+        </InsightsCard>
+    );
+}
+
+function NewPlayersCard() {
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsNewPlayersResp, WithError>>(
+        '/insights/newPlayers',
+        (mock) => mock.newPlayers,
+    );
+    return (
+        <InsightsCard
+            icon={<UserPlusIcon />}
+            title="New Players Per Day"
+            subtitle="First-seen players over time"
+            action={successData ? <HeadlinePill label="Total" value={successData.totalPlayers.toLocaleString()} /> : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <NewPlayersChart daily={successData!.daily} />
+            )}
+        </InsightsCard>
+    );
+}
+
+function PlaytimeDistCard() {
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsPlaytimeDistResp, WithError>>(
+        '/insights/playtimeDist',
+        (mock) => mock.playtimeDist,
+    );
+    return (
+        <InsightsCard
+            icon={<BarChart3Icon />}
+            title="Playtime Distribution"
+            subtitle="How much total time players accumulate"
+            action={successData ? (
+                <>
+                    <HeadlinePill label="Median" value={formatPlayTime(successData.medianMinutes)} />
+                    <span className="text-muted-foreground/40">·</span>
+                    <HeadlinePill label="Avg" value={formatPlayTime(successData.averageMinutes)} />
+                </>
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <PlaytimeDistChart buckets={successData!.buckets} />
+            )}
+        </InsightsCard>
+    );
+}
+
+function TopPlayersCard() {
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsTopPlayersResp, WithError>>(
+        '/insights/topPlayers',
+        (mock) => mock.topPlayers,
+    );
+    const openPlayerModal = useOpenPlayerModal();
+    return (
+        <InsightsCard
+            icon={<CrownIcon />}
+            title="Top Players by Playtime"
+            subtitle="All-time leaderboard"
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <div className="max-h-84 space-y-0.5 overflow-y-auto pr-1">
+                    {successData!.players.map((player, i) => (
+                        <div
+                            key={player.license}
+                            className="hover:bg-secondary/30 flex items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors"
+                        >
+                            <span className={cn(
+                                'w-6 shrink-0 text-right font-mono text-xs',
+                                i === 0 ? 'text-warning font-bold' :
+                                    i === 1 ? 'text-muted-foreground font-semibold' :
+                                        i === 2 ? 'text-accent font-semibold' :
+                                            'text-muted-foreground/50',
+                            )}>
+                                {i + 1}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => openPlayerModal({ license: player.license })}
+                                className="min-w-0 cursor-pointer truncate text-left hover:underline"
+                            >
+                                {player.displayName}
+                            </button>
+                            <span className="text-muted-foreground/70 ml-auto shrink-0 font-mono text-xs">
+                                {formatPlayTime(player.playTime)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </InsightsCard>
+    );
+}
+
+function RetentionStat({ label, value }: { label: string; value: number }) {
+    const color = value >= 50 ? 'text-success' : value >= 25 ? 'text-warning' : 'text-destructive';
+    return (
+        <div className="bg-secondary/20 border-border/40 rounded-lg border p-3 text-center">
+            <div className={cn('text-2xl font-bold', color)}>{value}%</div>
+            <div className="text-muted-foreground/70 mt-0.5 text-xs">{label}</div>
+        </div>
+    );
+}
+
+function RetentionCard() {
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsRetentionResp, WithError>>(
+        '/insights/retention',
+        (mock) => mock.retention,
+    );
+    return (
+        <InsightsCard
+            icon={<TrendingUpIcon />}
+            title="Player Retention"
+            subtitle="Do players come back?"
+            action={successData ? (
+                <HeadlinePill label="Sample" value={`${successData.sampleSize.toLocaleString()} players`} />
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <div className="space-y-4">
+                    <div>
+                        <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider">
+                            Return Rate (joined 30+ days ago)
+                        </h4>
+                        <div className="grid grid-cols-3 gap-2">
+                            <RetentionStat label="After 1 day" value={successData!.returnRate1d} />
+                            <RetentionStat label="After 7 days" value={successData!.returnRate7d} />
+                            <RetentionStat label="After 30 days" value={successData!.returnRate30d} />
+                        </div>
+                    </div>
+                    <div>
+                        <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wider">
+                            Current Activity (all players)
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                            <RetentionStat label="Active last 7d" value={successData!.activeLast7d} />
+                            <RetentionStat label="Active last 30d" value={successData!.activeLast30d} />
+                        </div>
+                    </div>
+                </div>
+            )}
+        </InsightsCard>
+    );
+}
 
 function UptimeCard() {
-    const api = useBackendApi<InsightsUptimeResp>({
-        method: 'GET',
-        path: '/insights/uptimeTimeline',
-    });
-    const { data, error, isLoading } = useSWR('/insights/uptimeTimeline', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsUptimeResp, WithError>>(
+        '/insights/uptimeTimeline',
+        (mock) => mock.uptimeTimeline,
+    );
     return (
-        <Card className="col-span-full">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <ServerIcon className="h-4 w-4" />
-                    Server Uptime
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <UptimeTimeline segments={(data as Exclude<InsightsUptimeResp, { error: string }>).segments} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            className="col-span-full"
+            icon={<ServerIcon />}
+            title="Server Uptime Timeline"
+            subtitle="Historical up / down segments"
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <UptimeTimeline segments={successData!.segments} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Disconnect Reasons ──
 
 function DisconnectReasonsCard() {
-    const api = useBackendApi<InsightsDisconnectReasonsResp>({
-        method: 'GET',
-        path: '/insights/disconnectReasons',
-    });
-    const { data, error, isLoading } = useSWR('/insights/disconnectReasons', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsDisconnectReasonsResp, WithError>>(
+        '/insights/disconnectReasons',
+        (mock) => mock.disconnectReasons,
+    );
     return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <WifiOffIcon className="h-4 w-4" />
-                    Disconnect Reasons (14d)
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Total:{' '}
-                            <span className="text-foreground font-semibold">
-                                {successData.totalDrops.toLocaleString()}
-                            </span>
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <DisconnectReasonsChart categories={successData!.categories} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            icon={<WifiOffIcon />}
+            title="Disconnect Reasons"
+            subtitle="Last 14 days · logged disconnects"
+            action={successData ? (
+                <HeadlinePill label="Total" value={successData.totalDrops.toLocaleString()} />
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <DisconnectReasonsChart categories={successData!.categories} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Peak Hours Heatmap ──
 
 function PeakHoursCard() {
-    const api = useBackendApi<InsightsPeakHoursResp>({
-        method: 'GET',
-        path: '/insights/peakHours',
-    });
-    const { data, error, isLoading } = useSWR('/insights/peakHours', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsPeakHoursResp, WithError>>(
+        '/insights/peakHours',
+        (mock) => mock.peakHours,
+    );
     return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <SignalIcon className="h-4 w-4" />
-                    Peak Hours
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <PeakHoursHeatmap cells={successData!.cells} maxAvg={successData!.maxAvg} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            icon={<SignalIcon />}
+            title="Peak Hours"
+            subtitle="Average players by weekday & hour"
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <PeakHoursHeatmap cells={successData!.cells} maxAvg={successData!.maxAvg} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Actions Timeline ──
 
 function ActionsTimelineCard() {
-    const api = useBackendApi<InsightsActionsTimelineResp>({
-        method: 'GET',
-        path: '/insights/actionsTimeline',
-    });
-    const { data, error, isLoading } = useSWR('/insights/actionsTimeline', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsActionsTimelineResp, WithError>>(
+        '/insights/actionsTimeline',
+        (mock) => mock.actionsTimeline,
+    );
     return (
-        <Card className="col-span-full">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <GavelIcon className="h-4 w-4" />
-                    Moderation Activity
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <ActionsTimelineChart daily={successData!.daily} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            className="col-span-full"
+            icon={<GavelIcon />}
+            title="Moderation Activity"
+            subtitle="Warns, kicks, bans and more over time"
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <ActionsTimelineChart daily={successData!.daily} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Player Growth ──
 
 function PlayerGrowthCard() {
-    const api = useBackendApi<InsightsPlayerGrowthResp>({
-        method: 'GET',
-        path: '/insights/playerGrowth',
-    });
-    const { data, error, isLoading } = useSWR('/insights/playerGrowth', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsPlayerGrowthResp, WithError>>(
+        '/insights/playerGrowth',
+        (mock) => mock.playerGrowth,
+    );
     return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <TrendingUpIcon className="h-4 w-4" />
-                    Player Growth
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Total:{' '}
-                            <span className="text-foreground font-semibold">
-                                {successData.totalPlayers.toLocaleString()}
-                            </span>
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <PlayerGrowthChart data={successData!.data} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            icon={<LineChartIcon />}
+            title="Player Growth"
+            subtitle="Cumulative unique players over time"
+            action={successData ? (
+                <HeadlinePill label="Total" value={successData.totalPlayers.toLocaleString()} />
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <PlayerGrowthChart data={successData!.data} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Session Length ──
 
 function SessionLengthCard() {
-    const api = useBackendApi<InsightsSessionLengthResp>({
-        method: 'GET',
-        path: '/insights/sessionLength',
-    });
-    const { data, error, isLoading } = useSWR('/insights/sessionLength', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsSessionLengthResp, WithError>>(
+        '/insights/sessionLength',
+        (mock) => mock.sessionLength,
+    );
     return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <ClockIcon className="h-4 w-4" />
-                    Session Length
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            Avg:{' '}
-                            <span className="text-foreground font-semibold">
-                                {formatPlayTime(successData.avgMinutes)}
-                            </span>
-                            {' · '}Median:{' '}
-                            <span className="text-foreground font-semibold">
-                                {formatPlayTime(successData.medianMinutes)}
-                            </span>
-                            {' · '}
-                            {successData.totalSessions} sessions ({successData.hoursAnalyzed}h)
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <SessionLengthChart buckets={successData!.buckets} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            icon={<ClockIcon />}
+            title="Session Length"
+            subtitle={successData ? `${successData.totalSessions.toLocaleString()} sessions · ${successData.hoursAnalyzed}h analyzed` : 'How long sessions typically last'}
+            action={successData ? (
+                <>
+                    <HeadlinePill label="Avg" value={formatPlayTime(successData.avgMinutes)} />
+                    <span className="text-muted-foreground/40">·</span>
+                    <HeadlinePill label="Median" value={formatPlayTime(successData.medianMinutes)} />
+                </>
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <SessionLengthChart buckets={successData!.buckets} />
+            )}
+        </InsightsCard>
     );
 }
-
-// ── Daily Players (New vs Returning) ──
 
 function DailyPlayersCard() {
-    const api = useBackendApi<InsightsDailyPlayersResp>({
-        method: 'GET',
-        path: '/insights/dailyPlayers',
-    });
-    const { data, error, isLoading } = useSWR('/insights/dailyPlayers', () => api({}), {
-        revalidateOnFocus: false,
-        dedupingInterval: 60_000,
-    });
-
-    const hasError = error || (data && 'error' in data);
-    const errorMsg = hasError ? (data && 'error' in data ? data.error : 'Failed to load') : '';
-    const successData = data && !('error' in data) ? data : null;
-
+    const { isLoading, hasError, errorMsg, successData } = useInsightData<Exclude<InsightsDailyPlayersResp, WithError>>(
+        '/insights/dailyPlayers',
+        (mock) => mock.dailyPlayers,
+    );
     return (
-        <Card className="col-span-full lg:col-span-1">
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <UsersIcon className="h-4 w-4" />
-                    New vs Returning Players
-                    {successData && (
-                        <span className="text-muted-foreground ml-auto text-sm font-normal">
-                            {successData.daysAnalyzed}d of data
-                        </span>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <CardLoading />
-                ) : hasError ? (
-                    <CardError message={errorMsg} />
-                ) : (
-                    <DailyPlayersChart daily={successData!.daily} />
-                )}
-            </CardContent>
-        </Card>
+        <InsightsCard
+            icon={<UsersIcon />}
+            title="New vs Returning Players"
+            subtitle="Daily breakdown of who showed up"
+            action={successData ? (
+                <HeadlinePill label="Window" value={`${successData.daysAnalyzed}d`} />
+            ) : null}
+        >
+            {isLoading ? <CardLoading /> : hasError ? <CardError message={errorMsg} /> : (
+                <DailyPlayersChart daily={successData!.daily} />
+            )}
+        </InsightsCard>
     );
 }
 
-// ── Page ──
+// ──────────────────────────────────────────────────────────────────────────────
+// Page
+// ──────────────────────────────────────────────────────────────────────────────
 
 export default function InsightsPage() {
     return (
-        <div className="w-full space-y-4">
+        <div className="flex w-full min-w-0 flex-col gap-5">
+            <PageHeader
+                icon={<ActivityIcon />}
+                title="Insights"
+                description="Long-term server trends, player analytics and moderation history"
+            />
+
+            {/* Population section */}
+            <SectionHeading
+                icon={<UsersIcon />}
+                title="Population"
+                description="How your player base evolves over time"
+            />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <UptimeCard />
                 <PlayerCountCard />
-                <PeakHoursCard />
-                <DisconnectReasonsCard />
                 <DailyPlayersCard />
                 <NewPlayersCard />
-                <ActionsTimelineCard />
                 <PlayerGrowthCard />
+                <PeakHoursCard />
+                <RetentionCard />
+            </div>
+
+            {/* Sessions & engagement */}
+            <SectionHeading
+                icon={<ClockIcon />}
+                title="Sessions & Engagement"
+                description="What players do once they're connected"
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <SessionLengthCard />
                 <PlaytimeDistCard />
                 <TopPlayersCard />
-                <RetentionCard />
+                <DisconnectReasonsCard />
+            </div>
+
+            {/* Operations */}
+            <SectionHeading
+                icon={<ServerIcon />}
+                title="Operations"
+                description="Server uptime and moderation activity"
+            />
+            <div className="grid grid-cols-1 gap-4">
+                <UptimeCard />
+                <ActionsTimelineCard />
             </div>
         </div>
     );

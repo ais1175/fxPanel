@@ -14,10 +14,11 @@ export default function LiveConsoleHeader({
     onJumpToPrevStart,
 }: LiveConsoleHeaderProps) {
     return (
-        <div className="flex shrink flex-col space-y-4 border-b px-1 py-2 sm:px-4">
+        <div className="flex shrink flex-col border-b border-border/40 px-1 py-2.5 sm:px-4">
             <div className="flex items-center space-x-2">
                 <svg
-                    className="h-4 w-4 text-green-500"
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 text-success"
                     fill="none"
                     height="24"
                     stroke="currentColor"
@@ -31,12 +32,15 @@ export default function LiveConsoleHeader({
                     <polyline points="4 17 10 11 4 5" />
                     <line x1="12" x2="20" y1="19" y2="19" />
                 </svg>
-                <p className="font-mono text-sm">Live Console</p>
+                <p className="font-mono text-sm font-medium text-foreground">Live Console</p>
+                <span className={`ml-1 h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-success' : 'bg-muted-foreground/40'}`}>
+                    <span className="sr-only">{isConnected ? 'Connected' : 'Disconnected'}</span>
+                </span>
 
                 {isConnected && hasSpawnLines && (
                     <div className="flex items-center gap-1 pl-2">
                         <button
-                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
+                            className="text-muted-foreground hover:text-foreground hover:bg-secondary/40 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
                             onClick={onJumpToLastStart}
                             title="Jump to last server start"
                         >
@@ -44,7 +48,7 @@ export default function LiveConsoleHeader({
                             <span className="hidden sm:inline">Last Start</span>
                         </button>
                         <button
-                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
+                            className="text-muted-foreground hover:text-foreground hover:bg-secondary/40 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors"
                             onClick={onJumpToPrevStart}
                             title="Jump to previous server start"
                         >

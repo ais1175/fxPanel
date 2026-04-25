@@ -7,6 +7,8 @@ import { useProcessPlayerlistEvents } from '@/hooks/playerlist';
 import { useSetBanTemplates } from '@/hooks/banTemplates';
 import { useAuthedFetcher } from '@/hooks/fetch';
 import { LogoutReasonHash } from '@/pages/auth/Login';
+import { createMockGlobalStatus, createMockPlayerlistEvents } from '@/pages/Dashboard/devMockData';
+import type { GlobalStatusType } from '@shared/socketioTypes';
 
 /**
  * Responsible for starting and handling the main socket.io connection
@@ -24,9 +26,35 @@ export default function MainSocket() {
     const authedFetcher = useAuthedFetcher();
 
     //Runing on mount only
+    // Mount-only socket setup: handlers/setters are stable singletons (Jotai
+    // setters, refs, module-level helpers) and the socket itself is a singleton.
+    // Re-running this effect would tear down and re-register all listeners.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         //SocketIO - singleton, rooms passed via query on first connect
         const socket = getSocket();
+        const isDevMockMode = import.meta.env.DEV;
+        let latestLiveStatus: GlobalStatusType | null = null;
+        let devMockInterval: ReturnType<typeof setInterval> | undefined;
+
+        if (isDevMockMode) {
+            // Visible signal so developers know createMockGlobalStatus and
+            // processPlayerlistEvents output is being injected instead of real
+            // socket events.
+            console.warn(
+                '%c[DEV MOCK MODE ACTIVE]%c Using createMockGlobalStatus / createMockPlayerlistEvents instead of live socket data.',
+                'background:#b91c1c;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
+                'color:inherit;',
+            );
+        }
+
+        const pushDevMockState = () => {
+            const now = Date.now();
+            setGlobalStatus(createMockGlobalStatus(now, latestLiveStatus));
+            if (window.txConsts.isWebInterface) {
+                processPlayerlistEvents(createMockPlayerlistEvents(now));
+            }
+        };
         const connectHandler = () => {
             console.log('Main Socket.IO Connected.');
             setIsSocketOffline(false);
@@ -46,8 +74,8 @@ export default function MainSocket() {
                 }
             }, 500);
         };
-        const errorHandler = (error: Error) => {
-            console.log('Main Socket.IO', error);
+        const errorHandler = (reason?: string) => {
+            console.log('Main Socket.IO', reason ?? 'unknown');
         };
         const logoutHandler = (reason?: string) => {
             expireSession('main socketio', reason);
@@ -59,10 +87,15 @@ export default function MainSocket() {
             expireSession('main socketio', 'got txAdminShuttingDown', LogoutReasonHash.SHUTDOWN);
         };
         const statusHandler = (status: any) => {
+            if (isDevMockMode) {
+                latestLiveStatus = status;
+                return;
+            }
             setGlobalStatus(status);
         };
         const playerlistHandler = (playerlistData: any) => {
             if (!window.txConsts.isWebInterface) return;
+            if (isDevMockMode) return;
             processPlayerlistEvents(playerlistData);
         };
         const updateHandler = (data: any) => {
@@ -88,6 +121,11 @@ export default function MainSocket() {
         socket.on('updateAuthData', authDataHandler);
         socket.on('banTemplatesUpdate', banTemplatesHandler);
 
+        if (isDevMockMode) {
+            pushDevMockState();
+            devMockInterval = setInterval(pushDevMockState, 4_000);
+        }
+
         return () => {
             socket.off('connect', connectHandler);
             socket.off('disconnect', disconnectHandler);
@@ -100,6 +138,7 @@ export default function MainSocket() {
             socket.off('updateAvailable', updateHandler);
             socket.off('updateAuthData', authDataHandler);
             socket.off('banTemplatesUpdate', banTemplatesHandler);
+            if (devMockInterval) clearInterval(devMockInterval);
             setGlobalStatus(null);
             destroySocket();
         };

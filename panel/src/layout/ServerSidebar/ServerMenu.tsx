@@ -1,4 +1,4 @@
-import { MenuNavLink } from '@/components/mainPageLink';
+import { MenuNavLink } from '@/components/MainPageLink';
 import TxAnchor from '@/components/TxAnchor';
 import { useAdminPerms } from '@/hooks/auth';
 import { useAddonLoader } from '@/hooks/addons';
@@ -6,7 +6,6 @@ import { serverNameAtom, txConfigStateAtom } from '@/hooks/status';
 import { useContentRefresh } from '@/hooks/pages';
 import { cn } from '@/lib/utils';
 import { TxConfigState } from '@shared/enums';
-import { GlobalStatusType } from '@shared/socketioTypes';
 import { useAtomValue } from 'jotai';
 import {
     BlocksIcon,

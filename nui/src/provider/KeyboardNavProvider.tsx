@@ -3,7 +3,12 @@ import { fetchNui } from '../utils/fetchNui';
 import { useIsMenuVisibleValue } from '../state/visibility.state';
 import { txAdminMenuPage, usePageValue } from '../state/page.state';
 
-const KeyboardNavContext = createContext(null);
+interface KeyboardNavProviderValue {
+    disabledKeyNav: boolean;
+    setDisabledKeyNav: (bool: boolean) => void;
+}
+
+const KeyboardNavContext = createContext<KeyboardNavProviderValue | null>(null);
 
 interface KeyboardNavProviderProps {
     children: ReactNode;
@@ -47,9 +52,10 @@ export const KeyboardNavProvider: React.FC<KeyboardNavProviderProps> = ({ childr
     );
 };
 
-interface KeyboardNavProviderValue {
-    disabledKeyNav: boolean;
-    setDisabledKeyNav: (bool: boolean) => void;
-}
-
-export const useKeyboardNavContext = () => useContext<KeyboardNavProviderValue>(KeyboardNavContext);
+export const useKeyboardNavContext = () => {
+    const ctx = useContext(KeyboardNavContext);
+    if (!ctx) {
+        throw new Error('useKeyboardNavContext must be used within KeyboardNavProvider');
+    }
+    return ctx;
+};

@@ -22,6 +22,7 @@ local tostring = tostring
 local pairs = pairs
 
 -- Variables & Consts
+local MAX_PLAYER_NAME_LEN = 75
 -- https://www.desmos.com/calculator/dx9f5ko2ge
 local refreshMinDelay = 1500
 local refreshMaxDelay = 5000
@@ -54,22 +55,22 @@ local function refreshPlayerList()
             local ped = GetPlayerPed(serverID)
             if ped and DoesEntityExist(ped) then
                 health = GetPedHealthPercent(ped)
-                local veh = GetVehiclePedIsIn(ped)
+                local veh = GetVehiclePedIsIn(ped, false)
                 if veh ~= 0 and DoesEntityExist(veh) then
-                    vType = vTypeMap[tostring(GetVehicleType(veh))]
+                    vType = vTypeMap[tostring(GetVehicleType(veh))] or -1
                 else
                     vType = vTypeMap['walking']
                 end
                 local coords = GetEntityCoords(ped)
-                xCoord = math.floor(coords.x)
-                yCoord = math.floor(coords.y)
+                xCoord = floor(coords.x)
+                yCoord = floor(coords.y)
             end
         end
 
         -- Updating TX_PLAYERLIST
         if type(TX_PLAYERLIST[serverID]) ~= 'table' then
             TX_PLAYERLIST[serverID] = {
-                name = sub(GetPlayerName(serverID) or 'unknown', 1, 75),
+                name = sub(GetPlayerName(serverID) or 'unknown', 1, MAX_PLAYER_NAME_LEN),
                 health = health,
                 vType = vType,
                 xCoord = xCoord,
@@ -147,7 +148,7 @@ AddEventHandler('playerJoining', function(srcString, _oldID)
     end
 
     local playerData = {
-        name = sub(playerDetectedName or 'unknown', 1, 128),
+        name = sub(playerDetectedName, 1, MAX_PLAYER_NAME_LEN),
         ids = GetPlayerIdentifiers(source),
         hwids = GetPlayerTokens(source),
     }

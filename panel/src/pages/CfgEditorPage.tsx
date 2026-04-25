@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useBackendApi, ApiTimeout } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { useBackendApi } from '@/hooks/fetch';
+import { txToast } from '@/components/TxToaster';
 import { Button } from '@/components/ui/button';
 import { Loader2Icon } from 'lucide-react';
 import useSWR from 'swr';
@@ -55,25 +55,23 @@ export default function CfgEditorPage() {
     });
 
     // Load initial data
-    const { data: initialData, isLoading } = useSWR('/cfgEditor/data', async () => {
-        let resp: CfgDataResp | undefined;
-        await dataApi({
-            success: (d) => {
-                resp = d;
-            },
+    const { data: initialData, isLoading } = useSWR('/cfgEditor/data', () => {
+        return new Promise<CfgDataResp>((resolve, reject) => {
+            dataApi({
+                success: (d) => resolve(d),
+                error: (msg) => reject(new Error(msg)),
+            });
         });
-        return resp;
     });
 
     // Load file list
-    const { data: filesData } = useSWR('/cfgEditor/files', async () => {
-        let resp: CfgFilesResp | undefined;
-        await filesApi({
-            success: (d) => {
-                resp = d;
-            },
+    const { data: filesData } = useSWR('/cfgEditor/files', () => {
+        return new Promise<CfgFilesResp>((resolve, reject) => {
+            filesApi({
+                success: (d) => resolve(d),
+                error: (msg) => reject(new Error(msg)),
+            });
         });
-        return resp;
     });
 
     // Set initial content when data loads
@@ -118,7 +116,7 @@ export default function CfgEditorPage() {
         const cfgData = editorRef.current?.getValue() ?? editorContent;
         if (cfgData.length < 1024 && currentFile === mainCfgName) {
             txToast.warning(
-                "Your CFG file is very small — there is a good chance you deleted something you shouldn't. A backup file will be saved just in case.",
+                "Your CFG file is very small â€” there is a good chance you deleted something you shouldn't. A backup file will be saved just in case.",
             );
         }
 
@@ -150,7 +148,7 @@ export default function CfgEditorPage() {
     // CTRL+S shortcut
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key === 's') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
                 handleSave();
             }
@@ -180,14 +178,14 @@ export default function CfgEditorPage() {
 
     const fileHint =
         currentFile === mainCfgName
-            ? '(main server config — validated on save)'
-            : '(auxiliary config — saved without validation)';
+            ? '(main server config â€” validated on save)'
+            : '(auxiliary config â€” saved without validation)';
 
     return (
-        <div className="mx-auto w-full space-y-3 px-2 md:px-0">
+        <div className="h-contentvh flex w-full flex-col gap-3 px-2 md:px-0">
             {/* CFG Errors Banner */}
             {initialData?.cfgErrors && (
-                <div className="relative rounded-lg border border-[rgba(244,5,82,0.4)] bg-[rgba(244,5,82,0.15)] p-4">
+                <div className="shrink-0 relative rounded-lg border border-[rgba(244,5,82,0.4)] bg-[rgba(244,5,82,0.15)] p-4">
                     <strong className="text-destructive">&#9888; Server failed to start due to config error(s):</strong>
                     <div className="mt-2 text-sm">
                         <MarkdownProse md={initialData.cfgErrors} isSmall />
@@ -200,7 +198,7 @@ export default function CfgEditorPage() {
             )}
 
             {/* File Picker */}
-            <div className="flex items-center gap-3">
+            <div className="shrink-0 flex items-center gap-3">
                 <select
                     className={SELECT_CLASS}
                     style={{ maxWidth: 280 }}
@@ -218,30 +216,32 @@ export default function CfgEditorPage() {
             </div>
 
             {/* Monaco Editor */}
-            <div className="overflow-hidden rounded-lg border">
-                <LazyMonacoEditor
-                    height="calc(100vh - 280px)"
-                    language="ini"
-                    value={editorContent}
-                    onChange={(value) => setEditorContent(value ?? '')}
-                    onMount={(editor) => {
-                        editorRef.current = editor;
-                    }}
-                    options={{
-                        minimap: { enabled: false },
-                        lineNumbers: 'on',
-                        wordWrap: 'on',
-                        scrollBeyondLastLine: false,
-                        fontSize: 14,
-                    }}
-                />
+            <div className="relative flex-1 min-h-0 overflow-hidden rounded-lg border">
+                <div className="absolute inset-0">
+                    <LazyMonacoEditor
+                        height="100%"
+                        language="ini"
+                        value={editorContent}
+                        onChange={(value) => setEditorContent(value ?? '')}
+                        onMount={(editor) => {
+                            editorRef.current = editor;
+                        }}
+                        options={{
+                            minimap: { enabled: false },
+                            lineNumbers: 'on',
+                            wordWrap: 'on',
+                            scrollBeyondLastLine: false,
+                            fontSize: 14,
+                        }}
+                    />
+                </div>
             </div>
 
             {/* Save Button */}
-            <div className="text-center">
+            <div className="shrink-0 pb-2 text-center">
                 <Button variant="outline" size="sm" disabled={isSaving} onClick={handleSave}>
                     {isSaving && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
-                    Save File (CTRL+S)
+                    Save File (âŒ˜/Ctrl+S)
                 </Button>
             </div>
         </div>

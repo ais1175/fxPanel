@@ -101,7 +101,8 @@ suite('FxScheduler', () => {
         it('should disable skip', () => {
             scheduler.setNextTempSchedule('+30');
             scheduler.setNextSkip(true, 'testAdmin');
-            expect(scheduler.getStatus().nextSkip).toBe(true);
+            // Skipping a temp schedule clears it without setting nextSkip
+            expect(scheduler.getStatus().nextSkip).toBe(false);
 
             scheduler.setNextSkip(false);
             const status = scheduler.getStatus();

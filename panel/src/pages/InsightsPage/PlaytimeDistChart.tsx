@@ -42,8 +42,10 @@ function PlaytimeDistChart({ buckets }: Props) {
                 indexBy="label"
                 margin={{ top: 10, right: 10, bottom: 50, left: 50 }}
                 padding={0.3}
-                colors={isDarkMode ? ['#a78bfa'] : ['#7c3aed']}
-                borderWidth={0}
+                colors={isDarkMode ? ['#c084fc'] : ['#9333ea']}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.55]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -65,13 +67,15 @@ function PlaytimeDistChart({ buckets }: Props) {
                     grid: {
                         line: {
                             strokeDasharray: '8 6',
-                            stroke: '#3F4146',
-                            strokeOpacity: isDarkMode ? 1 : 0.25,
+                            stroke: isDarkMode ? '#3F4146' : '#d4d4d8',
+                            strokeOpacity: isDarkMode ? 1 : 0.7,
                             strokeWidth: 1,
                         },
                     },
                 }}
                 tooltip={ChartTooltip}
+                animate={true}
+                motionConfig="gentle"
             />
         </div>
     );

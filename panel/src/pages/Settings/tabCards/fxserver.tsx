@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import SwitchText from '@/components/SwitchText';
 import InlineCode from '@/components/InlineCode';
 import { AdvancedDivider, SettingItem, SettingItemDesc } from '../settingsItems';
-import { useState, useEffect, useRef, useMemo, useReducer } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useReducer } from 'react';
 import {
     getConfigEmptyState,
     getConfigAccessors,
@@ -15,13 +15,13 @@ import {
 } from '../utils';
 import { PlusIcon, TrashIcon, Undo2Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TimeInputDialog } from '@/components/timeInputDialog';
+import { TimeInputDialog } from '@/components/TimeInputDialog';
 import cleanFullPath from '@shared/cleanFullPath';
 import TxAnchor from '@/components/TxAnchor';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import SettingsCardShell from '../SettingsCardShell';
 import { cn } from '@/lib/utils';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useBackendApi } from '@/hooks/fetch';
 import { useAdminPerms } from '@/hooks/auth';
 import { useLocation } from 'wouter';
@@ -228,13 +228,29 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
     );
 
     //Effects - handle changes and reset advanced settings
+
+    // Sync uncontrolled ref inputs when apiData loads (defaultValue doesn't update after mount)
+    // Also reset the "user has edited" flags so the diff won't see stale DOM values
+    const dataPathEdited = useRef(false);
+    const cfgPathEdited = useRef(false);
+    const startupArgsEdited = useRef(false);
+    useLayoutEffect(() => {
+        if (!pageCtx.apiData) return;
+        if (dataPathRef.current) dataPathRef.current.value = cfg.dataPath.initialValue ?? '';
+        if (cfgPathRef.current) cfgPathRef.current.value = cfg.cfgPath.initialValue ?? '';
+        if (startupArgsRef.current) startupArgsRef.current.value = inputArrayUtil.toUi(cfg.startupArgs.initialValue);
+        dataPathEdited.current = false;
+        cfgPathEdited.current = false;
+        startupArgsEdited.current = false;
+    }, [pageCtx.apiData, cfg]);
+
     useEffect(() => {
         updatePageState();
     }, [states]);
     useEffect(() => {
         if (showAdvanced) return;
         Object.values(cfg).forEach((c) => c.isAdvanced && c.state.discard());
-    }, [showAdvanced]);
+    }, [showAdvanced, cfg]);
 
     //Refs for configs that don't use state
     const dataPathRef = useRef<HTMLInputElement | null>(null);
@@ -244,8 +260,8 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
 
     //Marshalling Utils
     const selectNumberUtil = {
-        toUi: (num?: number) => (num ? num.toString() : undefined),
-        toCfg: (str?: string) => (str ? parseInt(str) : undefined),
+        toUi: (num?: number) => (num !== undefined && num !== null ? num.toString() : undefined),
+        toCfg: (str?: string) => (str !== undefined && str !== '' ? parseInt(str, 10) : undefined),
     };
     const inputArrayUtil = {
         toUi: (args?: string[]) => (args ? args.join(' ') : ''),
@@ -259,25 +275,32 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
 
     //Processes the state of the page and sets the card as pending save if needed
     const updatePageState = () => {
-        let currStartupArgs;
-        if (startupArgsRef.current) {
-            currStartupArgs = inputArrayUtil.toCfg(startupArgsRef.current.value);
+        // Only include ref-based inputs in overwrites if the user has actually edited them.
+        // Before that, getConfigDiff falls back to states[configName] which equals initialValue,
+        // so hasChanged() returns false and no spurious dirty state is produced.
+        const overwrites: Record<string, any> = {};
+
+        if (startupArgsEdited.current && startupArgsRef.current) {
+            overwrites.startupArgs = inputArrayUtil.toCfg(startupArgsRef.current.value);
         }
-        let currDataPath = emptyToNull(dataPathRef.current?.value);
-        if (currDataPath) {
-            const result = cleanFullPath(currDataPath, window.txConsts.isWindows);
-            currDataPath = 'path' in result ? result.path : currDataPath;
+
+        if (dataPathEdited.current) {
+            let currDataPath = emptyToNull(dataPathRef.current?.value);
+            if (currDataPath) {
+                const result = cleanFullPath(currDataPath, window.txConsts.isWindows);
+                currDataPath = 'path' in result ? result.path : currDataPath;
+            }
+            overwrites.dataPath = currDataPath;
         }
-        let currCfgPath = cfgPathRef.current?.value;
-        if (currCfgPath) {
-            const result = cleanFullPath(currCfgPath, window.txConsts.isWindows);
-            currCfgPath = 'path' in result ? result.path : currCfgPath;
+
+        if (cfgPathEdited.current) {
+            let currCfgPath = emptyToNull(cfgPathRef.current?.value);
+            if (currCfgPath) {
+                const result = cleanFullPath(currCfgPath, window.txConsts.isWindows);
+                currCfgPath = 'path' in result ? result.path : currCfgPath;
+            }
+            overwrites.cfgPath = currCfgPath;
         }
-        const overwrites = {
-            dataPath: currDataPath,
-            cfgPath: currCfgPath,
-            startupArgs: currStartupArgs,
-        };
 
         const res = getConfigDiff(cfg, states, overwrites, showAdvanced);
         pageCtx.setCardPendingSave(res.hasChanges ? cardCtx : null);
@@ -305,7 +328,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
         }
         if (
             Array.isArray(localConfigs.server?.startupArgs) &&
-            localConfigs.server.startupArgs.some((arg) => arg.toLowerCase() === 'onesync')
+            localConfigs.server.startupArgs.some((arg: string) => arg.toLowerCase() === 'onesync')
         ) {
             return txToast.error({
                 title: 'You cannot set OneSync in Startup Arguments.',
@@ -360,6 +383,8 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
     // cfg.restarterSchedule.state.set([])
     // cfg.restarterSchedule.state.set(undefined)
 
+    const handleOneSyncChange = (val: string) => cfg.onesync.state.set(val as 'on' | 'legacy' | 'off');
+
     return (
         <SettingsCardShell
             cardCtx={cardCtx}
@@ -375,7 +400,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
                         ref={dataPathRef}
                         defaultValue={cfg.dataPath.initialValue}
                         placeholder={serverDataPlaceholder}
-                        onInput={updatePageState}
+                        onInput={() => { dataPathEdited.current = true; updatePageState(); }}
                         disabled={pageCtx.isReadOnly}
                         required
                     />
@@ -423,7 +448,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
                         min={0}
                         className="w-32"
                         value={states.restarterIntervalHours ?? 0}
-                        onChange={(e) => cfg.restarterIntervalHours.state.set(parseInt(e.target.value) || 0)}
+                        onChange={(e) => { const parsed = parseInt(e.target.value, 10); cfg.restarterIntervalHours.state.set(isNaN(parsed) ? 0 : Math.max(0, parsed)); }}
                         disabled={pageCtx.isReadOnly}
                     />
                     <span className="text-muted-foreground text-sm">hours (0 = disabled)</span>
@@ -464,7 +489,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
                     ref={cfgPathRef}
                     defaultValue={cfg.cfgPath.initialValue}
                     placeholder="server.cfg"
-                    onInput={updatePageState}
+                    onInput={() => { cfgPathEdited.current = true; updatePageState(); }}
                     disabled={pageCtx.isReadOnly}
                     required
                 />
@@ -479,7 +504,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
                     ref={startupArgsRef}
                     defaultValue={inputArrayUtil.toUi(cfg.startupArgs.initialValue)}
                     placeholder="--trace-warning"
-                    onInput={updatePageState}
+                    onInput={() => { startupArgsEdited.current = true; updatePageState(); }}
                     disabled={pageCtx.isReadOnly}
                 />
                 <SettingItemDesc>
@@ -491,7 +516,7 @@ export default function ConfigCardFxserver({ cardCtx, pageCtx }: SettingsCardPro
             <SettingItem label="OneSync" htmlFor={cfg.onesync.eid} showIf={showAdvanced}>
                 <Select
                     value={states.onesync}
-                    onValueChange={cfg.onesync.state.set as any}
+                    onValueChange={handleOneSyncChange}
                     disabled={pageCtx.isReadOnly}
                 >
                     <SelectTrigger id={cfg.onesync.eid}>

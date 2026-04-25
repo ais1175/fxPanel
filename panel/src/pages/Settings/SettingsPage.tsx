@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { setUrlHash } from '@/lib/navigation';
-import { Settings2Icon } from 'lucide-react';
+import { Settings2Icon, ShieldAlertIcon } from 'lucide-react';
+import DangerZoneTab from './DangerZoneTab';
 
 import { ApiTimeout, useBackendApi } from '@/hooks/fetch';
 import { useOpenConfirmDialog } from '@/hooks/dialogs';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useAdminPerms } from '@/hooks/auth';
 import {
     SYM_RESET_CONFIG,
@@ -29,10 +30,9 @@ import ConfigCardGameReports from './tabCards/gameReports';
 import ConfigCardGeneral from './tabCards/general';
 import ConfigCardWhitelist from './tabCards/whitelist';
 import SettingsCardTemplate from './tabCards/_template';
-import SettingsCardBlank from './tabCards/_blank';
+// import SettingsCardBlank from './tabCards/_blank';
 import { PageHeader, PageHeaderChangelog } from '@/components/page-header';
 import { emsg } from '@shared/emsg';
-import AddonsContent from '@/pages/AddonsPage';
 import { useAddonWidgets, useAddonWidgetsByPrefix } from '@/hooks/addons';
 import { ErrorBoundary } from 'react-error-boundary';
 
@@ -116,16 +116,17 @@ export default function SettingsPage() {
     const [isSaving, setIsSaving] = useState(false);
     const openConfirmDialog = useOpenConfirmDialog();
     const { hasPerm } = useAdminPerms();
+    const hasPermRef = useRef(hasPerm);
+    useEffect(() => { hasPermRef.current = hasPerm; }, [hasPerm]);
 
     // Addon widgets: full custom tabs (e.g. "settings.tab") and per-tab injections (e.g. "settings.tab.discord")
     const addonSettingsTabs = useAddonWidgets('settings.tab');
     const addonTabInject = useAddonWidgetsByPrefix('settings.tab.');
-    const settingsSections = useAddonWidgets('settings.sections');
 
     //Check for default tab in URL hash
     const [tab, setTab] = useState(() => {
         const pageHash = window.location?.hash.slice(1);
-        if (pageHash === 'addons') return 'addons';
+        if (pageHash === 'danger-zone' && hasPerm('master')) return 'danger-zone';
         if (pageHash?.startsWith('addon-')) return pageHash;
         return settingsTabs.find((tab) => tab.ctx.tabId === pageHash)?.ctx.tabId ?? settingsTabs[0].ctx.tabId;
     });
@@ -134,7 +135,9 @@ export default function SettingsPage() {
     useEffect(() => {
         const onHashChange = () => {
             const hash = window.location.hash.slice(1);
-            if (hash === 'addons' || hash.startsWith('addon-')) {
+            if (hash === 'danger-zone' && hasPermRef.current('master')) {
+                setTab(hash);
+            } else if (hash.startsWith('addon-')) {
                 setTab(hash);
             } else {
                 const match = settingsTabs.find((t) => t.ctx.tabId === hash);
@@ -189,7 +192,7 @@ export default function SettingsPage() {
             if (!swr.data) throw new Error('Cannot save changes without swr.data.');
             const resetKeys: string[] = [];
             for (const [scopeName, scopeData] of Object.entries(changes)) {
-                for (const [configKey, configValue] of Object.entries(scopeData)) {
+                for (const [configKey, configValue] of Object.entries(scopeData as Record<string, unknown>)) {
                     if (configValue === SYM_RESET_CONFIG) {
                         resetKeys.push(`${scopeName}.${configKey}`);
                     }
@@ -273,9 +276,10 @@ export default function SettingsPage() {
                                 {w.title}
                             </TabsTrigger>
                         ))}
-                        {hasPerm('all_permissions') && (
-                            <TabsTrigger value="addons" className="hover:text-primary">
-                                Addons
+                        {hasPerm('master') && (
+                            <TabsTrigger value="danger-zone" className="hover:text-destructive text-destructive/70">
+                                <ShieldAlertIcon className="mr-1 h-3.5 w-3.5" />
+                                Danger Zone
                             </TabsTrigger>
                         )}
                     </TabsList>
@@ -318,9 +322,9 @@ export default function SettingsPage() {
                             </ErrorBoundary>
                         </TabsContent>
                     ))}
-                    {hasPerm('all_permissions') && (
-                        <TabsContent value="addons" className="mt-6">
-                            <AddonsContent />
+                    {hasPerm('master') && (
+                        <TabsContent value="danger-zone" className="mt-6">
+                            <DangerZoneTab />
                         </TabsContent>
                     )}
                 </Tabs>

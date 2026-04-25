@@ -64,7 +64,9 @@ function DisconnectReasonsChart({ categories }: Props) {
                 layout="horizontal"
                 padding={0.3}
                 colors={({ data }) => data.color as string}
-                borderWidth={0}
+                borderWidth={1}
+                borderRadius={4}
+                borderColor={{ from: 'color', modifiers: [['darker', 0.65]] }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -85,13 +87,14 @@ function DisconnectReasonsChart({ categories }: Props) {
                     grid: {
                         line: {
                             strokeDasharray: '8 6',
-                            stroke: '#3F4146',
-                            strokeOpacity: isDarkMode ? 1 : 0.25,
+                            stroke: isDarkMode ? '#3F4146' : '#d4d4d8',
                             strokeWidth: 1,
                         },
                     },
                 }}
                 tooltip={ChartTooltip}
+                animate={true}
+                motionConfig="gentle"
             />
         </div>
     );

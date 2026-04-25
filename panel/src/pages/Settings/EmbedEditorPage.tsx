@@ -19,7 +19,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { embedEditorAtom } from './embedEditorState';
 import { navigate } from 'wouter/use-browser-location';
 import { ApiTimeout, useBackendApi } from '@/hooks/fetch';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import jsonForgivingParse from '@shared/jsonForgivingParse';
 import type { SaveConfigsResp, SaveConfigsReq } from '@shared/otherTypes';
 import { emsg } from '@shared/emsg';
@@ -60,14 +60,21 @@ export default function EmbedEditorPage() {
         throwGenericErrors: true,
     });
 
+    // Initialize editor content once on mount, so subsequent atom updates
+    // don't clobber unsaved edits.
+    useEffect(() => {
+        if (editorState) {
+            setConfig(beautifyJson(editorState.initialValue));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Redirect if no state
     useEffect(() => {
         if (!editorState) {
             navigate('/settings#discord');
-            return;
         }
-        setConfig(beautifyJson(editorState.initialValue));
-    }, []);
+    }, [editorState]);
 
     // Validate JSON on change
     useEffect(() => {
@@ -138,7 +145,7 @@ export default function EmbedEditorPage() {
                             The server status embed is customizable by editing the JSON below. <br />
                             You can use the placeholders to include dynamic server information in the embed. <br />
                             For information refer to{' '}
-                            <TxAnchor href="https://fxpanel.org/docs/v0.2.1-Beta/discord">
+                            <TxAnchor href="https://fxpanel.org/docs">
                                 our docs
                             </TxAnchor>
                             .

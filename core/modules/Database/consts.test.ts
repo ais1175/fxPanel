@@ -16,7 +16,7 @@ suite('Database consts', () => {
         expect(defaultDatabase.players).toEqual([]);
         expect(defaultDatabase.whitelistApprovals).toEqual([]);
         expect(defaultDatabase.whitelistRequests).toEqual([]);
-        expect(defaultDatabase.reports).toEqual([]);
+        expect(defaultDatabase.tickets).toEqual([]);
     });
 
     it('defaultDatabase collections should not share references', () => {

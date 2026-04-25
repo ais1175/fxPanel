@@ -14,6 +14,9 @@ import {
     TimerIcon,
     HourglassIcon,
     LogOutIcon,
+    ChevronUpIcon,
+    ChevronDownIcon,
+    ChevronsUpDownIcon,
 } from 'lucide-react';
 import { useBackendApi } from '@/hooks/fetch';
 import {
@@ -64,7 +67,12 @@ function HistoryRow({ action, modalOpener }: HistoryRowProps) {
         );
         rowId = <span className="text-muted-foreground tracking-wider">{action.id}</span>;
     } else {
-        throw new Error(`Invalid action type: ${action.type}`);
+        rowPrefix = (
+            <div className="bg-muted text-muted-foreground flex items-center px-1">
+                <AlertTriangleIcon className="size-5" />
+            </div>
+        );
+        rowId = <span className="text-muted-foreground tracking-wider">{action.id}</span>;
     }
 
     //Status indicator
@@ -185,7 +193,7 @@ type SortableTableHeaderProps = {
 function SortableTableHeader({ label, sortKey, sortingState, setSorting, className }: SortableTableHeaderProps) {
     const isSorted = sortingState.key === sortKey;
     const isDesc = sortingState.desc;
-    const sortIcon = isSorted ? isDesc ? '▼' : '▲' : <></>;
+    const SortIcon = isSorted ? (isDesc ? ChevronDownIcon : ChevronUpIcon) : ChevronsUpDownIcon;
     const onClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         e.preventDefault();
         setSorting({
@@ -197,20 +205,22 @@ function SortableTableHeader({ label, sortKey, sortingState, setSorting, classNa
         <th
             onClick={onClick}
             className={cn(
-                'cursor-pointer px-4 py-2 text-left font-light tracking-wider hover:bg-zinc-600',
-                isSorted && 'bg-zinc-700 font-medium',
+                'cursor-pointer px-4 py-2.5 text-left font-medium hover:bg-secondary/40 select-none transition-colors',
+                isSorted && 'bg-secondary/30 text-foreground',
                 className,
             )}
         >
-            {label}
-            <div className="ml-1 inline-block min-w-[2ch]">{sortIcon}</div>
+            <div className="flex items-center gap-1">
+                {label}
+                <SortIcon className={cn('h-3 w-3', isSorted ? 'text-accent' : 'opacity-40')} />
+            </div>
         </th>
     );
 }
 
 function NonSortableTableHeader({ label, className }: { label: string; className?: string }) {
     return (
-        <th className={cn('text-muted-foreground px-4 py-2 text-left font-light tracking-wider', className)}>
+        <th className={cn('px-4 py-2.5 text-left font-medium', className)}>
             {label}
         </th>
     );
@@ -221,12 +231,12 @@ function NonSortableTableHeader({ label, className }: { label: string; className
  */
 type HistoryTableProps = {
     search: HistoryTableSearchType;
-    filterbyType: string | undefined;
-    filterbyAdmin: string | undefined;
+    filterByType: string | undefined;
+    filterByAdmin: string | undefined;
 };
 
-export default function HistoryTable({ search, filterbyType, filterbyAdmin }: HistoryTableProps) {
-    const scrollRef = useRef<HTMLDivElement>(null);
+export default function HistoryTable({ search, filterByType, filterByAdmin }: HistoryTableProps) {
+    const viewportRef = useRef<HTMLDivElement>(null);
     const [history, setHistory] = useState<HistoryTableActionType[]>([]);
     const [hasReachedEnd, setHasReachedEnd] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -262,11 +272,14 @@ export default function HistoryTable({ search, filterbyType, filterbyAdmin }: Hi
                 queryParams.searchValue = search.value;
                 queryParams.searchType = search.type;
             }
-            if (filterbyType && filterbyType !== SEARCH_ANY_STRING) {
-                queryParams.filterbyType = filterbyType;
+            // Intentional casing mismatch: props use camelCase (filterByType, filterByAdmin)
+            // but the API expects lower-case 'b' keys (filterbyType, filterbyAdmin),
+            // so we map them explicitly here for API compatibility.
+            if (filterByType && filterByType !== SEARCH_ANY_STRING) {
+                queryParams.filterbyType = filterByType;
             }
-            if (filterbyAdmin && filterbyAdmin !== SEARCH_ANY_STRING) {
-                queryParams.filterbyAdmin = filterbyAdmin;
+            if (filterByAdmin && filterByAdmin !== SEARCH_ANY_STRING) {
+                queryParams.filterbyAdmin = filterByAdmin;
             }
             if (!resetOffset && history.length) {
                 queryParams.offsetParam = history[history.length - 1][sorting.key];
@@ -284,10 +297,9 @@ export default function HistoryTable({ search, filterbyType, filterbyAdmin }: Hi
             //Setting the states
             setLoadError(null);
             setHasReachedEnd(resp.hasReachedEnd);
-            setIsResetting(false);
             if (resp.history.length) {
                 setHistory((prev) => (resetOffset ? resp.history : [...prev, ...resp.history]));
-            } else {
+            } else if (resetOffset) {
                 setHistory([]);
             }
         } catch (error) {
@@ -298,11 +310,18 @@ export default function HistoryTable({ search, filterbyType, filterbyAdmin }: Hi
         }
     };
 
+    // Stable ref so effects always call the latest fetchNextPage without
+    // depending on its identity (which changes every render).
+    const fetchNextPageRef = useRef(fetchNextPage);
+    useEffect(() => {
+        fetchNextPageRef.current = fetchNextPage;
+    });
+
     // The virtualizer
     const rowVirtualizer = useVirtualizer({
         isScrollingResetDelay: 0,
         count: history.length + 1,
-        getScrollElement: () => (scrollRef.current as HTMLDivElement)?.getElementsByTagName('div')[0],
+        getScrollElement: () => viewportRef.current,
         estimateSize: () => 38, // border-b
         overscan: 25,
     });
@@ -318,7 +337,7 @@ export default function HistoryTable({ search, filterbyType, filterbyAdmin }: Hi
         if (padStart > 0) {
             TopRowPad = (
                 <tr>
-                    <td colSpan={3} style={{ height: padStart }} />
+                    <td colSpan={5} style={{ height: padStart }} />
                 </tr>
             );
         }
@@ -326,40 +345,42 @@ export default function HistoryTable({ search, filterbyType, filterbyAdmin }: Hi
         if (padEnd > 0) {
             BottomRowPad = (
                 <tr>
-                    <td colSpan={3} style={{ height: padEnd }} />
+                    <td colSpan={5} style={{ height: padEnd }} />
                 </tr>
             );
         }
     }
 
-    // Automagically fetch next page when reaching the end
+    // Automagically fetch next page when reaching the end.
     useEffect(() => {
         if (!history.length || !virtualItems.length) return;
         const lastVirtualItemIndex = virtualItems[virtualItems.length - 1].index;
         if (history.length <= lastVirtualItemIndex && !hasReachedEnd && !isFetching) {
-            fetchNextPage();
+            fetchNextPageRef.current();
         }
     }, [history, virtualItems, hasReachedEnd, isFetching]);
 
     //on state change, reset the list
+    // rowVirtualizer is a stable object from useVirtualizer and should not trigger re-runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         rowVirtualizer.scrollToIndex(0);
-        fetchNextPage(true);
-    }, [search, filterbyType, filterbyAdmin, sorting]);
+        fetchNextPageRef.current(true);
+    }, [search, filterByType, filterByAdmin, sorting]);
 
     return (
         <div
-            className="max-h-full min-h-96 w-full overflow-auto border md:rounded-lg"
+            className="flex-1 min-h-0 w-full overflow-auto border border-border/60 shadow-sm md:rounded-xl"
             style={{ overflowAnchor: 'none' }}
         >
             {/* <div
                 className='w-full bg-black p-2'
                 style={{ color: createRandomHslColor() }}
             >{JSON.stringify({ search, filters, sorting })}</div> */}
-            <ScrollArea className="h-full" ref={scrollRef}>
+            <ScrollArea className="h-full" viewportRef={viewportRef}>
                 <table className="w-full caption-bottom text-sm select-none">
                     <TableHeader>
-                        <tr className="bg-muted text-secondary-foreground sticky top-0 z-10 text-base shadow-md transition-colors">
+                        <tr className="bg-card/95 text-muted-foreground/60 sticky top-0 z-10 border-b border-border/40 text-[11px] uppercase tracking-wider shadow-sm backdrop-blur-sm transition-colors">
                             <NonSortableTableHeader label="Action" />
                             <NonSortableTableHeader label="Player" />
                             <NonSortableTableHeader label="Reason" />

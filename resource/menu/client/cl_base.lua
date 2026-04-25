@@ -52,8 +52,8 @@ local function txadmin(_, args)
         SendMenuMessage('openPlayerModal', targetPlayer)
     end
 end
-RegisterCommand('txadmin', txadmin)
-RegisterCommand('tx', txadmin)
+RegisterCommand('txadmin', txadmin, false)
+RegisterCommand('tx', txadmin, false)
 
 -- Shortcut commands for moderation actions
 local actionPermMap = {
@@ -81,11 +81,11 @@ local function makeActionCommand(action)
         end
         local requiredPerm = actionPermMap[action]
         if requiredPerm and not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, requiredPerm) then
-            SendSnackbarMessage('error', 'You do not have permission to ' .. action .. ' players.', false)
+            SendSnackbarMessage('error', 'nui_menu.misc.no_perms_action', true, { action = action })
             return
         end
         if #args < 1 then
-            SendSnackbarMessage('error', 'Usage: /' .. action .. ' [playerID]', false)
+            SendSnackbarMessage('error', 'nui_menu.misc.usage_action', true, { action = action })
             return
         end
         local targetPlayer = table.concat(args, ' ')
@@ -94,9 +94,9 @@ local function makeActionCommand(action)
         SendMenuMessage('openPlayerModalAction', { target = targetPlayer, action = action })
     end
 end
-RegisterCommand('ban', makeActionCommand('ban'))
-RegisterCommand('kick', makeActionCommand('kick'))
-RegisterCommand('warn', makeActionCommand('warn'))
+RegisterCommand('ban', makeActionCommand('ban'), false)
+RegisterCommand('kick', makeActionCommand('kick'), false)
+RegisterCommand('warn', makeActionCommand('warn'), false)
 
 -- Announce command
 RegisterCommand('announce', function(_, args)
@@ -104,16 +104,16 @@ RegisterCommand('announce', function(_, args)
         return
     end
     if not DoesPlayerHavePerm(TX_MENU_PERMISSIONS, actionPermMap['announce']) then
-        SendSnackbarMessage('error', 'You do not have permission to send announcements.', false)
+        SendSnackbarMessage('error', 'nui_menu.misc.no_perms_action', true, { action = 'announce' })
         return
     end
     if #args < 1 then
-        SendSnackbarMessage('error', 'Usage: /announce [message]', false)
+        SendSnackbarMessage('error', 'nui_menu.misc.usage_action', true, { action = 'announce' })
         return
     end
     local message = table.concat(args, ' ')
     TriggerServerEvent('txsv:req:sendAnnouncement', message)
-end)
+end, false)
 
 RegisterCommand('txAdmin:menu:openPlayersPage', function()
     if not checkMenuAccessible() then
@@ -122,7 +122,7 @@ RegisterCommand('txAdmin:menu:openPlayersPage', function()
     SendMenuMessage('setMenuPage', 1)
     toggleMenuVisibility(true)
     SetNuiFocus(true, true)
-end)
+end, false)
 
 -- This needs to run even when menu is disabled so the TX_SERVER_CTX
 -- is updated for react, needed by the Warn page
@@ -131,8 +131,15 @@ RegisterSecureNuiCallback('reactLoaded', function(_, cb)
 
     CreateThread(function()
         UpdateServerCtx()
+        local waitStart = GetGameTimer()
+        local timeoutMs = 15000
         while TX_SERVER_CTX == false do
-            Wait(0)
+            if GetGameTimer() - waitStart > timeoutMs then
+                DebugPrint('^1[ERROR] Timed out waiting for TX_SERVER_CTX after ' .. timeoutMs .. 'ms^0')
+                SendMenuMessage('setServerCtx', { error = 'Timed out loading server context after ' .. timeoutMs .. 'ms' })
+                return
+            end
+            Wait(100)
         end
         DebugPrint('TX_SERVER_CTX loaded, sending variables.')
         SendMenuMessage('setGameName', GAME_NAME)
@@ -205,7 +212,7 @@ RegisterCommand('txAdmin-reauth', function()
     SendSnackbarMessage('info', 'Retrying menu authentication.', false)
     awaitingReauth = true
     retryAuthentication()
-end)
+end, false)
 
 -- Register chat suggestions
 -- txAdmin starts before the chat resource, so we need to wait a bit
@@ -263,6 +270,7 @@ RegisterSecureNuiCallback('focusInputs', function(shouldFocus, cb)
     DebugPrint('NUI Focus + Keep Input ' .. tostring(shouldFocus))
     -- Will prevent mouse focus on initial menu mount as the useEffect emits there
     if not TX_MENU_VISIBLE then
+        cb({})
         return
     end
     SetNuiFocus(true, shouldFocus)
@@ -275,7 +283,7 @@ RegisterSecureNuiCallback('closeMenu', function(_, cb)
     TX_MENU_VISIBLE = false
     TX_LAST_MENU_CLOSE = GetGameTimer()
     DebugPrint('Releasing all NUI Focus')
-    SetNuiFocus(false)
+    SetNuiFocus(false, false)
     SetNuiFocusKeepInput(false)
     playLibrarySound('enter')
     cb({})
@@ -294,6 +302,7 @@ RegisterNetEvent('txcl:heal', function()
     local pos = GetEntityCoords(ped)
     local heading = GetEntityHeading(ped)
     if IsEntityDead(ped) then
+        ---@diagnostic disable-next-line: param-type-mismatch
         NetworkResurrectLocalPlayer(pos[1], pos[2], pos[3], heading, false, false)
     end
     ResurrectPed(ped)

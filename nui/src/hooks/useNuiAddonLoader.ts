@@ -16,12 +16,15 @@ let loaded = false;
 let loadPromise: Promise<void> | null = null;
 
 /**
- * Convert a relative addon path to a nui:// resource URL.
- * NUI hot-reload is handled by `ensure monitor` which destroys and recreates
- * the NUI browser, so fresh nui:// paths always resolve to the latest files.
+ * Convert a relative addon path to a WebPipe HTTP URL.
+ * FiveM resolves `files {}` globs at resource start, before server scripts
+ * run, so dynamically-synced addon files aren't reachable via `nui://`.
+ * Routing through the WebPipe lets CEF fetch them from the HTTP server
+ * (which reads directly from the addon source directory).
  */
+const WEBPIPE_PATH = 'https://monitor/WebPipe';
 function toResourceUrl(relativePath: string): string {
-    return `nui://monitor/${relativePath}`;
+    return `${WEBPIPE_PATH}/${relativePath}`;
 }
 
 async function loadNuiAddons(): Promise<void> {
@@ -45,19 +48,29 @@ async function loadNuiAddons(): Promise<void> {
 
         for (const addon of resp.addons) {
             try {
+                const appendScript = () => {
+                    if (!addon.entryUrl) return;
+                    const script = document.createElement('script');
+                    script.src = toResourceUrl(addon.entryUrl.replace(/^\//, ''));
+                    script.async = false;
+                    script.dataset.addonId = addon.id;
+                    script.onerror = () => console.error(`[NuiAddonLoader] Failed to load script for addon ${addon.id}: ${addon.entryUrl}`);
+                    document.head.appendChild(script);
+                };
+
                 if (addon.stylesUrl) {
                     const link = document.createElement('link');
                     link.rel = 'stylesheet';
                     link.href = toResourceUrl(addon.stylesUrl.replace(/^\//, ''));
                     link.dataset.addonId = addon.id;
+                    link.onload = appendScript;
+                    link.onerror = () => {
+                        console.error(`[NuiAddonLoader] Failed to load stylesheet for addon ${addon.id}: ${addon.stylesUrl}`);
+                        appendScript();
+                    };
                     document.head.appendChild(link);
-                }
-
-                if (addon.entryUrl) {
-                    const script = document.createElement('script');
-                    script.src = toResourceUrl(addon.entryUrl.replace(/^\//, ''));
-                    script.dataset.addonId = addon.id;
-                    document.head.appendChild(script);
+                } else {
+                    appendScript();
                 }
             } catch (err) {
                 console.error(`[NuiAddonLoader] Failed to load addon ${addon.id}:`, err);
@@ -83,9 +96,14 @@ export function useNuiAddonLoader() {
     useEffect(() => {
         if (!isMenuVisible || loaded) return;
         if (!loadPromise) {
-            loadPromise = loadNuiAddons().then(() => {
-                loaded = true;
-            });
+            loadPromise = loadNuiAddons()
+                .then(() => {
+                    loaded = true;
+                })
+                .catch((err) => {
+                    console.error('[NuiAddonLoader] addon load failed, will retry on next menu open:', err);
+                    loadPromise = null;
+                });
         }
     }, [isMenuVisible]);
 }

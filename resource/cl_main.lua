@@ -73,12 +73,16 @@ RegisterNetEvent('txcl:showWarning', function(author, reason, actionId, isWarnin
         local count = 0
         while true do
             Wait(100)
+            -- Exit the thread if the warning was dismissed externally
+            if not warnActive then
+                return
+            end
             if IsControlPressed(dismissKeyGroup, dismissKey) then
                 count = count + 1
                 if count >= countLimit then
                     warnActive = false
                     SendMenuMessage('closeWarning')
-                    TriggerServerEvent('txsv:ackWarning', actionId)
+                    TriggerServerEvent('txsv:ackWarning', currentActionId)
                     return
                 elseif math.fmod(count, 10) == 0 then
                     local secsRemaining = (countLimit - count) / 10

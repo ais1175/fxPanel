@@ -46,7 +46,7 @@ export const fetchWebPipe = async <T = any>(path: ValidPath, options?: fetchWebP
     clearTimeout(timeoutId);
 
     if (resp.status === 404) {
-        return false;
+        return false as unknown as T;
     }
 
     return await resp.json();

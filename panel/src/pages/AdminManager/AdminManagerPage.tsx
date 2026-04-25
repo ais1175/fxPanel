@@ -2,7 +2,16 @@ import { useAdminPerms } from '@/hooks/auth';
 import { useBackendApi } from '@/hooks/fetch';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { Loader2Icon, PlusIcon, ShieldIcon, UsersIcon, CheckSquareIcon } from 'lucide-react';
+import {
+    Loader2Icon,
+    PlusIcon,
+    ShieldIcon,
+    UsersIcon,
+    CheckSquareIcon,
+    CircleIcon,
+    CrownIcon,
+    XIcon,
+} from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -26,15 +35,50 @@ import { ApiGetPresetsResp, ApiSavePresetsReq, ApiSavePresetsResp } from '@share
 import { PermissionPreset } from '@shared/permissions';
 import { useOpenConfirmDialog } from '@/hooks/dialogs';
 import { Button } from '@/components/ui/button';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import AdminEditDialog, { type AdminAutofillData } from './AdminEditDialog';
 import AdminListCard from './AdminListCard';
 import PresetsTab from './PresetsTab';
 import PermissionsEditor from './PermissionsEditor';
 import { emsg } from '@shared/emsg';
+import { PageHeader } from '@/components/page-header';
+import { cn } from '@/lib/utils';
+
+type AdminsHeaderStatsProps = {
+    total: number;
+    online: number;
+    masters: number;
+    isLoading: boolean;
+};
+function AdminsHeaderStats({ total, online, masters, isLoading }: AdminsHeaderStatsProps) {
+    return (
+        <>
+            <div className="border-border/50 bg-card flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                <UsersIcon className="text-muted-foreground/70 h-3 w-3" />
+                <span className="font-mono font-semibold">{isLoading ? '--' : total}</span>
+                <span className="text-muted-foreground/70">admins</span>
+            </div>
+            <div className="border-success/30 bg-success/10 text-success-inline flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold">
+                <span
+                    className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        online > 0 ? 'bg-success animate-pulse' : 'bg-success/40',
+                    )}
+                />
+                <span className="font-mono">{isLoading ? '--' : online}</span>
+                <span>online</span>
+            </div>
+            <div className="border-border/50 bg-card flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
+                <CrownIcon className="text-muted-foreground/70 h-3 w-3" />
+                <span className="font-mono font-semibold">{isLoading ? '--' : masters}</span>
+                <span className="text-muted-foreground/70">master</span>
+            </div>
+        </>
+    );
+}
 
 export default function AdminManagerPage() {
-    const { hasPerm, isMaster } = useAdminPerms();
+    const { hasPerm } = useAdminPerms();
     const canManage = hasPerm('manage.admins');
 
     const [activeTab, setActiveTab] = useState('admins');
@@ -59,14 +103,13 @@ export default function AdminManagerPage() {
             };
             setAutofillData(data);
             setEditTarget('new');
-            // Clean up URL params
             const url = new URL(window.location.href);
             url.search = '';
             window.history.replaceState({}, '', url.toString());
         }
     }, []);
 
-    // ── Admin list ──
+    // â”€â”€ Admin list â”€â”€
     const listApi = useBackendApi<ApiGetAdminListResp>({
         method: 'GET',
         path: '/adminManager/list',
@@ -94,7 +137,7 @@ export default function AdminManagerPage() {
         return data.admins;
     });
 
-    // ── Admin stats ──
+    // â”€â”€ Admin stats â”€â”€
     const statsQueryApi = useBackendApi<ApiGetAdminStatsResp>({
         method: 'GET',
         path: '/adminManager/stats',
@@ -107,7 +150,6 @@ export default function AdminManagerPage() {
     });
     const adminStats: Record<string, AdminStatsEntry> = statsSwr.data ?? {};
 
-    // Compute activity rank (sorted by totalActions, highest first)
     const adminActivityRanks = useMemo(() => {
         const entries = Object.entries(adminStats)
             .filter(([, s]) => s.totalActions > 0)
@@ -119,7 +161,7 @@ export default function AdminManagerPage() {
         return ranks;
     }, [adminStats]);
 
-    // ── Presets ──
+    // â”€â”€ Presets â”€â”€
     const presetsQueryApi = useBackendApi<ApiGetPresetsResp>({
         method: 'GET',
         path: '/adminManager/presets',
@@ -138,6 +180,12 @@ export default function AdminManagerPage() {
     });
 
     const allPresets: PermissionPreset[] = presetsSwr.data ?? [];
+
+    // Header stats
+    const admins = adminsSwr.data;
+    const totalAdmins = admins?.length ?? 0;
+    const onlineAdmins = admins?.filter((a) => a.isOnline).length ?? 0;
+    const masterAdmins = admins?.filter((a) => a.isMaster).length ?? 0;
 
     const handleDeleteAdmin = (admin: AdminListItem) => {
         openConfirmDialog({
@@ -194,6 +242,13 @@ export default function AdminManagerPage() {
         });
     };
 
+    const eligibleAdmins = useMemo(
+        () => adminsSwr.data?.filter((a) => selectedAdmins.has(a.name) && !a.isMaster && !a.isYou) ?? [],
+        [adminsSwr.data, selectedAdmins],
+    );
+    const eligibleCount = eligibleAdmins.length;
+    const skippedCount = selectedAdmins.size - eligibleCount;
+
     const openBulkPermDialog = () => {
         if (selectedAdmins.size === 0) {
             txToast.error({ title: 'Error', msg: 'Select at least one admin first.' });
@@ -204,7 +259,7 @@ export default function AdminManagerPage() {
     };
 
     const handleBulkApply = async () => {
-        const targets = adminsSwr.data?.filter((a) => selectedAdmins.has(a.name) && !a.isMaster && !a.isYou) ?? [];
+        const targets = eligibleAdmins;
         if (targets.length === 0) {
             txToast.error({ title: 'Error', msg: 'No eligible admins selected.' });
             return;
@@ -217,23 +272,35 @@ export default function AdminManagerPage() {
         setShowBulkPermDialog(false);
         setIsBulkApplying(true);
         try {
-            let successCount = 0;
-            for (const admin of targets) {
-                try {
-                    await bulkEditApi({
+            const results = await Promise.allSettled(
+                targets.map((admin) =>
+                    bulkEditApi({
                         data: {
                             name: admin.name,
                             citizenfxId: '',
                             discordId: '',
                             permissions: [...bulkPermissions],
                         },
-                    });
+                    }),
+                ),
+            );
+            let successCount = 0;
+            const failedNames: string[] = [];
+            results.forEach((result, i) => {
+                if (result.status === 'fulfilled') {
                     successCount++;
-                } catch (_) {
-                    /* continue */
+                } else {
+                    console.error(`Bulk permission update failed for ${targets[i].name}:`, result.reason);
+                    failedNames.push(targets[i].name);
                 }
+            });
+            if (successCount === 0) {
+                txToast.error(`Failed to apply permissions to all admins: ${failedNames.join(', ')}`);
+            } else if (successCount < results.length) {
+                txToast.warning(`Applied permissions to ${successCount}/${results.length} admins. Failed: ${failedNames.join(', ')}`);
+            } else {
+                txToast.success(`Applied permissions to ${successCount} admin${successCount !== 1 ? 's' : ''}.`);
             }
-            txToast.success(`Applied permissions to ${successCount} admin${successCount !== 1 ? 's' : ''}.`);
             adminsSwr.mutate();
             setSelectMode(false);
             setSelectedAdmins(new Set());
@@ -243,13 +310,21 @@ export default function AdminManagerPage() {
     };
 
     return (
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Admin Manager</h1>
-            </div>
-
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList>
+        <div className="flex w-full min-w-0 flex-col gap-4">
+            <PageHeader
+                icon={<ShieldIcon />}
+                title="Admin Manager"
+                description="Manage administrator accounts, permissions & presets"
+            >
+                <AdminsHeaderStats
+                    total={totalAdmins}
+                    online={onlineAdmins}
+                    masters={masterAdmins}
+                    isLoading={adminsSwr.isLoading}
+                />
+            </PageHeader>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-4">
+                <TabsList className="w-fit">
                     <TabsTrigger value="admins" className="gap-1.5">
                         <UsersIcon className="h-4 w-4" />
                         Admins
@@ -260,55 +335,94 @@ export default function AdminManagerPage() {
                     </TabsTrigger>
                 </TabsList>
 
-                {/* ── Admins tab ── */}
-                <TabsContent value="admins" className="mt-4">
-                    <div className="flex flex-col gap-3">
-                        {canManage && (
-                            <div className="flex items-center justify-between gap-2">
+                {/* â”€â”€ Admins tab â”€â”€ */}
+                <TabsContent value="admins" className="mt-0 flex flex-col gap-4">
+                    {/* Action bar */}
+                    {canManage && (
+                        <div className="bg-card border-border/60 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 shadow-sm">
+                            {selectMode ? (
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <span className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs font-semibold">
+                                        <CheckSquareIcon className="h-3.5 w-3.5" />
+                                        {selectedAdmins.size} selected
+                                    </span>
+                                    <span className="text-muted-foreground/70 text-xs">
+                                        Master &amp; current account are excluded from bulk actions.
+                                    </span>
+                                </div>
+                            ) : (
+                                <h3 className="text-muted-foreground/50 text-[10px] font-semibold tracking-widest uppercase">
+                                    Staff
+                                </h3>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
                                 {selectMode ? (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-muted-foreground text-sm">
-                                            {selectedAdmins.size} selected
-                                        </span>
+                                    <>
                                         <Button
                                             variant="outline"
+                                            size="sm"
                                             className="gap-1.5"
                                             onClick={openBulkPermDialog}
                                             disabled={selectedAdmins.size === 0 || isBulkApplying}
                                         >
+                                            <ShieldIcon className="h-3.5 w-3.5" />
                                             Apply Permissions
                                         </Button>
-                                        <Button variant="outline" className="gap-1.5" onClick={toggleSelectMode}>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="gap-1.5"
+                                            onClick={toggleSelectMode}
+                                        >
+                                            <XIcon className="h-3.5 w-3.5" />
                                             Cancel
                                         </Button>
-                                    </div>
+                                    </>
                                 ) : (
-                                    <div />
-                                )}
-                                <div className="flex items-center gap-2">
-                                    {!selectMode && (
-                                        <Button variant="outline" className="gap-1.5" onClick={toggleSelectMode}>
-                                            <CheckSquareIcon className="h-4 w-4" />
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-1.5"
+                                            onClick={toggleSelectMode}
+                                        >
+                                            <CheckSquareIcon className="h-3.5 w-3.5" />
                                             Bulk Apply
                                         </Button>
-                                    )}
-                                    <Button variant="outline" className="gap-1.5" onClick={() => setEditTarget('new')}>
-                                        <PlusIcon className="h-4 w-4" />
-                                        Add Admin
-                                    </Button>
-                                </div>
+                                        <Button size="sm" className="gap-1.5" onClick={() => setEditTarget('new')}>
+                                            <PlusIcon className="h-3.5 w-3.5" />
+                                            Add Admin
+                                        </Button>
+                                    </>
+                                )}
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {adminsSwr.isLoading ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2Icon className="text-muted-foreground h-8 w-8 animate-spin" />
-                            </div>
-                        ) : adminsSwr.error ? (
-                            <p className="text-destructive py-8 text-center">Failed to load admin list.</p>
-                        ) : (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                {adminsSwr.data?.map((admin) => (
+                    {adminsSwr.isLoading ? (
+                        <div className="bg-card border-border/60 flex items-center justify-center rounded-xl border py-16 shadow-sm">
+                            <Loader2Icon className="text-muted-foreground h-8 w-8 animate-spin" />
+                        </div>
+                    ) : adminsSwr.error ? (
+                        <div className="border-destructive/30 bg-destructive/5 text-destructive flex items-center justify-center rounded-xl border py-12 text-sm">
+                            Failed to load admin list.
+                        </div>
+                    ) : !admins || admins.length === 0 ? (
+                        <div className="bg-card border-border/60 text-muted-foreground flex flex-col items-center justify-center gap-2 rounded-xl border py-16 text-sm shadow-sm">
+                            <CircleIcon className="h-8 w-8 opacity-20" />
+                            No staff configured yet.
+                        </div>
+                    ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                            {admins.map((admin) => {
+                                const selectionProps = selectMode
+                                    ? {
+                                          selectMode: true as const,
+                                          isSelected: selectedAdmins.has(admin.name),
+                                          onToggleSelect: () => toggleAdminSelection(admin.name),
+                                      }
+                                    : {};
+                                return (
                                     <AdminListCard
                                         key={admin.name}
                                         admin={admin}
@@ -318,18 +432,16 @@ export default function AdminManagerPage() {
                                         onEdit={() => setEditTarget(admin)}
                                         onDelete={() => handleDeleteAdmin(admin)}
                                         onResetPassword={() => handleResetPassword(admin)}
-                                        selectMode={selectMode}
-                                        isSelected={selectedAdmins.has(admin.name)}
-                                        onToggleSelect={() => toggleAdminSelection(admin.name)}
+                                        {...selectionProps}
                                     />
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </TabsContent>
 
-                {/* ── Presets tab ── */}
-                <TabsContent value="presets" className="mt-4">
+                {/* â”€â”€ Presets tab â”€â”€ */}
+                <TabsContent value="presets" className="mt-0">
                     <PresetsTab
                         presets={presetsSwr.data ?? []}
                         isLoading={presetsSwr.isLoading}
@@ -339,7 +451,7 @@ export default function AdminManagerPage() {
                 </TabsContent>
             </Tabs>
 
-            {/* ── Add / Edit dialog ── */}
+            {/* â”€â”€ Add / Edit dialog â”€â”€ */}
             {editTarget !== null && (
                 <AdminEditDialog
                     target={editTarget}
@@ -357,7 +469,7 @@ export default function AdminManagerPage() {
                 />
             )}
 
-            {/* ── Reset Password result dialog ── */}
+            {/* â”€â”€ Reset Password result dialog â”€â”€ */}
             {resetPasswordResult && (
                 <Dialog open onOpenChange={() => setResetPasswordResult(null)}>
                     <DialogContent className="max-w-md">
@@ -380,15 +492,16 @@ export default function AdminManagerPage() {
                 </Dialog>
             )}
 
-            {/* ── Bulk Apply Permissions dialog ── */}
+            {/* â”€â”€ Bulk Apply Permissions dialog â”€â”€ */}
             {showBulkPermDialog && (
                 <Dialog open onOpenChange={() => setShowBulkPermDialog(false)}>
                     <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden">
                         <DialogHeader>
                             <DialogTitle>Bulk Apply Permissions</DialogTitle>
                             <DialogDescription>
-                                Choose the permissions to apply to {selectedAdmins.size} selected admin
-                                {selectedAdmins.size !== 1 ? 's' : ''}. This will replace their current permissions.
+                                Choose the permissions to apply to {eligibleCount} eligible admin
+                                {eligibleCount !== 1 ? 's' : ''}. This will replace their current permissions.
+                                {skippedCount > 0 && ` (${skippedCount} master admin${skippedCount !== 1 ? 's' : ''} and/or yourself will be skipped.)`}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
@@ -400,7 +513,7 @@ export default function AdminManagerPage() {
                             </Button>
                             <Button onClick={handleBulkApply} disabled={bulkPermissions.length === 0 || isBulkApplying}>
                                 {isBulkApplying && <Loader2Icon className="mr-1.5 h-4 w-4 animate-spin" />}
-                                Apply to {selectedAdmins.size} Admin{selectedAdmins.size !== 1 ? 's' : ''}
+                                Apply to {eligibleCount} Admin{eligibleCount !== 1 ? 's' : ''}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

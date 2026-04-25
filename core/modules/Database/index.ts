@@ -7,7 +7,7 @@ import ActionsDao from './dao/actions';
 import WhitelistDao from './dao/whitelist';
 import StatsDao from './dao/stats';
 import CleanupDao from './dao/cleanup';
-import ReportsDao from './dao/reports';
+import TicketsDao from './dao/tickets';
 import { TxConfigState } from '@shared/enums';
 const console = consoleFactory(modulename);
 
@@ -23,7 +23,9 @@ export default class Database {
     readonly whitelist: WhitelistDao;
     readonly stats: StatsDao;
     readonly cleanup: CleanupDao;
-    readonly reports: ReportsDao;
+    readonly tickets: TicketsDao;
+    /** @deprecated Use tickets */
+    readonly reports: TicketsDao;
 
     constructor() {
         this.#db = new DbInstance();
@@ -32,7 +34,8 @@ export default class Database {
         this.whitelist = new WhitelistDao(this.#db);
         this.stats = new StatsDao(this.#db);
         this.cleanup = new CleanupDao(this.#db);
-        this.reports = new ReportsDao(this.#db);
+        this.tickets = new TicketsDao(this.#db);
+        this.reports = this.tickets; // backwards compat alias
 
         // Wait for database to be ready, then build indexes
         this.#db.whenReady().then(() => {

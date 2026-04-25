@@ -3,26 +3,30 @@ import type { ReactAuthDataType } from './authApiTypes';
 import type { PermissionDefinition } from './permissions';
 
 //Config stuff
-export type { TxConfigs, PartialTxConfigs } from '@core/modules/ConfigStore/schema';
-export type { ConfigChangelogEntry } from '@core/modules/ConfigStore/changelog';
-export type { GetConfigsResp } from '@core/routes/settings/getConfigs';
-export type { SaveConfigsReq, SaveConfigsResp } from '@core/routes/settings/saveConfigs';
-export type { BanTemplatesDataType, BanDurationType } from '@core/modules/ConfigStore/schema/banlist';
-export type { ResetServerDataPathResp } from '@core/routes/settings/resetServerDataPath';
-export type { GetBanTemplatesSuccessResp } from '@core/routes/settings/getBanTemplates';
-export type { SaveBanTemplatesResp, SaveBanTemplatesReq } from '@core/routes/settings/saveBanTemplates';
+export type TxConfigs = any;
+export type PartialTxConfigs = any;
+export type ConfigChangelogEntry = any;
+export type GetConfigsResp = any;
+export type SaveConfigsReq = any;
+export type SaveConfigsResp = any;
+export type BanTemplatesDataType = any;
+export type BanDurationType = any;
+export type ResetServerDataPathResp = any;
+export type GetBanTemplatesSuccessResp = any;
+export type SaveBanTemplatesResp = any;
+export type SaveBanTemplatesReq = any;
 
 //Stats stuff
-export type { SvRtLogFilteredType, SvRtPerfCountsThreadType } from '@core/modules/Metrics/svRuntime/perfSchemas';
-export type { SvRtPerfThreadNamesType } from '@core/modules/Metrics/svRuntime/config';
-export type { PerfChartApiResp, PerfChartApiSuccessResp } from '@core/routes/perfChart';
-export type {
-    PlayerDropsApiResp,
-    PlayerDropsApiSuccessResp,
-    PlayerDropsDetailedWindow,
-    PlayerDropsSummaryHour,
-} from '@core/routes/playerDrops';
-export type { PDLChangeEventType } from '@core/modules/Metrics/playerDrop/playerDropSchemas';
+export type SvRtLogFilteredType = any;
+export type SvRtPerfCountsThreadType = any;
+export type SvRtPerfThreadNamesType = 'svMain' | 'svNetwork' | 'svSync';
+export type PerfChartApiResp = any;
+export type PerfChartApiSuccessResp = any;
+export type PlayerDropsApiResp = any;
+export type PlayerDropsApiSuccessResp = any;
+export type PlayerDropsDetailedWindow = any;
+export type PlayerDropsSummaryHour = any;
+export type PDLChangeEventType = any;
 
 //Other stuff
 export type { ApiAddLegacyBanReqSchema, ApiRevokeActionReqSchema, ApiDeleteActionReqSchema } from './historyApiSchemas';
@@ -90,6 +94,7 @@ export type InjectedTxConsts = {
         name: string;
         game: string | undefined;
         icon: string | undefined;
+        desc: string | undefined;
     };
     hideFxsUpdateNotification: boolean;
     allowSelfIdentifierEdit: boolean;
@@ -97,6 +102,9 @@ export type InjectedTxConsts = {
 
     //Addon permissions (dynamic, registered by running addons)
     addonPermissions: PermissionDefinition[];
+
+    //Addon theme compatibility
+    addonThemeLogo: string | undefined;
 
     //Auth
     preAuth: ReactAuthDataType | false;

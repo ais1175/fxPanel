@@ -22,8 +22,12 @@ export default async function AdvancedActions(ctx: AuthedCtx) {
         console.warn('Invalid request!');
         return ctx.send({ type: 'danger', message: '<strong>Invalid request :(</strong>' });
     }
-    const action = ctx.request.body.action as string;
-    const parameter = ctx.request.body.parameter as string;
+    if (typeof ctx.request.body.action !== 'string' || typeof ctx.request.body.parameter !== 'string') {
+        console.warn('Invalid request: action/parameter must be strings.');
+        return ctx.send({ type: 'danger', message: '<strong>Invalid request :(</strong>' });
+    }
+    const action = ctx.request.body.action;
+    const parameter = ctx.request.body.parameter;
 
     //Check permissions
     if (!ctx.admin.testPermission('all_permissions', modulename)) {
@@ -103,10 +107,42 @@ export default async function AdvancedActions(ctx: AuthedCtx) {
             return ctx.send({ type: 'danger', message: `Failed to test source address: ${emsg(error)}` });
         }
     } else if (action == 'getProcessEnv') {
-        const sensitivePattern = /KEY|SECRET|TOKEN|PASSWORD|API|DB/i;
+        // Allowlist of env var names that are known-safe to display verbatim.
+        // Anything outside this set is masked — this is defence in depth against
+        // operators setting custom, arbitrarily-named secret envvars (WEBHOOK_URL,
+        // PRIVATE_KEY, CREDENTIALS, etc.) that a denylist regex would miss.
+        const SAFE_ENV_ALLOWLIST = new Set([
+            'NODE_ENV',
+            'NODE_VERSION',
+            'LANG',
+            'LC_ALL',
+            'TZ',
+            'PWD',
+            'SHELL',
+            'USER',
+            'USERNAME',
+            'LOGNAME',
+            'HOME',
+            'TERM',
+            'OS',
+            'OSTYPE',
+            'PROCESSOR_ARCHITECTURE',
+            'NUMBER_OF_PROCESSORS',
+            'COMPUTERNAME',
+            'HOSTNAME',
+            'TXADMIN_DEV_ENABLED',
+            'TXADMIN_DEV_VERBOSE',
+        ]);
         const redactedEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(process.env)) {
-            redactedEnv[key] = sensitivePattern.test(key) ? '********' : (value ?? '');
+            const upper = key.toUpperCase();
+            if (SAFE_ENV_ALLOWLIST.has(upper)) {
+                redactedEnv[key] = value ?? '';
+            } else {
+                // Still report the key existed (useful for diagnostics) without
+                // leaking its value, but never show the value itself.
+                redactedEnv[key] = '********';
+            }
         }
         return ctx.send({ type: 'success', message: JSON.stringify(redactedEnv, null, 2) });
     } else if (action == 'snap') {
@@ -153,17 +189,27 @@ export default async function AdvancedActions(ctx: AuthedCtx) {
             return ctx.send({ type: 'danger', message: 'Failed to ensure monitor.' });
         }
     } else if (action.startsWith('playerDrop')) {
-        const reason = action.split(' ', 2)[1];
-        const category = txCore.metrics.playerDrop.handlePlayerDrop(reason as any);
-        return ctx.send({ type: 'success', message: category });
+        const reason = action.slice('playerDrop'.length).trim();
+        if (!reason.length) {
+            return ctx.send({ type: 'danger', message: 'Missing playerDrop reason.' });
+        }
+        const category = txCore.metrics.playerDrop.handlePlayerDrop({
+            type: 'txAdminPlayerlistEvent',
+            event: 'playerDropped',
+            id: 0,
+            reason,
+        });
+        return ctx.send({ type: 'success', message: String(category) });
     } else if (action.startsWith('set')) {
         // set general.language "pt"
         // set general.language "en"
         // set server.onesync "on"
         // set server.onesync "legacy"
         try {
-            const [_, scopeKey, valueJson] = action.split(' ', 3);
-            if (!scopeKey || !valueJson) throw new Error(`Invalid set command: ${action}`);
+            const setMatch = action.match(/^set\s+(\S+)\s+(.+)$/);
+            if (!setMatch) throw new Error(`Invalid set command: ${action}`);
+            const scopeKey = setMatch[1];
+            const valueJson = setMatch[2];
             const [scope, key] = scopeKey.split('.');
             if (!scope || !key) throw new Error(`Invalid set command: ${action}`);
             const configUpdate = { [scope]: { [key]: JSON.parse(valueJson) } };
@@ -180,8 +226,6 @@ export default async function AdvancedActions(ctx: AuthedCtx) {
     } else if (action == 'printFxRunnerChildHistory') {
         const message = JSON.stringify(txCore.fxRunner.history, null, 2);
         return ctx.send({ type: 'success', message });
-    } else if (action == 'xxxxxx') {
-        return ctx.send({ type: 'success', message: '😀👍' });
     }
 
     //Catch all

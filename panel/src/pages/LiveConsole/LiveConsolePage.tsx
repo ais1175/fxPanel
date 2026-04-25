@@ -22,7 +22,7 @@ import '@xterm/xterm/css/xterm.css';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '@/lib/utils';
 import { openExternalLink } from '@/lib/navigation';
 import { handleHotkeyEvent } from '@/lib/hotkeyEventListener';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import {
     ANSI,
     copyTermLine,
@@ -363,8 +363,8 @@ export default function LiveConsolePage() {
                 }
             }, 500);
         };
-        const errorHandler = (error: Error) => {
-            console.log('LiveConsole Socket.IO', error);
+        const errorHandler = (reason?: string) => {
+            console.log('LiveConsole Socket.IO', reason ?? 'unknown');
         };
         const dataHandler = (data: any) => {
             if (typeof data === 'string') {
@@ -524,7 +524,7 @@ export default function LiveConsolePage() {
     };
 
     return (
-        <div className="dark text-primary h-contentvh bg-card flex w-full flex-col overflow-clip border md:rounded-xl">
+        <div className="dark text-primary h-contentvh bg-card flex w-full flex-col overflow-clip border border-border/60 shadow-sm md:rounded-xl">
             <LiveConsoleHeader
                 isConnected={isConnected}
                 hasSpawnLines={spawnLineNumbersRef.current.length > 0}

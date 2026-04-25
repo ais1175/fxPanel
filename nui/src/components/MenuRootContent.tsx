@@ -6,7 +6,7 @@ import { MainPageList } from '@nui/src/components/MainPage/MainPageList';
 import { useServerCtxValue } from '@nui/src/state/server.state';
 import { useDebounce } from '@nui/src/hooks/useDebouce';
 
-const TxAdminLogo: React.FC = () => {
+const FxPanelLogo: React.FC = () => {
     return (
         <Box mt={1} mb={0.25} display="flex" justifyContent="center">
             <img src="images/fxPanel.png" alt="fxPanel logo" />
@@ -27,7 +27,7 @@ const StyledRoot = styled(Box)(({ theme }) => ({
 export const MenuRootContent: React.FC = React.memo(() => {
     const serverCtx = useServerCtxValue();
     const curPage = usePageValue();
-    const padSize = Math.max(0, 9 - serverCtx.txAdminVersion.length);
+    const padSize = Math.max(0, 9 - serverCtx.fxPanelVersion.length);
     const versionPad = '\u0020\u205F'.repeat(padSize);
 
     // Hack to prevent collapse transition from breaking
@@ -38,7 +38,7 @@ export const MenuRootContent: React.FC = React.memo(() => {
 
     return (
         <StyledRoot p={2} pb={1}>
-            <TxAdminLogo />
+            <FxPanelLogo />
             <Typography
                 color="textSecondary"
                 style={{
@@ -48,7 +48,7 @@ export const MenuRootContent: React.FC = React.memo(() => {
                     fontSize: 12,
                 }}
             >
-                v{serverCtx.txAdminVersion}
+                v{serverCtx.fxPanelVersion}
                 {versionPad}
             </Typography>
             <PageTabs />

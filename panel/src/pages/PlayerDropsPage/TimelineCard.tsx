@@ -1,5 +1,6 @@
 import DebouncedResizeContainer from '@/components/DebouncedResizeContainer';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
 import { DoorOpenIcon } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 import type { PlayerDropsSummaryHour } from '@shared/otherTypes';
@@ -66,27 +67,32 @@ const TimelineCard = memo(
         }, [summaryData, displayLod]);
 
         return (
-            <div className="flex flex-col border-b md:rounded-xl">
-                <div className="flex flex-row items-center justify-between border-b px-1 sm:px-4">
-                    <div className="flex items-center space-x-2 py-2">
-                        <div className="xs:block hidden">
-                            <DoorOpenIcon className="size-4" />
+            <Card className="overflow-hidden">
+                <div className="flex flex-col gap-2 border-b border-border/40 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border [&>svg]:size-4">
+                            <DoorOpenIcon />
                         </div>
-                        <h2 className="font-mono text-sm">Expected Player Drops</h2>
+                        <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-semibold leading-tight tracking-tight">Expected Player Drops</h3>
+                            <p className="text-muted-foreground/70 mt-0.5 truncate text-xs">Voluntary disconnects & kicks</p>
+                        </div>
                     </div>
-                    <Select defaultValue={displayLod} onValueChange={setDisplayLod}>
-                        <SelectTrigger className="h-6 w-32 px-3 py-1 text-sm">
-                            <SelectValue placeholder="Filter by admin" />
-                        </SelectTrigger>
-                        <SelectContent className="px-0">
-                            <SelectItem value={'day'} className="cursor-pointer">
-                                Days
-                            </SelectItem>
-                            <SelectItem value={'hour'} className="cursor-pointer">
-                                Hours
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2 pl-12 sm:ml-auto sm:pl-0">
+                        <Select defaultValue={displayLod} onValueChange={setDisplayLod}>
+                            <SelectTrigger className="h-7 w-32 px-3 py-1 text-xs">
+                                <SelectValue placeholder="Resolution" />
+                            </SelectTrigger>
+                            <SelectContent className="px-0">
+                                <SelectItem value={'day'} className="cursor-pointer">
+                                    Days
+                                </SelectItem>
+                                <SelectItem value={'hour'} className="cursor-pointer">
+                                    Hours
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
                 <div className="h-32 max-h-32">
                     <DebouncedResizeContainer onDebouncedResize={setExpectedDropsChartSize}>
@@ -105,12 +111,13 @@ const TimelineCard = memo(
                     </DebouncedResizeContainer>
                 </div>
 
-                <div className="flex flex-row items-center justify-between border-t border-b px-1 sm:px-4">
-                    <div className="flex items-center gap-2 py-2">
-                        <div className="xs:block hidden">
-                            <DoorOpenIcon className="size-4" />
-                        </div>
-                        <h2 className="font-mono text-sm">Unexpected Player Drops</h2>
+                <div className="flex items-center gap-3 border-t border-b border-border/40 px-3 py-3 sm:px-4">
+                    <div className="bg-secondary/40 border-border/50 text-accent/80 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border [&>svg]:size-4">
+                        <DoorOpenIcon />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold leading-tight tracking-tight">Unexpected Player Drops</h3>
+                        <p className="text-muted-foreground/70 mt-0.5 truncate text-xs">Crashes, timeouts & unknown disconnects</p>
                     </div>
                 </div>
                 <div className="h-52 max-h-52">
@@ -129,7 +136,7 @@ const TimelineCard = memo(
                         )}
                     </DebouncedResizeContainer>
                 </div>
-            </div>
+            </Card>
         );
     },
 );

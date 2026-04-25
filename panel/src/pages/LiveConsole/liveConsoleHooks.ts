@@ -7,12 +7,17 @@ import type { LiveConsoleOptions } from './LiveConsolePage';
  * Maps between the LiveConsoleOptions shape and the two legacy localStorage keys
  */
 const liveConsoleOptionsStorage = createJSONStorage<LiveConsoleOptions>(() => ({
-    getItem: (): LiveConsoleOptions => {
-        let timestampDisabled = false;
-        let timestampForceHour12: boolean | undefined = undefined;
-        let copyTimestamp = false;
-        let copyTag = true;
+    getItem: (key: string) => {
         try {
+            const raw = localStorage.getItem(key);
+            if (raw) return raw;
+
+            // Legacy key migration path.
+            let timestampDisabled = false;
+            let timestampForceHour12: boolean | undefined = undefined;
+            let copyTimestamp = false;
+            let copyTag = true;
+
             const tsConfig = localStorage.getItem('liveConsoleTimestamp');
             if (tsConfig === '24h') {
                 timestampForceHour12 = false;
@@ -21,39 +26,44 @@ const liveConsoleOptionsStorage = createJSONStorage<LiveConsoleOptions>(() => ({
             } else if (tsConfig === 'off') {
                 timestampDisabled = true;
             }
-        } catch (error) {}
-        try {
+
             const copyConfig = localStorage.getItem('liveConsoleCopyOpts');
             if (typeof copyConfig === 'string') {
                 const parts = copyConfig.split(',');
                 copyTimestamp = parts.includes('ts');
                 copyTag = parts.includes('tag');
             }
-        } catch (error) {}
-        return { timestampDisabled, timestampForceHour12, copyTimestamp, copyTag } as any;
+
+            return JSON.stringify({ timestampDisabled, timestampForceHour12, copyTimestamp, copyTag });
+        } catch {
+            return null;
+        }
     },
-    setItem: (_key: string, newValue: LiveConsoleOptions) => {
+    setItem: (key: string, newValue: string) => {
         try {
-            if (newValue.timestampDisabled) {
+            localStorage.setItem(key, newValue);
+            const parsed = JSON.parse(newValue) as LiveConsoleOptions;
+            if (parsed.timestampDisabled) {
                 localStorage.setItem('liveConsoleTimestamp', 'off');
-            } else if (newValue.timestampForceHour12 === true) {
+            } else if (parsed.timestampForceHour12 === true) {
                 localStorage.setItem('liveConsoleTimestamp', '12h');
-            } else if (newValue.timestampForceHour12 === false) {
+            } else if (parsed.timestampForceHour12 === false) {
                 localStorage.setItem('liveConsoleTimestamp', '24h');
             } else {
                 localStorage.removeItem('liveConsoleTimestamp');
             }
             const copyParts: string[] = [];
-            if (newValue.copyTimestamp) copyParts.push('ts');
-            if (newValue.copyTag) copyParts.push('tag');
+            if (parsed.copyTimestamp) copyParts.push('ts');
+            if (parsed.copyTag) copyParts.push('tag');
             localStorage.setItem('liveConsoleCopyOpts', copyParts.join(','));
-        } catch (error) {}
+        } catch {}
     },
-    removeItem: () => {
+    removeItem: (key: string) => {
         try {
+            localStorage.removeItem(key);
             localStorage.removeItem('liveConsoleTimestamp');
             localStorage.removeItem('liveConsoleCopyOpts');
-        } catch (error) {}
+        } catch {}
     },
 }));
 

@@ -1,4 +1,4 @@
-import { DatabaseReportType } from '@shared/reportApiTypes';
+import { DatabaseTicketType } from '@shared/ticketApiTypes';
 import type { License, ActionId } from '@shared/brandedTypes';
 
 export type DatabasePlayerType = {
@@ -72,5 +72,7 @@ export type DatabaseDataType = {
     actions: DatabaseActionType[];
     whitelistApprovals: DatabaseWhitelistApprovalsType[];
     whitelistRequests: DatabaseWhitelistRequestsType[];
-    reports: DatabaseReportType[];
+    tickets: DatabaseTicketType[];
+    /** @deprecated Retained for migration path only — use tickets */
+    reports?: any[];
 };

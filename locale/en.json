@@ -78,6 +78,8 @@
             "menu_not_admin": "Your identifiers do not match any admin registered on fxPanel.\nIf you are registered on fxPanel, go to Admin Manager and make sure your identifiers are saved.",
             "menu_auth_failed": "fxPanel Menu authentication failed with reason: %{reason}",
             "no_perms": "You do not have this permission.",
+            "no_perms_action": "You do not have permission to %{action} players.",
+            "usage_action": "Usage: /%{action} [playerID]",
             "unknown_error": "An unknown error occurred.",
             "not_enabled": "The fxPanel Menu is not enabled! You can enable it in the fxPanel settings page.",
             "announcement_title": "Server Announcement by %{author}:",
@@ -164,7 +166,8 @@
                     "dialog_desc": "Enter in the model name of the vehicle you want to spawn.",
                     "dialog_success": "Vehicle spawned!",
                     "dialog_error": "The vehicle model name '%{modelName}' does not exist!",
-                    "dialog_info": "Trying to spawn %{modelName}."
+                    "dialog_info": "Trying to spawn %{modelName}.",
+                    "load_failed": "Failed to spawn vehicle: model '%{modelName}' did not load in time."
                 },
                 "fix": {
                     "title": "Fix",

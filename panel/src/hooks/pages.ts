@@ -1,9 +1,31 @@
 import { atom, useSetAtom } from 'jotai';
 import { atomEffect } from 'jotai-effect';
+import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import faviconDefault from '/favicon_default.svg?url';
 import { globalStatusAtom } from './status';
 import { playerCountAtom } from './playerlist';
-import { FxMonitorHealth } from '@shared/enums';
+
+/**
+ * Atom for a page-level header that should render above the main content + sidebar row.
+ * Pages can call `usePageHeader(node)` to set it (and clear it on unmount).
+ *
+ * If `node` contains inline JSX (a fresh ReactNode every render), pass an explicit
+ * `deps` array so the header is only re-published when those deps change. Without
+ * `deps`, the latest `node` is published on every render.
+ */
+export const pageHeaderAtom = atom<ReactNode | null>(null);
+
+export const usePageHeader = (node: ReactNode, deps?: ReadonlyArray<unknown>) => {
+    const setPageHeader = useSetAtom(pageHeaderAtom);
+    const nodeRef = useRef(node);
+    nodeRef.current = node;
+    useEffect(() => {
+        setPageHeader(nodeRef.current);
+        return () => setPageHeader(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, deps ?? [node, setPageHeader]);
+};
 
 /**
  * This atom is used to change the key of the main page error boundry, which also resets the router
@@ -50,10 +72,14 @@ export const pageTitleWatcher: ReturnType<typeof atomEffect> = atomEffect((get, 
     if (!window.txConsts.isWebInterface) return;
     const pageTitle = get(pageTitleAtom);
     const globalStatus = get(globalStatusAtom);
+    // Read to subscribe — re-runs the watcher when the player count changes
     const playerCount = get(playerCountAtom);
 
     if (!globalStatus) {
         faviconEl.href = faviconDefault;
         document.title = DEFAULT_TITLE;
+    } else {
+        faviconEl.href = faviconDefault;
+        document.title = `[${playerCount}] ${pageTitle}`;
     }
 });

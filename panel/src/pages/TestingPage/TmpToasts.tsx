@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { txToast } from '@/components/txToaster';
+import { txToast } from '@/components/TxToaster';
 import { useBackendApi } from '@/hooks/fetch';
 
 export default function TmpToasts() {

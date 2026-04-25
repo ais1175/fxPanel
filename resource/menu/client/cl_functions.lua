@@ -69,6 +69,7 @@ local function createPauseMenuCheckerThread()
 end
 
 --- Toggle visibility of the txAdmin NUI menu
+---@diagnostic disable-next-line: lowercase-global
 function toggleMenuVisibility(visible)
     if (visible == true and TX_MENU_VISIBLE) or (visible == false and not TX_MENU_VISIBLE) then
         return
@@ -134,6 +135,7 @@ function DisplayHelpTxtThisFrame(msg)
     BeginTextCommandDisplayHelp('STRING')
     AddTextComponentString(msg)
     AddTextComponentSubstringTextLabel(msg)
+    ---@diagnostic disable-next-line: param-type-mismatch
     EndTextCommandDisplayHelp(0, 1, 0, -1)
 end
 
@@ -170,12 +172,15 @@ local redmSoundLibrary = {
 
 --- Used to play UI sounds
 ---@param sound string
+---@diagnostic disable-next-line: lowercase-global
 function playLibrarySound(sound)
     if IS_FIVEM then
+        ---@diagnostic disable-next-line: param-type-mismatch
         PlaySoundFrontend(-1, fivemSoundLibrary[sound][1], fivemSoundLibrary[sound][2], 1)
     else
         Citizen.InvokeNative(0x9D746964E0CF2C5F, redmSoundLibrary[sound][1], redmSoundLibrary[sound][2]) -- ReleaseShardSounds
         Wait(0)
+        ---@diagnostic disable-next-line: param-type-mismatch
         PlaySoundFrontend(redmSoundLibrary[sound][1], redmSoundLibrary[sound][2], true, 1)
     end
 end
