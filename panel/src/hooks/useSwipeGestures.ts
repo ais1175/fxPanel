@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSetAtom, useAtomValue } from 'jotai';
-import { isGlobalMenuSheetOpenAtom, isServerSheetOpenAtom, isPlayerlistSheetOpenAtom } from './sheets';
+import { isGlobalMenuSheetOpenAtom, isPlayerlistSheetOpenAtom } from './sheets';
 
 const SWIPE_THRESHOLD = 50; // minimum px to count as a swipe
 const EDGE_ZONE = 30; // px from screen edge to trigger edge swipe
@@ -9,22 +9,19 @@ const EDGE_ZONE = 30; // px from screen edge to trigger edge swipe
  * Hook to handle swipe gestures for opening/closing mobile sidebars.
  * - Swipe right from left edge → open global menu sheet
  * - Swipe left from right edge → open playerlist sheet
- * - Swipe left when global menu or server sheet is open → close both
+ * - Swipe left when global menu is open → close it
  * - Swipe right when right sheet is open → close it
  */
 export const useSwipeGestures = () => {
     const setGlobalMenu = useSetAtom(isGlobalMenuSheetOpenAtom);
-    const setServer = useSetAtom(isServerSheetOpenAtom);
     const setPlayerlist = useSetAtom(isPlayerlistSheetOpenAtom);
     const isGlobalMenuOpen = useAtomValue(isGlobalMenuSheetOpenAtom);
-    const isServerOpen = useAtomValue(isServerSheetOpenAtom);
     const isPlayerlistOpen = useAtomValue(isPlayerlistSheetOpenAtom);
     const openGlobalMenu = () => {
         setGlobalMenu(true);
     };
     const closeLeftSheets = () => {
         setGlobalMenu(false);
-        setServer(false);
     };
     const openPlayerlist = () => {
         setPlayerlist(true);
@@ -66,7 +63,7 @@ export const useSwipeGestures = () => {
                     openGlobalMenu();
                 }
             } else if (isSwipeLeft) {
-                if (isGlobalMenuOpen || isServerOpen) {
+                if (isGlobalMenuOpen) {
                     closeLeftSheets();
                 } else if (isFromRightEdge) {
                     openPlayerlist();
@@ -80,5 +77,5 @@ export const useSwipeGestures = () => {
             document.removeEventListener('touchstart', handleTouchStart);
             document.removeEventListener('touchend', handleTouchEnd);
         };
-    }, [isGlobalMenuOpen, isServerOpen, isPlayerlistOpen, setGlobalMenu, setServer, setPlayerlist]);
+    }, [isGlobalMenuOpen, isPlayerlistOpen, setGlobalMenu, setPlayerlist]);
 };

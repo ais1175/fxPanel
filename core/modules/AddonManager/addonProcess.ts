@@ -1,11 +1,12 @@
 const modulename = 'AddonProcess';
-import { fork, ChildProcess, spawnSync } from 'node:child_process';
+import { fork, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import consoleFactory from '@lib/console';
+import { getFxChildNodeRuntimeResolution } from '@lib/resolveFxChildNode';
 import { txEnv } from '@core/globalData';
 import { AddonStorageScope } from './addonStorage';
 import { isPathInside } from './addonUtils';
@@ -16,14 +17,6 @@ const console = consoleFactory(modulename);
 const IPC_TIMEOUT_MS = 30_000;
 const STORAGE_TIMEOUT_MS = 5_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
-
-type NonNodeExecResolution = {
-    childExecPath?: string;
-    childExecArgvPrefix: string[];
-    candidateCount: number;
-    candidateSample: string[];
-    cfxRoot?: string;
-};
 
 type AddonRuntimePreference = 'auto' | 'inprocess' | 'worker' | 'node';
 
@@ -102,13 +95,6 @@ function createInProcessChannel(opts: {
 // single-shot globalThis.__TX_PENDING_ADDON__ slot.
 let inProcessLoadChain: Promise<void> = Promise.resolve();
 
-let hasComputedNonNodeExecResolution = false;
-let cachedNonNodeExecResolution: NonNodeExecResolution = {
-    childExecPath: undefined,
-    childExecArgvPrefix: [],
-    candidateCount: 0,
-    candidateSample: [],
-};
 let warnedNonNodeExecFallback = false;
 
 const ADDON_WORKER_BOOTSTRAP = `
@@ -271,7 +257,6 @@ export default class AddonProcess {
             // usable Node executable path before spawning addon child processes.
             const execBase = path.basename(process.execPath).toLowerCase();
             const isNodeExec = execBase === 'node' || execBase === 'node.exe' || execBase.startsWith('node');
-            const isMuslLoaderExec = execBase.startsWith('ld-musl');
             // Reaching here means runtimePreference !== 'inprocess'. Map remaining
             // preferences to the legacy worker/fork selection.
             const preferWorkerFallback = runtimePreference === 'worker';
@@ -280,246 +265,7 @@ export default class AddonProcess {
             let childExecArgvPrefix: string[] = [];
 
             if (!isNodeExec && !preferWorkerFallback) {
-                if (!hasComputedNonNodeExecResolution) {
-                    hasComputedNonNodeExecResolution = true;
-
-                    const candidateSet = new Set<string>();
-                    const execDir = path.dirname(process.execPath);
-                    const cfxRootSet = new Set<string>();
-                    const addCfxRoot = (root: string | undefined) => {
-                        if (!root) return;
-                        cfxRootSet.add(path.resolve(root));
-                    };
-
-                    // Common candidates: exact exec dir (eg /opt/cfx-server) plus nearby parents.
-                    addCfxRoot(execDir);
-                    addCfxRoot(path.resolve(execDir, '..'));
-                    addCfxRoot(path.resolve(execDir, '..', '..'));
-
-                    // Recover the canonical /.../cfx-server root directly from execPath.
-                    const resolvedExecPathAbs = path.resolve(process.execPath);
-                    const lowerExecPath = resolvedExecPathAbs.toLowerCase();
-                    const markerWithSep = `${path.sep}cfx-server${path.sep}`;
-                    const markerTail = `${path.sep}cfx-server`;
-                    const markerIdx = lowerExecPath.lastIndexOf(markerWithSep);
-                    if (markerIdx !== -1) {
-                        addCfxRoot(resolvedExecPathAbs.slice(0, markerIdx + markerWithSep.length - 1));
-                    } else if (lowerExecPath.endsWith(markerTail)) {
-                        addCfxRoot(resolvedExecPathAbs);
-                    }
-
-                    const cfxRoots = [...cfxRootSet];
-                    const cfxLibPaths = Array.from(
-                        new Set(
-                            cfxRoots.map(
-                                (root) =>
-                                    `${path.join(root, 'usr', 'lib', 'v8')}:${path.join(root, 'lib')}:${path.join(root, 'usr', 'lib')}`,
-                            ),
-                        ),
-                    );
-                    const nodeNameRegex = /^node(?:\d+)?(?:\.exe)?$/i;
-
-                    const collectNodeBins = (root: string, maxDepth: number): string[] => {
-                        if (!fs.existsSync(root)) return [];
-                        const out: string[] = [];
-                        const queue: Array<[string, number]> = [[root, 0]];
-
-                        while (queue.length) {
-                            const [dir, depth] = queue.shift()!;
-                            let entries: fs.Dirent[];
-                            try {
-                                entries = fs.readdirSync(dir, { withFileTypes: true });
-                            } catch {
-                                continue;
-                            }
-
-                            for (const entry of entries) {
-                                const fullPath = path.join(dir, entry.name);
-                                if (entry.isDirectory()) {
-                                    if (depth < maxDepth) queue.push([fullPath, depth + 1]);
-                                    continue;
-                                }
-
-                                if (!(entry.isFile() || entry.isSymbolicLink())) continue;
-                                if (nodeNameRegex.test(entry.name)) {
-                                    out.push(fullPath);
-                                }
-                            }
-                        }
-
-                        return out;
-                    };
-
-                    const collectExecutableBins = (root: string, maxDepth: number, maxFiles: number): string[] => {
-                        if (!fs.existsSync(root)) return [];
-                        const out: string[] = [];
-                        const queue: Array<[string, number]> = [[root, 0]];
-
-                        while (queue.length && out.length < maxFiles) {
-                            const [dir, depth] = queue.shift()!;
-                            let entries: fs.Dirent[];
-                            try {
-                                entries = fs.readdirSync(dir, { withFileTypes: true });
-                            } catch {
-                                continue;
-                            }
-
-                            for (const entry of entries) {
-                                if (out.length >= maxFiles) break;
-                                const fullPath = path.join(dir, entry.name);
-
-                                if (entry.isDirectory()) {
-                                    if (depth < maxDepth) queue.push([fullPath, depth + 1]);
-                                    continue;
-                                }
-
-                                if (!(entry.isFile() || entry.isSymbolicLink())) continue;
-
-                                try {
-                                    const st = fs.statSync(fullPath);
-                                    if ((st.mode & 0o111) !== 0) {
-                                        out.push(fullPath);
-                                    }
-                                } catch {
-                                    // Ignore unreadable/broken entries.
-                                }
-                            }
-                        }
-
-                        return out;
-                    };
-
-                    const envNodeExecPath = process.env.npm_node_execpath ?? process.env.NODE;
-                    const explicitNodeExecPath = process.env.FXPANEL_ADDON_NODE_PATH;
-                    if (typeof explicitNodeExecPath === 'string' && explicitNodeExecPath.length) {
-                        candidateSet.add(explicitNodeExecPath);
-                    }
-                    if (typeof envNodeExecPath === 'string' && envNodeExecPath.length) {
-                        candidateSet.add(envNodeExecPath);
-                    }
-
-                    if (process.argv0 && path.isAbsolute(process.argv0)) {
-                        candidateSet.add(process.argv0);
-                    }
-
-                    const siblingNode = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'node.exe' : 'node');
-                    if (fs.existsSync(siblingNode)) {
-                        candidateSet.add(siblingNode);
-                    }
-
-                    // Common CFX Linux layout when execPath is /alpine/opt/cfx-server/ld-musl-*.so.1
-                    const cfxNodeCandidates = cfxRoots.flatMap((root) => [
-                        path.join(root, 'usr', 'bin', 'node'),
-                        path.join(root, 'usr', 'lib', 'v8', 'node'),
-                        path.join(root, 'usr', 'lib', 'v8', 'bin', 'node'),
-                        path.join(root, 'citizen', 'scripting', 'v8', 'node', 'bin', 'node'),
-                        path.join(root, 'citizen', 'scripting', 'v8', 'node20', 'bin', 'node'),
-                        path.join(root, 'citizen', 'scripting', 'v8', 'node16', 'bin', 'node'),
-                        path.join(root, 'opt', 'cfx-server', 'citizen', 'scripting', 'v8', 'node', 'bin', 'node'),
-                        path.join(root, 'opt', 'cfx-server', 'citizen', 'scripting', 'v8', 'node20', 'bin', 'node'),
-                        path.join(root, 'opt', 'cfx-server', 'citizen', 'scripting', 'v8', 'node16', 'bin', 'node'),
-                    ]);
-                    for (const candidate of cfxNodeCandidates) {
-                        if (fs.existsSync(candidate)) {
-                            candidateSet.add(candidate);
-                        }
-                    }
-
-                    // Additional safety net for artifact layouts that rename node dirs.
-                    const cfxNodeSearchRoots = cfxRoots.flatMap((root) => [
-                        path.join(root, 'usr', 'lib', 'v8'),
-                        path.join(root, 'citizen', 'scripting', 'v8'),
-                        path.join(root, 'opt', 'cfx-server', 'citizen', 'scripting', 'v8'),
-                        root,
-                    ]);
-                    for (const root of cfxNodeSearchRoots) {
-                        for (const candidate of collectNodeBins(root, 7)) {
-                            candidateSet.add(candidate);
-                        }
-                    }
-
-                    // Last-resort executable scan for artifact layouts that don't use
-                    // obvious node binary names.
-                    const cfxExecSearchRoots = cfxRoots.flatMap((root) => [
-                        path.join(root, 'usr', 'bin'),
-                        path.join(root, 'usr', 'lib', 'v8'),
-                        path.join(root, 'citizen', 'scripting'),
-                        path.join(root, 'opt', 'cfx-server', 'citizen', 'scripting'),
-                    ]);
-                    for (const root of cfxExecSearchRoots) {
-                        for (const candidate of collectExecutableBins(root, 6, 300)) {
-                            candidateSet.add(candidate);
-                        }
-                    }
-
-                    const lookupCmd = process.platform === 'win32' ? 'where' : 'which';
-                    const nodeInPath = spawnSync(lookupCmd, ['node'], { stdio: 'ignore' });
-                    if (!nodeInPath.error && nodeInPath.status === 0) {
-                        candidateSet.add('node');
-                    }
-
-                    const candidates = [...candidateSet];
-                    const looksLikeNodeVersion = (text: string) => /^v\d+\.\d+\.\d+$/m.test(text.trim());
-
-                    const canExecuteDirect = (candidate: string) => {
-                        const check = spawnSync(candidate, ['--version'], {
-                            stdio: 'pipe',
-                            encoding: 'utf8',
-                            timeout: 1500,
-                            killSignal: 'SIGKILL',
-                        });
-                        if (check.error || check.status !== 0) return false;
-                        const outText = `${check.stdout ?? ''}\n${check.stderr ?? ''}`;
-                        return looksLikeNodeVersion(outText);
-                    };
-
-                    const canExecuteViaMuslLoader = (candidate: string): string[] | null => {
-                        if (!isMuslLoaderExec) return null;
-                        for (const cfxLibPath of cfxLibPaths) {
-                            const check = spawnSync(
-                                process.execPath,
-                                ['--library-path', cfxLibPath, '--', candidate, '--version'],
-                                {
-                                    stdio: 'pipe',
-                                    encoding: 'utf8',
-                                    timeout: 1500,
-                                    killSignal: 'SIGKILL',
-                                },
-                            );
-                            if (check.error || check.status !== 0) continue;
-                            const outText = `${check.stdout ?? ''}\n${check.stderr ?? ''}`;
-                            if (looksLikeNodeVersion(outText)) {
-                                return ['--library-path', cfxLibPath, '--', candidate];
-                            }
-                        }
-                        return null;
-                    };
-
-                    let resolvedExecPath: string | undefined;
-                    let resolvedExecPrefix: string[] = [];
-                    for (const candidate of candidates) {
-                        if (canExecuteDirect(candidate)) {
-                            resolvedExecPath = candidate;
-                            break;
-                        }
-
-                        const muslExecPrefix = canExecuteViaMuslLoader(candidate);
-                        if (muslExecPrefix) {
-                            resolvedExecPath = process.execPath;
-                            resolvedExecPrefix = muslExecPrefix;
-                            break;
-                        }
-                    }
-
-                    cachedNonNodeExecResolution = {
-                        childExecPath: resolvedExecPath,
-                        childExecArgvPrefix: resolvedExecPrefix,
-                        candidateCount: candidates.length,
-                        candidateSample: candidates.slice(0, 10),
-                        cfxRoot: cfxRoots.slice(0, 4).join(' | '),
-                    };
-                }
-
+                const cachedNonNodeExecResolution = getFxChildNodeRuntimeResolution();
                 childExecPath = cachedNonNodeExecResolution.childExecPath;
                 childExecArgvPrefix = [...cachedNonNodeExecResolution.childExecArgvPrefix];
 

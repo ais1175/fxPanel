@@ -17,6 +17,7 @@ const initialAtomValue =
  */
 const setThemeCookieValue = (value: string) => {
     const secureAttr = window.location.protocol === 'https:' ? ';Secure' : '';
+    document.cookie = `fxpAdmin-theme=${value};path=/;SameSite=Lax;max-age=31536000${secureAttr};`;
     document.cookie = `txAdmin-theme=${value};path=/;SameSite=Lax;max-age=31536000${secureAttr};`;
 };
 

@@ -1,7 +1,7 @@
 import { ErrorBoundary } from 'react-error-boundary';
 import type { ReactElement } from 'react';
 import { useEffect } from 'react';
-import { Route as WouterRoute, Switch } from 'wouter';
+import { Redirect, Route as WouterRoute, Switch } from 'wouter';
 import { PageErrorFallback } from '@/components/ErrorFallback';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { contentRefreshKeyAtom, pageErrorStatusAtom, useSetPageTitle } from '@/hooks/pages';
@@ -31,7 +31,6 @@ import WhitelistPage from '@/pages/Whitelist/WhitelistPage';
 import ResourcesPage from '@/pages/ResourcesPage/ResourcesPage';
 import AdvancedPage from '@/pages/AdvancedPage';
 import DiagnosticsPage from '@/pages/DiagnosticsPage';
-import MasterActionsPage from '@/pages/MasterActionsPage';
 import CfgEditorPage from '@/pages/CfgEditorPage';
 import SetupPage from '@/pages/SetupPage';
 import DeployerPage from '@/pages/DeployerPage';
@@ -105,10 +104,11 @@ const allRoutes: RouteType[] = [
         Page: <AddonsManagerPage />,
     },
     {
+        // Legacy route — destructive actions moved to /settings#danger-zone.
+        // Kept so old bookmarks/links keep working; the page just redirects.
         path: '/system/master-actions',
         title: 'Master Actions',
-        //NOTE: content is readonly for unauthorized accounts
-        Page: <MasterActionsPage />,
+        Page: <Redirect to="/settings#danger-zone" replace />,
     },
     {
         path: '/system/diagnostics',

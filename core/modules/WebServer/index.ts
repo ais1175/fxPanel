@@ -39,6 +39,7 @@ export default class WebServer {
     public isListening = false;
     public isServing = false;
     private sessionCookieName: string;
+    private legacySessionCookieName: string;
     public luaComToken: string;
     //setupKoa
     private app: Koa;
@@ -53,7 +54,8 @@ export default class WebServer {
     constructor() {
         //Generate cookie key & luaComToken
         const pathHash = crypto.createHash('shake256', { outputLength: 6 }).update(txEnv.profilePath).digest('hex');
-        this.sessionCookieName = `tx:${pathHash}`;
+        this.sessionCookieName = `fxp:${pathHash}`;
+        this.legacySessionCookieName = `tx:${pathHash}`;
         this.luaComToken = nanoid();
 
         // ===================
@@ -151,7 +153,7 @@ export default class WebServer {
             : undefined;
         this.sessionStore = new SessionMemoryStorage(undefined, persistPath);
         this.app.use(cacheControlMw);
-        this.app.use(koaSessMw(this.sessionCookieName, this.sessionStore));
+        this.app.use(koaSessMw(this.sessionCookieName, this.sessionStore, this.legacySessionCookieName));
         this.app.use(ctxVarsMw);
         this.app.use(ctxUtilsMw);
 
@@ -179,7 +181,9 @@ export default class WebServer {
         // Setting up SocketIO
         // ===================
         this.io = new SocketIO(HttpClass.createServer(), { serveClient: false });
-        this.io.use(socketioSessMw(this.sessionCookieName, this.sessionStore, this.app.keys as string[]));
+        this.io.use(
+            socketioSessMw(this.sessionCookieName, this.sessionStore, this.app.keys as string[], this.legacySessionCookieName),
+        );
         this.webSocket = new WebSocket(this.io);
         //@ts-expect-error handleConnection expects extended socket type
         this.io.on('connection', this.webSocket.handleConnection.bind(this.webSocket));

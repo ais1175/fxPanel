@@ -139,6 +139,7 @@ export default function MainSocket() {
         socket.on('logout', logoutHandler);
         socket.on('refreshToUpdate', refreshHandler);
         socket.on('txAdminShuttingDown', shutdownHandler);
+        socket.on('fxpAdminShuttingDown', shutdownHandler);
         socket.on('status', statusHandler);
         socket.on('playerlist', playerlistHandler);
         socket.on('updateAvailable', updateHandler);
@@ -157,6 +158,7 @@ export default function MainSocket() {
             socket.off('logout', logoutHandler);
             socket.off('refreshToUpdate', refreshHandler);
             socket.off('txAdminShuttingDown', shutdownHandler);
+            socket.off('fxpAdminShuttingDown', shutdownHandler);
             socket.off('status', statusHandler);
             socket.off('playerlist', playerlistHandler);
             socket.off('updateAvailable', updateHandler);

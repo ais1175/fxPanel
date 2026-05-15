@@ -470,7 +470,7 @@ export default async function getReactIndex(ctx: CtxWithVars | AuthedCtx) {
     replacers.htmlExtraAttrs = addonThemeResult.htmlAttrs;
 
     //Setting the theme class from the cookie
-    const themeCookie = ctx.cookies.get('txAdmin-theme');
+    const themeCookie = ctx.cookies.get('fxpAdmin-theme') ?? ctx.cookies.get('txAdmin-theme');
     if (themeCookie) {
         if (tmpDefaultThemes.includes(themeCookie)) {
             replacers.htmlClasses = themeCookie;

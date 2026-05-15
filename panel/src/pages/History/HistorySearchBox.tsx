@@ -234,7 +234,7 @@ export function HistorySearchBox({ doSearch, initialState, adminStats }: History
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
                                 <DropdownMenuItem className="h-10 py-2 pr-2 pl-1" asChild>
-                                    <Link href="/system/master-actions#cleandb" className="cursor-pointer">
+                                    <Link href="/settings#danger-zone" className="cursor-pointer">
                                         <ExternalLinkIcon className="mr-1 inline h-4" />
                                         Bulk Remove
                                     </Link>

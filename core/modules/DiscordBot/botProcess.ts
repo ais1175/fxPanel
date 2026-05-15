@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, symlinkSync } f
 import path from 'node:path';
 import { txDevEnv, txEnv } from '@core/globalData';
 import consoleFactory from '@lib/console';
+import { resolveFxChildNodeSpawn } from '@lib/resolveFxChildNode';
 import { emsg } from '@shared/emsg';
 
 const console = consoleFactory('DiscordBot:process');
@@ -38,6 +39,8 @@ export default class BotProcess {
     #lastStartConfig: BotProcessStartConfig | undefined;
     #lastOutputLine: string | undefined;
     #lastErrorLine: string | undefined;
+    /** When true, spawn failed in a way that will not recover by retrying (e.g. no Node binary). */
+    #fatalSpawnError = false;
 
     constructor(options: BotProcessOptions = {}) {
         this.#options = options;
@@ -66,6 +69,7 @@ export default class BotProcess {
     start(config: BotProcessStartConfig) {
         this.#lastStartConfig = config;
         this.#shuttingDown = false;
+        this.#fatalSpawnError = false;
 
         if (this.isRunning || this.#restartTimer) return;
         this.#spawn();
@@ -79,12 +83,14 @@ export default class BotProcess {
         this.stop();
         if (this.#lastStartConfig) {
             this.#shuttingDown = false;
+            this.#fatalSpawnError = false;
             this.#spawn();
         }
     }
 
     stop() {
         this.#shuttingDown = true;
+        this.#fatalSpawnError = false;
         if (this.#restartTimer) {
             clearTimeout(this.#restartTimer);
             this.#restartTimer = undefined;
@@ -227,6 +233,8 @@ export default class BotProcess {
     #spawn() {
         const config = this.#lastStartConfig;
         if (!config) throw new Error('Cannot start the Discord bot process without a config.');
+        if (this.#fatalSpawnError) return;
+
         const botDir = this.#resolveBotDir();
         this.#ensureRuntimeNodeModules(botDir);
         const nodePath = this.#buildNodePath(botDir);
@@ -234,7 +242,17 @@ export default class BotProcess {
         this.#lastOutputLine = undefined;
         this.#lastErrorLine = undefined;
 
-        this.#proc = spawn('node', ['index.js'], {
+        const spawnCmd = resolveFxChildNodeSpawn(['index.js']);
+        if (!spawnCmd) {
+            const reason =
+                'Discord bot: no Node.js binary found for this FXServer environment. Set FXPANEL_BOT_NODE_PATH or FXPANEL_ADDON_NODE_PATH to an absolute path to `node`, or install Node on PATH.';
+            console.error(reason);
+            this.#fatalSpawnError = true;
+            this.#options.onError?.({ reason });
+            return;
+        }
+
+        this.#proc = spawn(spawnCmd.file, spawnCmd.args, {
             cwd: botDir,
             env: {
                 ...process.env,
@@ -254,12 +272,21 @@ export default class BotProcess {
             const reason = `Discord bot process failed: ${emsg(error)}`;
             console.error(reason);
             this.#proc = undefined;
+            const errno = error as NodeJS.ErrnoException;
+            if (errno.code === 'ENOENT') {
+                this.#fatalSpawnError = true;
+                console.error(
+                    'Discord bot spawn ENOENT — the resolved Node binary could not be executed. Check FXPANEL_BOT_NODE_PATH / FXPANEL_ADDON_NODE_PATH.',
+                );
+            }
             this.#options.onError?.({ reason: this.#lastErrorLine ? `${reason} Last error: ${this.#lastErrorLine}` : reason });
-            this.#scheduleRestart();
+            if (!this.#fatalSpawnError) {
+                this.#scheduleRestart();
+            }
         });
         this.#proc.on('exit', (code, signal) => {
             this.#proc = undefined;
-            if (this.#shuttingDown) return;
+            if (this.#shuttingDown || this.#fatalSpawnError) return;
 
             const exitReason = signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`;
             console.warn(`Discord bot process exited with ${exitReason}.`);
@@ -274,7 +301,7 @@ export default class BotProcess {
     }
 
     #scheduleRestart() {
-        if (this.#shuttingDown || this.#restartTimer || !this.#lastStartConfig) return;
+        if (this.#shuttingDown || this.#fatalSpawnError || this.#restartTimer || !this.#lastStartConfig) return;
 
         const restartDelayMs = this.#restartDelayMs;
         this.#pendingRestartDelayMs = restartDelayMs;

@@ -2,7 +2,7 @@ import { ApiLogoutResp, ReactAuthDataType } from '@shared/authApiTypes';
 import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { atomEffect } from 'jotai-effect';
 import { accountModalOpenAtom, confirmDialogOpenAtom, promptDialogOpenAtom } from './dialogs';
-import { isGlobalMenuSheetOpenAtom, isPlayerlistSheetOpenAtom, isServerSheetOpenAtom } from './sheets';
+import { isGlobalMenuSheetOpenAtom, isPlayerlistSheetOpenAtom } from './sheets';
 import { playerModalOpenAtom } from './playerModal';
 import { globalStatusAtom } from './status';
 import { txToast } from '@/components/TxToaster';
@@ -134,7 +134,6 @@ export const logoutWatcher = atomEffect((get, set) => {
     set(confirmDialogOpenAtom, false);
     set(promptDialogOpenAtom, false);
     set(isGlobalMenuSheetOpenAtom, false);
-    set(isServerSheetOpenAtom, false);
     set(isPlayerlistSheetOpenAtom, false);
     set(playerModalOpenAtom, false);
     set(actionModalOpenAtom, false);
